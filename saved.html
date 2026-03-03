@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Saved Movies</title>
+    <meta
+      name="description"
+      content="Browse the movies you have saved to your watchlist."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=directors">Producers / Directors</a>
+          <a href="/saved.html">Saved</a>
+        </nav>
+      </div>
+
+      <header class="hero people-page-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">saved watchlist</p>
+          <h1>Your saved maybe-tonight stack</h1>
+          <p class="hero-text">
+            Everything you have saved locally in this browser lives here. Open a person-driven search from any saved movie later.
+          </p>
+          <p id="saved-status" class="hero-subtext">
+            Reading local watchlist state.
+          </p>
+        </div>
+
+        <section class="filter-panel" aria-label="Saved summary">
+          <div class="filter-panel-header">
+            <h2>Saved summary</h2>
+            <a class="ghost-button" href="/">Back to home</a>
+          </div>
+          <div class="hero-stats">
+            <div>
+              <span id="saved-count" class="stat-number">0</span>
+              <span class="stat-label">Saved movies</span>
+            </div>
+          </div>
+        </section>
+      </header>
+
+      <main>
+        <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
+          <div class="filter-panel-header">
+            <h2>Search the movie catalog</h2>
+            <a class="ghost-button" href="/">Open home</a>
+          </div>
+          <form class="catalog-launch-form" data-catalog-search>
+            <label class="field">
+              <span>Actor, actress, director, producer</span>
+              <input
+                data-search-person
+                name="person"
+                type="search"
+                list="saved-catalog-people-suggestions"
+                placeholder="Try: Florence Pugh, Denis Villeneuve, Emma Stone"
+              />
+            </label>
+            <datalist id="saved-catalog-people-suggestions"></datalist>
+
+            <div class="field">
+              <div class="field-row">
+                <span>Match role</span>
+                <strong class="field-helper" data-role-label>Any role</strong>
+              </div>
+              <input type="hidden" name="role" value="any" data-role-input />
+              <div class="segmented-control" aria-label="Filter by credit type">
+                <button type="button" class="segment is-active" data-role-choice="any">Any</button>
+                <button type="button" class="segment" data-role-choice="cast">Cast</button>
+                <button type="button" class="segment" data-role-choice="director">Director</button>
+                <button type="button" class="segment" data-role-choice="producer">Producer</button>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Minimum IMDb</span>
+                <input data-search-imdb name="imdbMin" type="range" min="0" max="10" step="0.1" value="0" />
+                <strong data-search-imdb-value>0.0+</strong>
+              </label>
+
+              <label class="field">
+                <span>Minimum Rotten Tomatoes</span>
+                <input data-search-rt name="rtMin" type="range" min="0" max="100" step="1" value="0" />
+                <strong data-search-rt-value>0%+</strong>
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Genre</span>
+                <select name="genre" data-search-genre>
+                  <option value="all">All genres</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Decade</span>
+                <select name="decade" data-search-decade>
+                  <option value="all">All decades</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Sort by</span>
+              <select name="sort" data-search-sort>
+                <option value="match">Best match</option>
+                <option value="imdb">Highest IMDb</option>
+                <option value="rt">Highest Rotten Tomatoes</option>
+                <option value="year-desc">Newest first</option>
+                <option value="year-asc">Oldest first</option>
+              </select>
+            </label>
+
+            <button type="submit" class="ghost-button catalog-launch-button">Search from here</button>
+          </form>
+        </section>
+
+        <section class="catalog-section" aria-labelledby="saved-grid-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Saved</p>
+              <h2 id="saved-grid-heading">Watchlist</h2>
+            </div>
+            <p id="saved-summary" class="results-summary"></p>
+          </div>
+          <div id="saved-grid" class="results-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="movie-card-template">
+      <article class="movie-card">
+        <div class="movie-poster-frame">
+          <img class="movie-poster" alt="" loading="lazy" />
+        </div>
+        <div class="card-topline">
+          <span class="pill pill-year"></span>
+          <span class="pill pill-runtime"></span>
+        </div>
+        <div class="card-body">
+          <h3></h3>
+          <p class="logline"></p>
+          <div class="rating-row">
+            <div class="rating-box">
+              <span class="rating-label">IMDb</span>
+              <strong class="rating-imdb"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">RT</span>
+              <strong class="rating-rt"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">Metacritic</span>
+              <strong class="rating-meta"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">TMDb</span>
+              <strong class="rating-tmdb"></strong>
+            </div>
+          </div>
+          <button type="button" class="watchlist-button"></button>
+          <dl class="credit-list">
+            <div>
+              <dt>Starring</dt>
+              <dd class="cast"></dd>
+            </div>
+            <div>
+              <dt>Directed by</dt>
+              <dd class="director"></dd>
+            </div>
+            <div>
+              <dt>Produced by</dt>
+              <dd class="producer"></dd>
+            </div>
+            <div>
+              <dt>Why this matched</dt>
+              <dd class="match-reason"></dd>
+            </div>
+            <div>
+              <dt>Genres</dt>
+              <dd class="genres"></dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </template>
+
+    <script src="./saved.js"></script>
+    <script src="./catalog-search.js"></script>
+  </body>
+</html>

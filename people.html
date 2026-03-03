@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ranked People Directory</title>
+    <meta
+      name="description"
+      content="Browse the full ranked actor, director, and producer directories."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero people-page-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">ranked people directory</p>
+          <h1 id="directory-title">Actors</h1>
+          <p id="directory-copy" class="hero-text">
+            Browse the full local ranked directory and jump back into the movie catalog from any person.
+          </p>
+          <p id="directory-status" class="hero-subtext">
+            Loading local people index.
+          </p>
+          <div class="people-page-tabs">
+            <a id="tab-actors" href="/people.html?department=actors">Actors</a>
+            <a id="tab-directors" href="/people.html?department=directors">Directors</a>
+            <a id="tab-producers" href="/people.html?department=producers">Producers</a>
+          </div>
+        </div>
+
+        <section class="filter-panel" aria-label="Directory filters">
+          <div class="filter-panel-header">
+            <h2>Refine this directory</h2>
+            <a class="ghost-button" href="/">Back to movie catalog</a>
+          </div>
+          <div class="directory-toolbar">
+            <label class="field">
+              <span>Search this list</span>
+              <input id="directory-search" type="search" placeholder="Search people or known-for titles" />
+            </label>
+            <label class="field">
+              <span>Sort this list</span>
+              <select id="directory-sort">
+                <option value="score">Highest rated</option>
+                <option value="name">Alphabetical</option>
+                <option value="popularity">Most popular</option>
+              </select>
+            </label>
+          </div>
+        </section>
+      </header>
+
+      <main>
+        <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
+          <div class="filter-panel-header">
+            <h2>Search the movie catalog</h2>
+            <a class="ghost-button" href="/">Open home</a>
+          </div>
+          <form class="catalog-launch-form" data-catalog-search>
+            <label class="field">
+              <span>Actor, actress, director, producer</span>
+              <input
+                data-search-person
+                name="person"
+                type="search"
+                list="catalog-people-suggestions"
+                placeholder="Try: Florence Pugh, Denis Villeneuve, Emma Stone"
+              />
+            </label>
+            <datalist id="catalog-people-suggestions"></datalist>
+
+            <div class="field">
+              <div class="field-row">
+                <span>Match role</span>
+                <strong class="field-helper" data-role-label>Any role</strong>
+              </div>
+              <input type="hidden" name="role" value="any" data-role-input />
+              <div class="segmented-control" aria-label="Filter by credit type">
+                <button type="button" class="segment is-active" data-role-choice="any">Any</button>
+                <button type="button" class="segment" data-role-choice="cast">Cast</button>
+                <button type="button" class="segment" data-role-choice="director">Director</button>
+                <button type="button" class="segment" data-role-choice="producer">Producer</button>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Minimum IMDb</span>
+                <input data-search-imdb name="imdbMin" type="range" min="0" max="10" step="0.1" value="0" />
+                <strong data-search-imdb-value>0.0+</strong>
+              </label>
+
+              <label class="field">
+                <span>Minimum Rotten Tomatoes</span>
+                <input data-search-rt name="rtMin" type="range" min="0" max="100" step="1" value="0" />
+                <strong data-search-rt-value>0%+</strong>
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Genre</span>
+                <select name="genre" data-search-genre>
+                  <option value="all">All genres</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Decade</span>
+                <select name="decade" data-search-decade>
+                  <option value="all">All decades</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Sort by</span>
+              <select name="sort" data-search-sort>
+                <option value="match">Best match</option>
+                <option value="imdb">Highest IMDb</option>
+                <option value="rt">Highest Rotten Tomatoes</option>
+                <option value="year-desc">Newest first</option>
+                <option value="year-asc">Oldest first</option>
+              </select>
+            </label>
+
+            <button type="submit" class="ghost-button catalog-launch-button">Search from here</button>
+          </form>
+        </section>
+
+        <section class="status-strip index-status-strip" aria-live="polite">
+          <p id="index-summary">Waiting for the local ranked directory.</p>
+        </section>
+
+        <section class="catalog-section" aria-labelledby="directory-grid-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Directory</p>
+              <h2 id="directory-grid-heading">Full ranked list</h2>
+            </div>
+            <p id="directory-results-summary" class="results-summary"></p>
+          </div>
+          <div id="directory-grid" class="people-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="person-card-template">
+      <article class="person-card">
+        <div class="person-card-visual">
+          <img class="person-card-portrait" alt="" loading="lazy" />
+        </div>
+        <p class="person-card-role"></p>
+        <h3></h3>
+        <p class="person-card-count"></p>
+        <p class="person-card-credits"></p>
+        <button type="button" class="person-card-button ghost-button">Show matching movies</button>
+      </article>
+    </template>
+
+    <script src="./people.js"></script>
+    <script src="./catalog-search.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1339 @@
+const http = require("node:http");
+const { execFile } = require("node:child_process");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const { URL } = require("node:url");
+
+loadEnv(path.join(__dirname, ".env"));
+
+const port = Number(process.env.PORT || 3000);
+const tmdbToken = process.env.TMDB_BEARER_TOKEN || "";
+const tmdbApiKey = process.env.TMDB_API_KEY || "";
+const omdbApiKey = process.env.OMDB_API_KEY || "";
+const staticRoot = __dirname;
+const cache = new Map();
+const cacheDir = path.join(__dirname, ".cache");
+const peopleIndexPath = path.join(cacheDir, "people-index-v1.json");
+const DISCOVER_RESULT_LIMIT = 60;
+const DISCOVER_HYDRATE_LIMIT = 6;
+const ENRICH_BATCH_LIMIT = 2;
+const PERSON_RESULT_LIMIT = 200;
+const FEATURED_PEOPLE_PAGE_COUNT = 15;
+const FEATURED_PEOPLE_LIMIT = 24;
+const PEOPLE_DIRECTORY_PAGE_COUNT = 30;
+const PEOPLE_DIRECTORY_LIMIT = 1000;
+const PEOPLE_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24;
+const demoGenres = [
+  { id: 18, name: "Drama" },
+  { id: 35, name: "Comedy" },
+  { id: 878, name: "Sci-Fi" },
+  { id: 53, name: "Thriller" },
+  { id: 12, name: "Adventure" },
+];
+const demoMovies = [
+  {
+    id: 1001,
+    title: "Dune: Part Two",
+    year: 2024,
+    runtime: "166 min",
+    imdb: 8.5,
+    rt: 92,
+    metacritic: 79,
+    tmdb: 8.3,
+    genres: ["Adventure", "Drama", "Sci-Fi"],
+    genreIds: [12, 18, 878],
+    cast: ["Timothee Chalamet", "Zendaya", "Florence Pugh", "Rebecca Ferguson"],
+    director: "Denis Villeneuve",
+    producers: ["Mary Parent", "Cale Boyter", "Tanya Lapointe"],
+    logline:
+      "Paul Atreides steps into prophecy, empire, and revenge in a desert war epic.",
+    posterUrl: "",
+  },
+  {
+    id: 1002,
+    title: "Poor Things",
+    year: 2023,
+    runtime: "141 min",
+    imdb: 7.8,
+    rt: 92,
+    metacritic: 88,
+    tmdb: 7.8,
+    genres: ["Comedy", "Drama", "Sci-Fi"],
+    genreIds: [35, 18, 878],
+    cast: ["Emma Stone", "Mark Ruffalo", "Willem Dafoe"],
+    director: "Yorgos Lanthimos",
+    producers: ["Ed Guiney", "Andrew Lowe", "Emma Stone"],
+    logline:
+      "A resurrected woman tears through convention, class, and continents.",
+    posterUrl: "",
+  },
+  {
+    id: 1003,
+    title: "Arrival",
+    year: 2016,
+    runtime: "116 min",
+    imdb: 7.9,
+    rt: 94,
+    metacritic: 81,
+    tmdb: 7.6,
+    genres: ["Drama", "Sci-Fi", "Thriller"],
+    genreIds: [18, 878, 53],
+    cast: ["Amy Adams", "Jeremy Renner", "Forest Whitaker"],
+    director: "Denis Villeneuve",
+    producers: ["Shawn Levy", "Dan Levine", "Aaron Ryder"],
+    logline:
+      "A linguist learns that language can reorder time, memory, and grief.",
+    posterUrl: "",
+  },
+  {
+    id: 1004,
+    title: "La La Land",
+    year: 2016,
+    runtime: "128 min",
+    imdb: 8.0,
+    rt: 91,
+    metacritic: 94,
+    tmdb: 7.9,
+    genres: ["Comedy", "Drama"],
+    genreIds: [35, 18],
+    cast: ["Emma Stone", "Ryan Gosling", "John Legend"],
+    director: "Damien Chazelle",
+    producers: ["Fred Berger", "Jordan Horowitz", "Gary Gilbert"],
+    logline:
+      "A romantic Los Angeles musical about ambition, timing, and compromise.",
+    posterUrl: "",
+  },
+  {
+    id: 1005,
+    title: "The Social Network",
+    year: 2010,
+    runtime: "120 min",
+    imdb: 7.8,
+    rt: 96,
+    metacritic: 95,
+    tmdb: 7.4,
+    genres: ["Drama", "Thriller"],
+    genreIds: [18, 53],
+    cast: ["Jesse Eisenberg", "Andrew Garfield", "Rooney Mara"],
+    director: "David Fincher",
+    producers: ["Scott Rudin", "Dana Brunetti", "Michael De Luca"],
+    logline:
+      "A startup origin story turns into a surgical breakup movie about status.",
+    posterUrl: "",
+  },
+  {
+    id: 1006,
+    title: "Whiplash",
+    year: 2014,
+    runtime: "106 min",
+    imdb: 8.5,
+    rt: 94,
+    metacritic: 89,
+    tmdb: 8.4,
+    genres: ["Drama", "Thriller"],
+    genreIds: [18, 53],
+    cast: ["Miles Teller", "J.K. Simmons", "Melissa Benoist"],
+    director: "Damien Chazelle",
+    producers: ["Jason Blum", "Helen Estabrook", "David Lancaster"],
+    logline:
+      "A drummer and a teacher grind talent into obsession and self-destruction.",
+    posterUrl: "",
+  },
+];
+const demoPeople = [
+  {
+    id: 201,
+    name: "Denis Villeneuve",
+    department: "Director",
+    knownFor: ["Dune: Part Two", "Arrival"],
+    profileUrl: "",
+    ratingLabel: "Known-for average 8.0",
+  },
+  {
+    id: 202,
+    name: "Emma Stone",
+    department: "Acting / Producer",
+    knownFor: ["Poor Things", "La La Land"],
+    profileUrl: "",
+    ratingLabel: "Known-for average 7.9",
+  },
+  {
+    id: 203,
+    name: "Damien Chazelle",
+    department: "Director",
+    knownFor: ["La La Land", "Whiplash"],
+    profileUrl: "",
+    ratingLabel: "Known-for average 8.2",
+  },
+  {
+    id: 204,
+    name: "David Fincher",
+    department: "Director",
+    knownFor: ["The Social Network"],
+    profileUrl: "",
+    ratingLabel: "Known-for average 7.8",
+  },
+  {
+    id: 205,
+    name: "Florence Pugh",
+    department: "Acting",
+    knownFor: ["Dune: Part Two", "Midsommar", "Little Women"],
+    profileUrl: "",
+    ratingLabel: "Known-for average 7.8",
+  },
+];
+
+ensureCacheDir();
+
+const server = http.createServer(async (req, res) => {
+  const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+
+  try {
+    if (requestUrl.pathname.startsWith("/api/")) {
+      await handleApi(requestUrl, res);
+      return;
+    }
+
+    serveStatic(requestUrl.pathname, res);
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        error: "Server error",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+  }
+});
+
+server.listen(port, () => {
+  process.stdout.write(`Server running at http://localhost:${port}\n`);
+});
+
+async function handleApi(requestUrl, res) {
+  if (!tmdbToken && !tmdbApiKey) {
+    handleDemoApi(requestUrl, res);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/bootstrap") {
+    const localPeopleIndex = readPeopleIndex();
+    const [genres, featuredPeople] = await Promise.allSettled([
+      tmdb("/genre/movie/list"),
+      localPeopleIndex ? Promise.resolve(localPeopleIndex) : fetchPopularPeopleSample(FEATURED_PEOPLE_PAGE_COUNT),
+    ]);
+
+    const resolvedGenres =
+      genres.status === "fulfilled" ? genres.value.genres ?? [] : demoGenres;
+    const rankedPeople =
+      featuredPeople.status === "fulfilled"
+        ? normalizeFeaturedPeopleSource(featuredPeople.value)
+        : {
+            actors: demoPeople.filter((person) => isActingDepartment(person.department)),
+            filmmakers: demoPeople.filter((person) => !isActingDepartment(person.department)),
+          };
+
+    sendJson(res, 200, {
+      config: {
+        hasOmdb: Boolean(omdbApiKey),
+        imageBaseUrl: "https://image.tmdb.org/t/p/w500",
+        hasLocalPeopleIndex: Boolean(localPeopleIndex),
+      },
+      genres: resolvedGenres,
+      featuredActors: rankedPeople.actors,
+      featuredDirectors: rankedPeople.directors,
+      featuredProducers: rankedPeople.producers,
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/index-status") {
+    const localPeopleIndex = readPeopleIndex();
+    sendJson(res, 200, buildIndexStatus(localPeopleIndex));
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/people-directory") {
+    const department = requestUrl.searchParams.get("department") || "actors";
+    const directory = await getPeopleDirectory();
+    const people = peopleDirectorySlice(directory, department);
+    sendJson(res, 200, {
+      department,
+      total: people.length,
+      people,
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/people") {
+    const query = requestUrl.searchParams.get("query")?.trim();
+    if (!query) {
+      sendJson(res, 200, { results: [] });
+      return;
+    }
+
+    const localPeopleIndex = readPeopleIndex();
+    if (localPeopleIndex) {
+      sendJson(res, 200, {
+        results: searchLocalPeopleIndex(localPeopleIndex, query),
+      });
+      return;
+    }
+
+    const response = await tmdb("/search/person", { query, include_adult: "false", page: "1" });
+    sendJson(res, 200, { results: (response.results ?? []).slice(0, 8).map(normalizePerson) });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/discover") {
+    const payload = await buildDiscoverPayload({
+      personQuery: requestUrl.searchParams.get("personQuery")?.trim() || "",
+      role: requestUrl.searchParams.get("role") || "any",
+      genreId: requestUrl.searchParams.get("genre") || "all",
+      decade: requestUrl.searchParams.get("decade") || "all",
+      sort: requestUrl.searchParams.get("sort") || "match",
+      imdbMin: Number(requestUrl.searchParams.get("imdbMin") || "0"),
+      rtMin: Number(requestUrl.searchParams.get("rtMin") || "0"),
+    });
+
+    sendJson(res, 200, payload);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/enrich") {
+    const ids = (requestUrl.searchParams.get("ids") || "")
+      .split(",")
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value))
+      .slice(0, ENRICH_BATCH_LIMIT);
+
+    if (!ids.length) {
+      sendJson(res, 200, { movies: [] });
+      return;
+    }
+
+    const items = ids.map((id) => ({ id, reasons: [] }));
+    const movies = await hydrateMoviesSequential(items, {
+      imdbMin: 0,
+      rtMin: 0,
+      sort: "match",
+    });
+    sendJson(res, 200, { movies });
+    return;
+  }
+
+  sendJson(res, 404, { error: "Not found" });
+}
+
+function handleDemoApi(requestUrl, res) {
+  if (requestUrl.pathname === "/api/bootstrap") {
+    sendJson(res, 200, {
+      config: {
+        hasOmdb: true,
+        imageBaseUrl: "",
+        mode: "demo",
+      },
+      genres: demoGenres,
+      featuredActors: demoPeople.filter((person) => isActingDepartment(person.department)),
+      featuredDirectors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
+      featuredProducers: demoPeople.filter((person) => isProducerDepartment(person.department)),
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/index-status") {
+    sendJson(res, 200, buildIndexStatus(null));
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/people") {
+    const query = requestUrl.searchParams.get("query")?.trim().toLowerCase() || "";
+    const results = query
+      ? demoPeople.filter((person) => person.name.toLowerCase().includes(query))
+      : [];
+    sendJson(res, 200, { results });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/people-directory") {
+    const department = requestUrl.searchParams.get("department") || "actors";
+    const people = department === "directors"
+      ? demoPeople.filter((person) => isDirectorDepartment(person.department))
+      : department === "producers"
+        ? demoPeople.filter((person) => isProducerDepartment(person.department))
+        : demoPeople.filter((person) => isActingDepartment(person.department));
+    sendJson(res, 200, { department, total: people.length, people });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/discover") {
+    const filters = {
+      personQuery: requestUrl.searchParams.get("personQuery")?.trim() || "",
+      role: requestUrl.searchParams.get("role") || "any",
+      genreId: requestUrl.searchParams.get("genre") || "all",
+      decade: requestUrl.searchParams.get("decade") || "all",
+      sort: requestUrl.searchParams.get("sort") || "match",
+      imdbMin: Number(requestUrl.searchParams.get("imdbMin") || "0"),
+      rtMin: Number(requestUrl.searchParams.get("rtMin") || "0"),
+    };
+    sendJson(res, 200, buildDemoDiscoverPayload(filters));
+    return;
+  }
+
+  sendJson(res, 404, { error: "Not found" });
+}
+
+function buildDemoDiscoverPayload(filters) {
+  const personQuery = filters.personQuery.toLowerCase();
+  const matchedPerson =
+    demoPeople.find((person) => person.name.toLowerCase().includes(personQuery)) || null;
+
+  const movies = demoMovies
+    .map((movie) => {
+      const reasons = [];
+      const castMatch = movie.cast.filter((name) => name.toLowerCase().includes(personQuery));
+      const directorMatch = movie.director.toLowerCase().includes(personQuery);
+      const producerMatch = movie.producers.filter((name) => name.toLowerCase().includes(personQuery));
+
+      if (castMatch.length) {
+        reasons.push(`Cast: ${castMatch.join(", ")}`);
+      }
+      if (directorMatch) {
+        reasons.push(`Director: ${movie.director}`);
+      }
+      if (producerMatch.length) {
+        reasons.push(`Producer: ${producerMatch.join(", ")}`);
+      }
+
+      return {
+        ...movie,
+        matchReason: reasons.length ? reasons.join(" / ") : "Demo discovery result.",
+      };
+    })
+    .filter((movie) => passesDemoFilters(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
+
+  return {
+    matchedPerson,
+    movies,
+  };
+}
+
+function passesDemoFilters(movie, filters) {
+  const role = filters.role;
+  const query = filters.personQuery.toLowerCase();
+  const hasQuery = Boolean(query);
+  const castMatch = movie.cast.some((name) => name.toLowerCase().includes(query));
+  const directorMatch = movie.director.toLowerCase().includes(query);
+  const producerMatch = movie.producers.some((name) => name.toLowerCase().includes(query));
+
+  const personOk =
+    !hasQuery ||
+    (role === "any" && (castMatch || directorMatch || producerMatch)) ||
+    (role === "cast" && castMatch) ||
+    (role === "director" && directorMatch) ||
+    (role === "producer" && producerMatch);
+
+  const genreOk =
+    filters.genreId === "all" || movie.genreIds.includes(Number(filters.genreId));
+  const decadeOk =
+    filters.decade === "all" ||
+    (movie.year >= Number(filters.decade) && movie.year <= Number(filters.decade) + 9);
+  const imdbOk = movie.imdb >= filters.imdbMin;
+  const rtOk = movie.rt >= filters.rtMin;
+
+  return personOk && genreOk && decadeOk && imdbOk && rtOk;
+}
+
+async function buildDiscoverPayload(filters) {
+  if (filters.personQuery) {
+    return discoverByPerson(filters);
+  }
+
+  return discoverBroad(filters);
+}
+
+async function discoverBroad(filters) {
+  const requestedLimit = DISCOVER_RESULT_LIMIT;
+  const pageCount = Math.min(Math.max(1, Math.ceil(requestedLimit / 20)), 3);
+  const params = {
+    include_adult: "false",
+    include_video: "false",
+    language: "en-US",
+    page: "1",
+    sort_by: mapSort(filters.sort),
+    vote_count_gte: "200",
+  };
+
+  if (filters.genreId !== "all") {
+    params.with_genres = filters.genreId;
+  }
+
+  if (filters.decade !== "all") {
+    const start = Number(filters.decade);
+    params["primary_release_date.gte"] = `${start}-01-01`;
+    params["primary_release_date.lte"] = `${start + 9}-12-31`;
+  }
+
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, index) =>
+      tmdb("/discover/movie", { ...params, page: String(index + 1) }),
+    ),
+  );
+  const allResults = pages.flatMap((page) => page.results ?? []);
+  const baseResults = allResults.slice(0, requestedLimit);
+  const needsRatings = filters.imdbMin > 0 || filters.rtMin > 0;
+  const movies = needsRatings
+    ? await hydrateMovies(baseResults.slice(0, DISCOVER_HYDRATE_LIMIT), filters)
+    : baseResults.map(normalizeDiscoverMovie);
+
+  return {
+    matchedPerson: null,
+    totalMatches: pages[0]?.total_results ?? movies.length,
+    movies: movies
+      .filter((movie) => passesRatingFilters(movie, filters))
+      .sort((left, right) => sortMovies(left, right, filters.sort)),
+  };
+}
+
+async function discoverByPerson(filters) {
+  const peopleSearch = await tmdb("/search/person", {
+    query: filters.personQuery,
+    include_adult: "false",
+    page: "1",
+  });
+
+  const person = selectBestPersonMatch(peopleSearch.results ?? [], filters.personQuery);
+  if (!person) {
+    return { matchedPerson: null, movies: [] };
+  }
+
+  const credits = await tmdb(`/person/${person.id}/movie_credits`);
+  const creditMap = new Map();
+
+  for (const credit of credits.cast ?? []) {
+    upsertCredit(creditMap, credit, "cast", person.name, filters);
+  }
+
+  for (const credit of credits.crew ?? []) {
+    const normalizedRole = normalizeCrewRole(credit.job);
+    if (normalizedRole) {
+      upsertCredit(creditMap, credit, normalizedRole, person.name, filters);
+    }
+  }
+
+  const allCredits = [...creditMap.values()]
+    .filter((credit) => matchesGenreAndDecade(credit, filters))
+    .sort((left, right) => sortCreditCandidates(left, right, filters.sort));
+
+  const selectedCredits = allCredits.slice(0, PERSON_RESULT_LIMIT);
+
+  const needsRatings = filters.imdbMin > 0 || filters.rtMin > 0;
+  const movies = needsRatings
+    ? await hydrateMovies(selectedCredits.slice(0, DISCOVER_HYDRATE_LIMIT), filters)
+    : selectedCredits.map(normalizeCreditMovie);
+
+  return {
+    matchedPerson: normalizePerson(person),
+    totalMatches: allCredits.length,
+    movies: movies
+      .filter((movie) => passesRatingFilters(movie, filters))
+      .sort((left, right) => sortMovies(left, right, filters.sort)),
+  };
+}
+
+function upsertCredit(creditMap, credit, role, personName, filters) {
+  if (filters.role !== "any" && filters.role !== role) {
+    return;
+  }
+
+  const existing = creditMap.get(credit.id) || {
+    id: credit.id,
+    title: credit.title,
+    release_date: credit.release_date,
+    genre_ids: credit.genre_ids || [],
+    popularity: credit.popularity || 0,
+    vote_average: credit.vote_average,
+    vote_count: credit.vote_count || 0,
+    reasons: [],
+  };
+
+  existing.reasons.push(`${capitalizeRole(role)}: ${personName}`);
+  creditMap.set(credit.id, existing);
+}
+
+async function hydrateMovies(items, filters) {
+  const detailedMovies = await Promise.allSettled(
+    items.map(async (item) => {
+      const details = await tmdb(`/movie/${item.id}`, { append_to_response: "credits" });
+      const omdbRatings = details.imdb_id ? await lookupOmdb(details.imdb_id) : null;
+      const movie = normalizeMovie(details, item.reasons || [], omdbRatings);
+      return movie;
+    }),
+  );
+
+  return detailedMovies
+    .filter((result) => result.status === "fulfilled" && result.value)
+    .map((result) => result.value)
+    .filter((movie) => passesRatingFilters(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
+}
+
+async function hydrateMoviesSequential(items, filters) {
+  const movies = [];
+
+  for (const item of items) {
+    try {
+      const details = await tmdb(`/movie/${item.id}`, { append_to_response: "credits" });
+      const omdbRatings = details.imdb_id ? await lookupOmdb(details.imdb_id) : null;
+      movies.push(normalizeMovie(details, item.reasons || [], omdbRatings));
+    } catch {
+      // Skip failed enrichments and let the frontend retry later.
+    }
+  }
+
+  return movies
+    .filter((movie) => passesRatingFilters(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
+}
+
+function normalizeMovie(details, reasons, omdbRatings) {
+  const director = (details.credits?.crew ?? []).find((person) => person.job === "Director");
+  const producers = (details.credits?.crew ?? [])
+    .filter((person) => person.job === "Producer")
+    .slice(0, 3)
+    .map((person) => person.name);
+  const cast = (details.credits?.cast ?? []).slice(0, 4).map((person) => person.name);
+  const year = details.release_date ? Number(details.release_date.slice(0, 4)) : null;
+
+  return {
+    id: details.id,
+    title: details.title,
+    year,
+    runtime: details.runtime ? `${details.runtime} min` : "Unknown runtime",
+    imdb: omdbRatings?.imdb ?? null,
+    rt: omdbRatings?.rt ?? null,
+    metacritic: omdbRatings?.metacritic ?? null,
+    tmdb: typeof details.vote_average === "number" ? Number(details.vote_average.toFixed(1)) : null,
+    genres: (details.genres ?? []).map((genre) => genre.name),
+    cast,
+    director: director?.name || "Unknown",
+    producers,
+    logline: details.overview || "No overview available yet.",
+    posterUrl: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : "",
+    matchReason: reasons.length ? reasons.join(" / ") : "Live discovery result.",
+    isEnriched: true,
+  };
+}
+
+function normalizePerson(person) {
+  const rating = personKnownForScore(person);
+  return {
+    id: person.id,
+    name: person.name,
+    department: person.known_for_department || "Person",
+    score: rating,
+    popularity: Number(person.popularity || 0),
+    knownFor: (person.known_for ?? [])
+      .map((credit) => credit.title || credit.name)
+      .filter(Boolean)
+      .slice(0, 3),
+    profileUrl: person.profile_path ? `https://image.tmdb.org/t/p/w500${person.profile_path}` : "",
+    ratingLabel: rating ? `Known-for average ${rating.toFixed(1)}` : "Known-for score unavailable",
+  };
+}
+
+function normalizeFeaturedPeopleSource(source) {
+  if (
+    source &&
+    Array.isArray(source.actors) &&
+    Array.isArray(source.directors) &&
+    Array.isArray(source.producers)
+  ) {
+    return {
+      actors: source.actors.slice(0, FEATURED_PEOPLE_LIMIT),
+      directors: source.directors.slice(0, FEATURED_PEOPLE_LIMIT),
+      producers: source.producers.slice(0, FEATURED_PEOPLE_LIMIT),
+    };
+  }
+
+  if (source && Array.isArray(source.actors) && Array.isArray(source.filmmakers)) {
+    return {
+      actors: source.actors.slice(0, FEATURED_PEOPLE_LIMIT),
+      directors: source.filmmakers
+        .filter((person) => isDirectorDepartment(person.department))
+        .slice(0, FEATURED_PEOPLE_LIMIT),
+      producers: source.filmmakers
+        .filter((person) => isProducerDepartment(person.department))
+        .slice(0, FEATURED_PEOPLE_LIMIT),
+    };
+  }
+
+  return curateFeaturedPeople(source);
+}
+
+function curateFeaturedPeople(results, limit = FEATURED_PEOPLE_LIMIT) {
+  const normalized = dedupePeople(results).map(normalizePerson);
+  const actors = normalized
+    .filter((person) => isActingDepartment(person.department))
+    .sort(compareFeaturedPeople)
+    .slice(0, limit);
+  const directors = normalized
+    .filter((person) => isDirectorDepartment(person.department))
+    .sort(compareFeaturedPeople)
+    .slice(0, limit);
+  const producers = normalized
+    .filter((person) => isProducerDepartment(person.department))
+    .sort(compareFeaturedPeople)
+    .slice(0, limit);
+
+  return { actors, directors, producers };
+}
+
+async function fetchPopularPeopleSample(pageCount) {
+  const pages = await Promise.allSettled(
+    Array.from({ length: pageCount }, (_, index) =>
+      tmdb("/person/popular", { page: String(index + 1) }),
+    ),
+  );
+
+  return pages
+    .filter((result) => result.status === "fulfilled")
+    .flatMap((result) => result.value.results ?? []);
+}
+
+function dedupePeople(results) {
+  const byId = new Map();
+  for (const person of results) {
+    if (!person || !Number.isFinite(person.id) || byId.has(person.id)) {
+      continue;
+    }
+
+    byId.set(person.id, person);
+  }
+
+  return [...byId.values()];
+}
+
+function compareFeaturedPeople(left, right) {
+  const leftScore = Number.isFinite(left.score) ? left.score : -1;
+  const rightScore = Number.isFinite(right.score) ? right.score : -1;
+  if (leftScore !== rightScore) {
+    return rightScore - leftScore;
+  }
+
+  const leftPopularity = Number.isFinite(left.popularity) ? left.popularity : -1;
+  const rightPopularity = Number.isFinite(right.popularity) ? right.popularity : -1;
+  if (leftPopularity !== rightPopularity) {
+    return rightPopularity - leftPopularity;
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+function personKnownForScore(person) {
+  const credits = (person.known_for ?? []).filter(
+    (credit) => credit.media_type === "movie" && typeof credit.vote_average === "number",
+  );
+  if (!credits.length) {
+    return null;
+  }
+
+  const totalWeight = credits.reduce((sum, credit) => sum + Math.max(credit.vote_count || 1, 1), 0);
+  if (!totalWeight) {
+    return null;
+  }
+
+  const weightedScore = credits.reduce(
+    (sum, credit) => sum + credit.vote_average * Math.max(credit.vote_count || 1, 1),
+    0,
+  );
+  return Number((weightedScore / totalWeight).toFixed(1));
+}
+
+async function getPeopleDirectory() {
+  const localIndex = readPeopleIndex();
+  if (localIndex) {
+    return localIndex;
+  }
+
+  const cacheKey = `people-directory:v1:${PEOPLE_DIRECTORY_PAGE_COUNT}:${PEOPLE_DIRECTORY_LIMIT}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
+  }
+
+  const rawPeople = await fetchPopularPeopleSample(PEOPLE_DIRECTORY_PAGE_COUNT);
+  const directory = curateFeaturedPeople(rawPeople, PEOPLE_DIRECTORY_LIMIT);
+  const entry = {
+    value: directory,
+    expiresAt: Date.now() + PEOPLE_DIRECTORY_TTL_MS,
+  };
+  cache.set(cacheKey, entry);
+  writeDiskCache(cacheKey, entry);
+  return directory;
+}
+
+function readPeopleIndex() {
+  try {
+    if (!fs.existsSync(peopleIndexPath)) {
+      return null;
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(peopleIndexPath, "utf8"));
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !Array.isArray(parsed.actors) ||
+      (!Array.isArray(parsed.filmmakers) &&
+        (!Array.isArray(parsed.directors) || !Array.isArray(parsed.producers)))
+    ) {
+      return null;
+    }
+
+    if (Array.isArray(parsed.directors) && Array.isArray(parsed.producers)) {
+      return parsed;
+    }
+
+    return {
+      ...parsed,
+      directors: (parsed.filmmakers || []).filter((person) => isDirectorDepartment(person.department)),
+      producers: (parsed.filmmakers || []).filter((person) => isProducerDepartment(person.department)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isActingDepartment(department) {
+  return String(department || "").toLowerCase().includes("acting");
+}
+
+function isDirectorDepartment(department) {
+  return String(department || "").toLowerCase().includes("direct");
+}
+
+function isProducerDepartment(department) {
+  return String(department || "").toLowerCase().includes("produc");
+}
+
+function buildIndexStatus(index) {
+  return {
+    ready: Boolean(index),
+    generatedAt: index?.generatedAt || null,
+    counts: {
+      actors: index?.actors?.length || 0,
+      directors: index?.directors?.length || 0,
+      producers: index?.producers?.length || 0,
+    },
+  };
+}
+
+function peopleDirectorySlice(directory, department) {
+  if (department === "directors") {
+    return directory.directors || [];
+  }
+
+  if (department === "producers") {
+    return directory.producers || [];
+  }
+
+  if (department === "filmmakers") {
+    return [...(directory.directors || []), ...(directory.producers || [])].sort(compareFeaturedPeople);
+  }
+
+  return directory.actors || [];
+}
+
+function searchLocalPeopleIndex(index, query) {
+  const normalizedQuery = normalizeName(query);
+  const combined = dedupePeople([
+    ...(index.actors || []),
+    ...(index.directors || []),
+    ...(index.producers || []),
+  ]);
+
+  return combined
+    .filter((person) => {
+      const haystack = [person.name, person.department, ...(person.knownFor || [])]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    })
+    .sort((left, right) => {
+      const leftStarts = normalizeName(left.name).startsWith(normalizedQuery) ? 1 : 0;
+      const rightStarts = normalizeName(right.name).startsWith(normalizedQuery) ? 1 : 0;
+      if (leftStarts !== rightStarts) {
+        return rightStarts - leftStarts;
+      }
+      return compareFeaturedPeople(left, right);
+    })
+    .slice(0, 8);
+}
+
+function selectBestPersonMatch(results, query) {
+  if (!results.length) {
+    return null;
+  }
+
+  const normalizedQuery = normalizeName(query);
+  const exactMatch = results.find((person) => normalizeName(person.name) === normalizedQuery);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const startsWithMatch = results.find((person) =>
+    normalizeName(person.name).startsWith(normalizedQuery),
+  );
+  if (startsWithMatch) {
+    return startsWithMatch;
+  }
+
+  return [...results].sort((left, right) => {
+    const leftScore = personMatchScore(left, normalizedQuery);
+    const rightScore = personMatchScore(right, normalizedQuery);
+    return rightScore - leftScore;
+  })[0];
+}
+
+function personMatchScore(person, normalizedQuery) {
+  const normalizedName = normalizeName(person.name);
+  let score = 0;
+
+  if (normalizedName.includes(normalizedQuery)) {
+    score += 100;
+  }
+
+  if (person.known_for_department === "Acting") {
+    score += 25;
+  }
+
+  score += person.popularity || 0;
+  return score;
+}
+
+function normalizeName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeDiscoverMovie(movie) {
+  return {
+    id: movie.id,
+    title: movie.title,
+    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) : null,
+    runtime: "Runtime on detail view",
+    imdb: null,
+    rt: null,
+    metacritic: null,
+    tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    genres: [],
+    genreIds: movie.genre_ids || [],
+    cast: [],
+    director: "",
+    producers: [],
+    logline: movie.overview || "No overview available yet.",
+    posterUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
+    matchReason: "Live discovery result.",
+    isEnriched: false,
+  };
+}
+
+function normalizeCreditMovie(movie) {
+  return {
+    id: movie.id,
+    title: movie.title,
+    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) : null,
+    runtime: "Runtime on detail view",
+    imdb: null,
+    rt: null,
+    metacritic: null,
+    tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    genres: [],
+    genreIds: movie.genre_ids || [],
+    cast: [],
+    director: "",
+    producers: [],
+    logline: "Expanded credits available when detail hydration is needed.",
+    posterUrl: "",
+    matchReason: (movie.reasons || []).join(" / ") || "Matched by person credit.",
+    isEnriched: false,
+  };
+}
+
+async function lookupOmdb(imdbId) {
+  if (!omdbApiKey) {
+    return null;
+  }
+
+  let response;
+  try {
+    response = await cachedJson(
+      `omdb:${imdbId}`,
+      `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&i=${encodeURIComponent(imdbId)}`,
+      { ttlMs: 1000 * 60 * 60 * 6 },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response || response.Response === "False") {
+    return null;
+  }
+
+  const ratings = response.Ratings || [];
+  const rotten = ratings.find((rating) => rating.Source === "Rotten Tomatoes")?.Value || null;
+  const metacritic = response.Metascore && response.Metascore !== "N/A" ? Number(response.Metascore) : null;
+
+  return {
+    imdb: response.imdbRating && response.imdbRating !== "N/A" ? Number(response.imdbRating) : null,
+    rt: rotten ? Number(rotten.replace("%", "")) : null,
+    metacritic,
+  };
+}
+
+async function tmdb(endpoint, params = {}) {
+  const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  if (tmdbApiKey) {
+    url.searchParams.set("api_key", tmdbApiKey);
+    return cachedJson(`tmdb:${url.pathname}?${url.searchParams.toString()}`, url.toString(), {
+      ttlMs: 1000 * 60 * 15,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+  }
+
+  if (!tmdbToken) {
+    throw new Error("TMDb credentials are missing.");
+  }
+
+  try {
+    return await cachedJson(`tmdb:${url.pathname}?${url.searchParams.toString()}`, url.toString(), {
+      ttlMs: 1000 * 60 * 15,
+      headers: {
+        Authorization: `Bearer ${tmdbToken}`,
+        Accept: "application/json",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!tmdbApiKey || (!message.includes("401") && !message.includes("403"))) {
+      throw error;
+    }
+
+    const fallbackUrl = new URL(url);
+    fallbackUrl.searchParams.set("api_key", tmdbApiKey);
+    return cachedJson(`tmdb:${fallbackUrl.pathname}?${fallbackUrl.searchParams.toString()}`, fallbackUrl.toString(), {
+      ttlMs: 1000 * 60 * 15,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+  }
+}
+
+async function cachedJson(key, url, options = {}) {
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(key);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(key, diskCached);
+    return diskCached.value;
+  }
+
+  const response = await requestJson(url, options.headers || {});
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(
+      `Upstream request failed: ${response.statusCode} ${response.statusMessage}${
+        response.body ? ` - ${response.body}` : ""
+      }`,
+    );
+  }
+
+  const value = JSON.parse(response.body);
+  const entry = { value, expiresAt: Date.now() + (options.ttlMs || 0) };
+  cache.set(key, entry);
+  writeDiskCache(key, entry);
+  return value;
+}
+
+function requestJson(url, headers) {
+  return requestViaCurl(url, headers);
+}
+
+function requestViaCurl(url, headers) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-sS",
+      "-L",
+      "--connect-timeout",
+      "5",
+      "--max-time",
+      "20",
+      "--retry",
+      "2",
+      "--retry-delay",
+      "1",
+      "--retry-all-errors",
+      "-w",
+      "\n%{http_code}",
+    ];
+
+    Object.entries(headers || {}).forEach(([key, value]) => {
+      args.push("-H", `${key}: ${value}`);
+    });
+
+    args.push(url);
+
+    execFile("curl", args, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`curl failed for ${url}: ${stderr || error.message}`));
+        return;
+      }
+
+      const trimmed = stdout.trimEnd();
+      const lastNewline = trimmed.lastIndexOf("\n");
+      if (lastNewline === -1) {
+        reject(new Error("Unexpected curl response format"));
+        return;
+      }
+
+      const body = trimmed.slice(0, lastNewline);
+      const statusCode = Number(trimmed.slice(lastNewline + 1));
+
+      if (!Number.isFinite(statusCode)) {
+        reject(new Error(`Unexpected curl status for ${url}`));
+        return;
+      }
+
+      resolve({
+        statusCode,
+        statusMessage: statusCode >= 200 && statusCode < 300 ? "OK" : "Upstream error",
+        body,
+      });
+    });
+  });
+}
+
+function mapSort(sort) {
+  switch (sort) {
+    case "year-asc":
+      return "primary_release_date.asc";
+    case "year-desc":
+      return "primary_release_date.desc";
+    case "imdb":
+    case "rt":
+      return "vote_average.desc";
+    case "match":
+    default:
+      return "popularity.desc";
+  }
+}
+
+function matchesGenreAndDecade(credit, filters) {
+  const genreOk =
+    filters.genreId === "all" || (credit.genre_ids || []).includes(Number(filters.genreId));
+  const decadeOk =
+    filters.decade === "all" ||
+    (credit.release_date && credit.release_date.startsWith(String(filters.decade)));
+
+  if (filters.decade === "all") {
+    return genreOk;
+  }
+
+  if (!credit.release_date) {
+    return false;
+  }
+
+  const year = Number(credit.release_date.slice(0, 4));
+  return genreOk && year >= Number(filters.decade) && year <= Number(filters.decade) + 9;
+}
+
+function passesRatingFilters(movie, filters) {
+  const imdbOk = filters.imdbMin <= 0 || (movie.imdb !== null && movie.imdb >= filters.imdbMin);
+  const rtOk = filters.rtMin <= 0 || (movie.rt !== null && movie.rt >= filters.rtMin);
+  return imdbOk && rtOk;
+}
+
+function sortMovies(left, right, sortBy) {
+  switch (sortBy) {
+    case "imdb":
+      return (right.imdb ?? -1) - (left.imdb ?? -1) || (right.tmdb ?? -1) - (left.tmdb ?? -1);
+    case "rt":
+      return (right.rt ?? -1) - (left.rt ?? -1) || (right.imdb ?? -1) - (left.imdb ?? -1);
+    case "year-asc":
+      return (left.year ?? 0) - (right.year ?? 0);
+    case "year-desc":
+      return (right.year ?? 0) - (left.year ?? 0);
+    case "match":
+    default:
+      return (right.imdb ?? right.tmdb ?? -1) - (left.imdb ?? left.tmdb ?? -1);
+  }
+}
+
+function sortCreditCandidates(left, right, sortBy) {
+  switch (sortBy) {
+    case "year-asc":
+      return compareYears(left.release_date, right.release_date);
+    case "year-desc":
+      return compareYears(right.release_date, left.release_date);
+    case "imdb":
+    case "rt":
+      return (
+        (right.vote_average || 0) - (left.vote_average || 0) ||
+        (right.vote_count || 0) - (left.vote_count || 0) ||
+        (right.popularity || 0) - (left.popularity || 0)
+      );
+    case "match":
+    default:
+      return (
+        (right.popularity || 0) - (left.popularity || 0) ||
+        (right.vote_count || 0) - (left.vote_count || 0) ||
+        (right.vote_average || 0) - (left.vote_average || 0) ||
+        compareYears(right.release_date, left.release_date)
+      );
+  }
+}
+
+function compareYears(leftDate, rightDate) {
+  const leftYear = leftDate ? Number(leftDate.slice(0, 4)) : 0;
+  const rightYear = rightDate ? Number(rightDate.slice(0, 4)) : 0;
+  return leftYear - rightYear;
+}
+
+function normalizeCrewRole(job) {
+  if (job === "Director") {
+    return "director";
+  }
+
+  if (job === "Producer") {
+    return "producer";
+  }
+
+  return null;
+}
+
+function capitalizeRole(role) {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function serveStatic(requestPath, res) {
+  const normalizedPath = requestPath === "/" ? "/index.html" : requestPath;
+  const filePath = path.resolve(staticRoot, `.${normalizedPath}`);
+
+  if (!filePath.startsWith(`${staticRoot}${path.sep}`) && filePath !== path.join(staticRoot, "index.html")) {
+    sendPlain(res, 403, "Forbidden");
+    return;
+  }
+
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      sendPlain(res, 404, "Not found");
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": contentType(filePath) });
+    res.end(content);
+  });
+}
+
+function contentType(filePath) {
+  const extension = path.extname(filePath);
+  switch (extension) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".js":
+      return "application/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    default:
+      return "text/plain; charset=utf-8";
+  }
+}
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+
+function sendPlain(res, statusCode, text) {
+  res.writeHead(statusCode, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end(text);
+}
+
+function loadEnv(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) {
+      return;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed.slice(separatorIndex + 1).trim();
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  });
+}
+
+function ensureCacheDir() {
+  fs.mkdirSync(cacheDir, { recursive: true });
+}
+
+function cacheFilePath(key) {
+  const digest = crypto.createHash("sha1").update(key).digest("hex");
+  return path.join(cacheDir, `${digest}.json`);
+}
+
+function readDiskCache(key) {
+  try {
+    const filePath = cacheFilePath(key);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDiskCache(key, entry) {
+  try {
+    fs.writeFileSync(cacheFilePath(key), JSON.stringify(entry));
+  } catch {
+    // Ignore cache persistence failures.
+  }
+}
