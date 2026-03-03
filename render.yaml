@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: whythefuckcanineverfindagoodmovietowatch
+    runtime: node
+    plan: free
+    buildCommand: npm run build:people-index -- --max-ids=300 --concurrency=3
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: TMDB_API_KEY
+        sync: false
+      - key: OMDB_API_KEY
+        sync: false
