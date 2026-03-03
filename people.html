@@ -18,6 +18,15 @@
   </head>
   <body>
     <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a id="nav-actors" href="/people.html?department=actors">Actors / Actresses</a>
+          <a id="nav-producers" href="/people.html?department=directors">Producers / Directors</a>
+          <a href="/saved.html">Saved</a>
+        </nav>
+      </div>
+
       <header class="hero people-page-hero">
         <div class="hero-copy">
           <p class="eyebrow">ranked people directory</p>
@@ -28,17 +37,11 @@
           <p id="directory-status" class="hero-subtext">
             Loading local people index.
           </p>
-          <div class="people-page-tabs">
-            <a id="tab-actors" href="/people.html?department=actors">Actors</a>
-            <a id="tab-directors" href="/people.html?department=directors">Directors</a>
-            <a id="tab-producers" href="/people.html?department=producers">Producers</a>
-          </div>
         </div>
 
         <section class="filter-panel" aria-label="Directory filters">
           <div class="filter-panel-header">
             <h2>Refine this directory</h2>
-            <a class="ghost-button" href="/">Back to movie catalog</a>
           </div>
           <div class="directory-toolbar">
             <label class="field">
@@ -61,7 +64,6 @@
         <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
           <div class="filter-panel-header">
             <h2>Search the movie catalog</h2>
-            <a class="ghost-button" href="/">Open home</a>
           </div>
           <form class="catalog-launch-form" data-catalog-search>
             <label class="field">

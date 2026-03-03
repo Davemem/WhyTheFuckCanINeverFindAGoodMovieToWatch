@@ -273,23 +273,36 @@ function renderIdleState() {
 
 function buildMovieCard(movie) {
   const fragment = elements.cardTemplate.content.cloneNode(true);
+  const article = fragment.querySelector(".movie-card");
   const poster = fragment.querySelector(".movie-poster");
   const posterFrame = fragment.querySelector(".movie-poster-frame");
+  const imdbValue = fragment.querySelector(".rating-imdb");
+  const rtValue = fragment.querySelector(".rating-rt");
+  const metaValue = fragment.querySelector(".rating-meta");
+  const tmdbValue = fragment.querySelector(".rating-tmdb");
+  const castValue = fragment.querySelector(".cast");
+  const directorValue = fragment.querySelector(".director");
+  const producerValue = fragment.querySelector(".producer");
+  const matchReasonValue = fragment.querySelector(".match-reason");
+  const genresValue = fragment.querySelector(".genres");
+  article.dataset.movieId = String(movie.id);
+  article.classList.toggle("is-loading-card", !movie.isEnriched);
   fragment.querySelector("h3").textContent = movie.title;
   fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
   fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
   fragment.querySelector(".logline").textContent = movie.logline;
-  fragment.querySelector(".rating-imdb").textContent = formatRating(movie.imdb, 1);
-  fragment.querySelector(".rating-rt").textContent = formatPercent(movie.rt);
-  fragment.querySelector(".rating-meta").textContent = formatInteger(movie.metacritic);
-  fragment.querySelector(".rating-tmdb").textContent = formatRating(movie.tmdb, 1);
-  fragment.querySelector(".cast").textContent = movie.cast.length ? movie.cast.join(", ") : "Unknown";
-  fragment.querySelector(".director").textContent = movie.director || "Unknown";
-  fragment.querySelector(".producer").textContent = movie.producers.length
-    ? movie.producers.join(", ")
-    : "Unknown";
-  fragment.querySelector(".match-reason").textContent = movie.matchReason;
-  fragment.querySelector(".genres").textContent = formatGenres(movie);
+  setCardField(imdbValue, movie.isEnriched ? formatRating(movie.imdb, 1) : "Loading");
+  setCardField(rtValue, movie.isEnriched ? formatPercent(movie.rt) : "Loading");
+  setCardField(metaValue, movie.isEnriched ? formatInteger(movie.metacritic) : "Loading");
+  setCardField(tmdbValue, formatRating(movie.tmdb, 1), !movie.tmdb);
+  setCardField(castValue, movie.isEnriched ? (movie.cast.length ? movie.cast.join(", ") : "Unknown") : "Loading cast");
+  setCardField(directorValue, movie.isEnriched ? (movie.director || "Unknown") : "Loading director");
+  setCardField(
+    producerValue,
+    movie.isEnriched ? (movie.producers.length ? movie.producers.join(", ") : "Unknown") : "Loading producers",
+  );
+  setCardField(matchReasonValue, movie.matchReason || "Loading match reason", !movie.matchReason);
+  setCardField(genresValue, movie.isEnriched ? formatGenres(movie) : "Loading genres");
 
   if (movie.posterUrl) {
     poster.src = movie.posterUrl;
@@ -307,6 +320,11 @@ function buildMovieCard(movie) {
   button.classList.toggle("is-saved", saved);
 
   return fragment;
+}
+
+function setCardField(element, value, pending = false) {
+  element.textContent = value;
+  element.classList.toggle("is-pending", Boolean(pending));
 }
 
 function renderFeaturedPeople() {
@@ -478,9 +496,8 @@ async function enrichVisibleMovies(parentRequestId) {
         matchReason: movie.matchReason || enriched.matchReason,
       };
     });
-    liveState.movies = sortMoviesClient(liveState.movies, elements.sortFilter.value);
-
-    renderMovies(liveState.movies);
+    patchMovieCards(enrichedById);
+    syncWatchlistMovieDetails(enrichedById);
     renderWatchlist();
     enrichVisibleMovies(parentRequestId);
   } catch {
@@ -489,6 +506,38 @@ async function enrichVisibleMovies(parentRequestId) {
         enrichVisibleMovies(parentRequestId);
       }
     }, 400);
+  }
+}
+
+function patchMovieCards(enrichedById) {
+  enrichedById.forEach((movie, id) => {
+    const currentCard = elements.resultsGrid.querySelector(`[data-movie-id="${id}"]`);
+    if (!currentCard) {
+      return;
+    }
+
+    const replacement = buildMovieCard(movie).firstElementChild;
+    if (!replacement) {
+      return;
+    }
+
+    currentCard.replaceWith(replacement);
+  });
+}
+
+function syncWatchlistMovieDetails(enrichedById) {
+  let changed = false;
+  enrichedById.forEach((movie, id) => {
+    if (!watchlistMovies.has(id)) {
+      return;
+    }
+
+    watchlistMovies.set(id, movie);
+    changed = true;
+  });
+
+  if (changed) {
+    persistWatchlistMovies();
   }
 }
 
@@ -794,7 +843,7 @@ function producerLabelForCurrentPool() {
 function pickFromRolePool(people, count, seedKey) {
   const ranked = [...dedupePeopleById(people)].sort(compareDiscoveryPeople);
   if (ranked.length <= count) {
-    return ranked;
+    return shufflePeople(ranked, seedKey).slice(0, count);
   }
 
   const candidateWindow = ranked.slice(0, Math.min(ranked.length, 30));
@@ -806,6 +855,18 @@ function pickFromRolePool(people, count, seedKey) {
   }
 
   return dedupePeopleById(picks);
+}
+
+function shufflePeople(people, seedKey) {
+  return [...people].sort((left, right) => {
+    const leftHash = hashString(`${seedKey}:${left.id}`);
+    const rightHash = hashString(`${seedKey}:${right.id}`);
+    if (leftHash !== rightHash) {
+      return leftHash - rightHash;
+    }
+
+    return String(left.name || "").localeCompare(String(right.name || ""));
+  });
 }
 
 function dedupePeopleById(people) {

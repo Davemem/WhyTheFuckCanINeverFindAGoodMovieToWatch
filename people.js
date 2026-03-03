@@ -8,9 +8,8 @@ const elements = {
   directorySort: document.querySelector("#directory-sort"),
   directoryGrid: document.querySelector("#directory-grid"),
   cardTemplate: document.querySelector("#person-card-template"),
-  tabActors: document.querySelector("#tab-actors"),
-  tabDirectors: document.querySelector("#tab-directors"),
-  tabProducers: document.querySelector("#tab-producers"),
+  navActors: document.querySelector("#nav-actors"),
+  navProducers: document.querySelector("#nav-producers"),
 };
 
 const pageState = {
@@ -155,15 +154,8 @@ function applyDepartmentCopy() {
 }
 
 function updateActiveTab() {
-  const tabs = {
-    actors: elements.tabActors,
-    directors: elements.tabDirectors,
-    producers: elements.tabProducers,
-  };
-
-  Object.entries(tabs).forEach(([department, link]) => {
-    link.classList.toggle("is-active", department === pageState.department);
-  });
+  elements.navActors.classList.toggle("is-active", pageState.department === "actors");
+  elements.navProducers.classList.toggle("is-active", pageState.department !== "actors");
 }
 
 function readDepartmentFromUrl() {

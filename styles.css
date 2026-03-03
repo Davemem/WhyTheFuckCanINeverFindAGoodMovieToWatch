@@ -76,6 +76,12 @@ body::before {
   font-weight: 600;
 }
 
+.title-bar-nav a.is-active {
+  background: var(--text);
+  color: #fff8f1;
+  border-color: transparent;
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
@@ -526,21 +532,6 @@ main {
   line-height: 1.5;
 }
 
-.people-page-tabs {
-  margin-top: 22px;
-}
-
-.people-page-tabs a {
-  border-radius: 999px;
-  padding: 10px 14px;
-}
-
-.people-page-tabs a.is-active {
-  background: var(--accent);
-  color: #fff8f1;
-  border-color: transparent;
-}
-
 .people-page-hero {
   grid-template-columns: 0.95fr 1.05fr;
 }
@@ -559,7 +550,7 @@ main {
 }
 
 #directory-grid .person-card-visual {
-  min-height: 150px;
+  min-height: 0;
 }
 
 .pill {
@@ -581,8 +572,8 @@ main {
 .person-card-visual {
   position: relative;
   overflow: hidden;
+  aspect-ratio: 2 / 3;
   border-radius: 16px;
-  min-height: 180px;
   background:
     linear-gradient(135deg, rgba(216, 79, 49, 0.22), rgba(25, 21, 19, 0.08)),
     rgba(255, 255, 255, 0.72);
@@ -647,6 +638,34 @@ h3 {
   display: block;
   font-size: 1rem;
   margin-top: 2px;
+}
+
+.is-loading-card .is-pending {
+  color: transparent;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(216, 79, 49, 0.08), rgba(255, 255, 255, 0.8), rgba(216, 79, 49, 0.08));
+  background-size: 220% 100%;
+  animation: card-shimmer 1.2s linear infinite;
+  user-select: none;
+}
+
+.is-loading-card .rating-box .is-pending {
+  min-height: 1.2em;
+}
+
+.is-loading-card dd.is-pending {
+  min-height: 1.45em;
+}
+
+@keyframes card-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -20% 0;
+  }
 }
 
 .watchlist-button {
