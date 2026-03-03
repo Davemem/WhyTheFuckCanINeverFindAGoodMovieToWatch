@@ -317,7 +317,7 @@ function renderFeaturedPeople() {
     elements.personChips.append(buildRotatingPersonCard(person, index + 1));
   });
   elements.producersSummary.textContent = picks.length
-    ? `${picks.length} producers shown here. Refresh to reshuffle this set for yourself.`
+    ? `${picks.length} ${producerLabelForCurrentPool()} shown here. Refresh to reshuffle this set for yourself.`
     : "Producer picks unavailable right now.";
 }
 
@@ -403,7 +403,7 @@ async function loadIndexStatus() {
     const payload = await fetchJson("/api/index-status");
     if (!payload.ready) {
       elements.indexStatus.textContent =
-        "Local people index not built yet. Run the people-index build to unlock large actor, director, and producer directories.";
+        "Local people index is not available on this deployment yet. The app is falling back to the smaller live sample.";
       return;
     }
 
@@ -770,9 +770,25 @@ function sortPeopleDirectory(people, sort) {
 }
 
 function pickRotatingPeopleForRole(role) {
-  const people = role === "actors" ? liveState.featuredActors : liveState.featuredProducers;
+  const people = getRotatingPool(role);
   const count = 5;
   return pickFromRolePool(people, count, `${role}:${getDailySeed()}:${liveState.refreshTokens[role]}`);
+}
+
+function getRotatingPool(role) {
+  if (role === "actors") {
+    return liveState.featuredActors;
+  }
+
+  if (liveState.featuredProducers.length) {
+    return liveState.featuredProducers;
+  }
+
+  return liveState.featuredDirectors;
+}
+
+function producerLabelForCurrentPool() {
+  return liveState.featuredProducers.length ? "producers" : "director fallback picks";
 }
 
 function pickFromRolePool(people, count, seedKey) {
