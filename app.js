@@ -829,15 +829,30 @@ function getRotatingPool(role) {
     return liveState.featuredActors;
   }
 
-  if (liveState.featuredProducers.length) {
+  if (liveState.featuredProducers.length >= 8) {
     return liveState.featuredProducers;
+  }
+
+  if (liveState.featuredProducers.length) {
+    return dedupePeopleById([
+      ...liveState.featuredProducers,
+      ...liveState.featuredDirectors,
+    ]);
   }
 
   return liveState.featuredDirectors;
 }
 
 function producerLabelForCurrentPool() {
-  return liveState.featuredProducers.length ? "producers" : "director fallback picks";
+  if (liveState.featuredProducers.length >= 8) {
+    return "producers";
+  }
+
+  if (liveState.featuredProducers.length) {
+    return "producers with director backups";
+  }
+
+  return "director fallback picks";
 }
 
 function pickFromRolePool(people, count, seedKey) {
