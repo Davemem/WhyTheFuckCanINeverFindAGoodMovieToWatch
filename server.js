@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { Pool } = require("pg");
 
 loadEnv(path.join(__dirname, ".env"));
 
@@ -11,6 +12,7 @@ const port = Number(process.env.PORT || 3000);
 const tmdbToken = process.env.TMDB_BEARER_TOKEN || "";
 const tmdbApiKey = process.env.TMDB_API_KEY || "";
 const omdbApiKey = process.env.OMDB_API_KEY || "";
+const databaseUrl = process.env.DATABASE_URL || "";
 const staticRoot = __dirname;
 const cache = new Map();
 const cacheDir = path.join(__dirname, ".cache");
@@ -24,6 +26,7 @@ const FEATURED_PEOPLE_LIMIT = 24;
 const PEOPLE_DIRECTORY_PAGE_COUNT = 30;
 const PEOPLE_DIRECTORY_LIMIT = 1000;
 const PEOPLE_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24;
+const DB_FEATURED_LIMIT = 1000;
 const demoGenres = [
   { id: 18, name: "Drama" },
   { id: 35, name: "Comedy" },
@@ -185,6 +188,7 @@ const demoPeople = [
 ];
 
 ensureCacheDir();
+const dbPool = createDbPool();
 
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
@@ -218,7 +222,8 @@ async function handleApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/bootstrap") {
-    const localPeopleIndex = readPeopleIndex();
+    const dbDirectory = await getPeopleDirectoryFromPostgres();
+    const localPeopleIndex = dbDirectory || readPeopleIndex();
     const [genres, featuredPeople] = await Promise.allSettled([
       tmdb("/genre/movie/list"),
       localPeopleIndex ? Promise.resolve(localPeopleIndex) : fetchPopularPeopleSample(FEATURED_PEOPLE_PAGE_COUNT),
@@ -231,14 +236,15 @@ async function handleApi(requestUrl, res) {
         ? normalizeFeaturedPeopleSource(featuredPeople.value)
         : {
             actors: demoPeople.filter((person) => isActingDepartment(person.department)),
-            filmmakers: demoPeople.filter((person) => !isActingDepartment(person.department)),
+            directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
+            producers: demoPeople.filter((person) => isProducerDepartment(person.department)),
           };
 
     sendJson(res, 200, {
       config: {
         hasOmdb: Boolean(omdbApiKey),
         imageBaseUrl: "https://image.tmdb.org/t/p/w500",
-        hasLocalPeopleIndex: Boolean(localPeopleIndex),
+        hasLocalPeopleIndex: Boolean(localPeopleIndex || dbDirectory),
       },
       genres: resolvedGenres,
       featuredActors: rankedPeople.actors,
@@ -249,6 +255,12 @@ async function handleApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/index-status") {
+    const dbStatus = await getIndexStatusFromPostgres();
+    if (dbStatus) {
+      sendJson(res, 200, dbStatus);
+      return;
+    }
+
     const localPeopleIndex = readPeopleIndex();
     sendJson(res, 200, buildIndexStatus(localPeopleIndex));
     return;
@@ -256,7 +268,7 @@ async function handleApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people-directory") {
     const department = requestUrl.searchParams.get("department") || "actors";
-    const directory = await getPeopleDirectory();
+    const directory = (await getPeopleDirectoryFromPostgres()) || (await getPeopleDirectory());
     const people = peopleDirectorySlice(directory, department);
     sendJson(res, 200, {
       department,
@@ -270,6 +282,12 @@ async function handleApi(requestUrl, res) {
     const query = requestUrl.searchParams.get("query")?.trim();
     if (!query) {
       sendJson(res, 200, { results: [] });
+      return;
+    }
+
+    const dbResults = await searchPeopleFromPostgres(query);
+    if (dbResults.length) {
+      sendJson(res, 200, { results: dbResults });
       return;
     }
 
@@ -1234,6 +1252,206 @@ function normalizeCrewRole(job) {
 
 function capitalizeRole(role) {
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function createDbPool() {
+  if (!databaseUrl) {
+    return null;
+  }
+
+  return new Pool({
+    connectionString: databaseUrl,
+    ssl: shouldUseDbSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,
+  });
+}
+
+function shouldUseDbSsl(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    if (parsed.searchParams.get("sslmode") === "disable") {
+      return false;
+    }
+    return parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1";
+  } catch {
+    return true;
+  }
+}
+
+async function getIndexStatusFromPostgres() {
+  if (!dbPool) {
+    return null;
+  }
+
+  try {
+    const result = await dbPool.query(`
+      SELECT
+        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'cast')::int AS actors_count,
+        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job = 'Director')::int AS directors_count,
+        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%')::int AS producers_count,
+        (SELECT MAX(updated_at) FROM people) AS generated_at
+    `);
+    const row = result.rows[0];
+    const total = Number(row.actors_count || 0) + Number(row.directors_count || 0) + Number(row.producers_count || 0);
+    return {
+      ready: total > 0,
+      generatedAt: row.generated_at || null,
+      counts: {
+        actors: Number(row.actors_count || 0),
+        directors: Number(row.directors_count || 0),
+        producers: Number(row.producers_count || 0),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
+  if (!dbPool) {
+    return null;
+  }
+
+  try {
+    const [actors, directors, producers] = await Promise.all([
+      fetchRankedPeopleFromPostgres("actors", limit),
+      fetchRankedPeopleFromPostgres("directors", limit),
+      fetchRankedPeopleFromPostgres("producers", limit),
+    ]);
+    if (!actors.length && !directors.length && !producers.length) {
+      return null;
+    }
+    return { actors, directors, producers };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchRankedPeopleFromPostgres(role, limit) {
+  const roleFilter = roleToSqlFilter(role, "pmc");
+  const knownForRoleFilter = roleToSqlFilter(role, "pmc2");
+  const sql = `
+    WITH ranked AS (
+      SELECT
+        p.person_id AS id,
+        p.name,
+        COALESCE(p.known_for_department, 'Person') AS department,
+        p.profile_path,
+        COALESCE(p.popularity, 0) AS popularity,
+        ROUND(
+          (
+            SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
+            / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
+          )::numeric,
+          1
+        ) AS score
+      FROM people p
+      JOIN person_movie_credits pmc ON pmc.person_id = p.person_id
+      JOIN movies m ON m.movie_id = pmc.movie_id
+      WHERE ${roleFilter}
+      GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity
+      ORDER BY score DESC NULLS LAST, popularity DESC NULLS LAST, p.name ASC
+      LIMIT $1
+    )
+    SELECT
+      r.id,
+      r.name,
+      r.department,
+      r.profile_path,
+      r.popularity,
+      r.score,
+      COALESCE((
+        SELECT ARRAY(
+          SELECT m2.title
+          FROM person_movie_credits pmc2
+          JOIN movies m2 ON m2.movie_id = pmc2.movie_id
+          WHERE pmc2.person_id = r.id AND ${knownForRoleFilter}
+          GROUP BY m2.movie_id, m2.title, m2.vote_average, m2.vote_count
+          ORDER BY m2.vote_average DESC NULLS LAST, m2.vote_count DESC NULLS LAST
+          LIMIT 3
+        )
+      ), ARRAY[]::text[]) AS known_for
+    FROM ranked r
+    ORDER BY r.score DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
+  `;
+
+  const result = await dbPool.query(sql, [limit]);
+  return result.rows.map(normalizeDbPersonRow);
+}
+
+function roleToSqlFilter(role, alias) {
+  if (role === "actors") {
+    return `${alias}.credit_type = 'cast'`;
+  }
+
+  if (role === "directors") {
+    return `${alias}.credit_type = 'crew' AND ${alias}.job = 'Director'`;
+  }
+
+  return `${alias}.credit_type = 'crew' AND ${alias}.job ILIKE '%producer%'`;
+}
+
+async function searchPeopleFromPostgres(query) {
+  if (!dbPool) {
+    return [];
+  }
+
+  try {
+    const result = await dbPool.query(
+      `
+        SELECT
+          p.person_id AS id,
+          p.name,
+          COALESCE(p.known_for_department, 'Person') AS department,
+          p.profile_path,
+          COALESCE(p.popularity, 0) AS popularity,
+          ROUND((
+            SELECT
+              SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
+              / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
+            FROM person_movie_credits pmc
+            JOIN movies m ON m.movie_id = pmc.movie_id
+            WHERE pmc.person_id = p.person_id
+          )::numeric, 1) AS score,
+          COALESCE((
+            SELECT ARRAY(
+              SELECT m2.title
+              FROM person_movie_credits pmc2
+              JOIN movies m2 ON m2.movie_id = pmc2.movie_id
+              WHERE pmc2.person_id = p.person_id
+              GROUP BY m2.movie_id, m2.title, m2.vote_average, m2.vote_count
+              ORDER BY m2.vote_average DESC NULLS LAST, m2.vote_count DESC NULLS LAST
+              LIMIT 3
+            )
+          ), ARRAY[]::text[]) AS known_for
+        FROM people p
+        WHERE p.name ILIKE $1
+        ORDER BY
+          CASE WHEN LOWER(p.name) = LOWER($2) THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(p.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+          p.popularity DESC NULLS LAST,
+          p.name ASC
+        LIMIT 8
+      `,
+      [`%${query}%`, query, `${query}%`],
+    );
+    return result.rows.map(normalizeDbPersonRow);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeDbPersonRow(row) {
+  const score = Number.isFinite(Number(row.score)) ? Number(row.score) : null;
+  return {
+    id: Number(row.id),
+    name: row.name,
+    department: row.department || "Person",
+    score,
+    popularity: Number(row.popularity || 0),
+    knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
+    profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
+    ratingLabel: score !== null ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
+  };
 }
 
 function serveStatic(requestPath, res) {

@@ -2,14 +2,37 @@ services:
   - type: web
     name: whythefuckcanineverfindagoodmovietowatch
     runtime: node
-    plan: free
-    buildCommand: npm run build:people-index -- --max-ids=300 --concurrency=3
+    plan: starter
+    buildCommand: yarn
     startCommand: npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
-        value: 20
+        value: 20.x
       - key: TMDB_API_KEY
         sync: false
       - key: OMDB_API_KEY
         sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: moviepicker-db
+          property: connectionString
+  - type: worker
+    name: whythefuckcanineverfindagoodmovietowatch-worker
+    runtime: node
+    plan: starter
+    buildCommand: yarn
+    startCommand: npm run pipeline:auto -- --ingest-every-hours=24 --poll-seconds=30 --batch-size=500 --concurrency=6 --max-attempts=4
+    envVars:
+      - key: NODE_VERSION
+        value: 20.x
+      - key: TMDB_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: moviepicker-db
+          property: connectionString
+
+databases:
+  - name: moviepicker-db
+    plan: starter

@@ -7,6 +7,14 @@
   },
   "scripts": {
     "start": "node server.js",
-    "build:people-index": "node scripts/build-people-index.js"
+    "build:people-index": "node scripts/build-people-index.js",
+    "db:init": "node scripts/init-ingest-db.js",
+    "ingest:person-ids": "node scripts/ingest-person-ids.js",
+    "hydrate:people": "node scripts/hydrate-people.js",
+    "pipeline:people": "npm run db:init && npm run ingest:person-ids && npm run hydrate:people",
+    "pipeline:auto": "node scripts/auto-pipeline.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }
