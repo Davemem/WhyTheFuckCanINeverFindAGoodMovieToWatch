@@ -57,6 +57,7 @@ const liveState = {
     actors: 0,
     producers: 0,
   },
+  renderToken: 0,
 };
 
 bootstrap().catch((error) => {
@@ -66,11 +67,8 @@ bootstrap().catch((error) => {
 async function bootstrap() {
   setStatus("Connecting to TMDb and OMDb...", false);
 
-  const payload = await fetchJson("/api/bootstrap");
+  const payload = await fetchJson("/api/bootstrap?mode=lite");
   liveState.genres = payload.genres || [];
-  liveState.featuredActors = payload.featuredActors || payload.featuredPeople || [];
-  liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
-  liveState.featuredProducers = payload.featuredProducers || [];
   liveState.imageBaseUrl = payload.config?.imageBaseUrl || "";
   liveState.hasOmdb = Boolean(payload.config?.hasOmdb);
   const mode = payload.config?.mode || "live";
@@ -91,9 +89,7 @@ async function bootstrap() {
     elements.movieCount.textContent = "Live";
   }
 
-  elements.peopleCount.textContent = String(
-    liveState.featuredActors.length + liveState.featuredDirectors.length + liveState.featuredProducers.length,
-  );
+  elements.peopleCount.textContent = "0";
 
   populateGenres();
   populateDecades();
@@ -103,11 +99,29 @@ async function bootstrap() {
   renderActorPreview();
   renderWatchlist();
   renderIdleState();
-  loadIndexStatus();
+  const startupTasks = [loadIndexStatus(), loadFeaturedPeople()];
   if (shouldFetchOnLoad()) {
-    await refreshMovies();
+    startupTasks.push(refreshMovies());
   }
   setStatus(mode === "demo" ? "Demo catalog connected." : "Live catalog connected.", false);
+  Promise.allSettled(startupTasks);
+}
+
+async function loadFeaturedPeople() {
+  try {
+    const payload = await fetchJson("/api/featured-people");
+    liveState.featuredActors = payload.featuredActors || payload.featuredPeople || [];
+    liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
+    liveState.featuredProducers = payload.featuredProducers || [];
+
+    elements.peopleCount.textContent = String(
+      liveState.featuredActors.length + liveState.featuredDirectors.length + liveState.featuredProducers.length,
+    );
+    renderFeaturedPeople();
+    renderActorPreview();
+  } catch {
+    // Keep page usable even when featured people cannot be loaded.
+  }
 }
 
 function populateGenres() {
@@ -256,6 +270,8 @@ function syncRangeLabels() {
 }
 
 function renderMovies(movies) {
+  liveState.renderToken += 1;
+  const renderToken = liveState.renderToken;
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = `${liveState.totalMatches || movies.length} live movie${
     (liveState.totalMatches || movies.length) === 1 ? "" : "s"
@@ -270,12 +286,32 @@ function renderMovies(movies) {
     return;
   }
 
-  movies.forEach((movie) => {
-    elements.resultsGrid.append(buildMovieCard(movie));
-  });
+  const batchSize = 24;
+  let index = 0;
+
+  const renderBatch = () => {
+    if (renderToken !== liveState.renderToken) {
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(index + batchSize, movies.length);
+    for (let cursor = index; cursor < end; cursor += 1) {
+      fragment.append(buildMovieCard(movies[cursor]));
+    }
+    elements.resultsGrid.append(fragment);
+    index = end;
+
+    if (index < movies.length) {
+      window.requestAnimationFrame(renderBatch);
+    }
+  };
+
+  window.requestAnimationFrame(renderBatch);
 }
 
 function renderIdleState() {
+  liveState.renderToken += 1;
   elements.resultsGrid.replaceChildren();
   elements.resultsTitle.textContent = "Movies selected by the people behind them";
   elements.resultsSummary.textContent = "Start with a person, genre, decade, or rating filter.";
@@ -557,6 +593,7 @@ function syncWatchlistMovieDetails(enrichedById) {
 }
 
 function renderLoadingState() {
+  liveState.renderToken += 1;
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
@@ -565,6 +602,7 @@ function renderLoadingState() {
 }
 
 function renderErrorState(message) {
+  liveState.renderToken += 1;
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");
   errorState.className = "empty-state";

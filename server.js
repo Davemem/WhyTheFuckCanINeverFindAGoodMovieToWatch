@@ -32,6 +32,7 @@ const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
+const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
 const demoGenres = [
   { id: 18, name: "Drama" },
   { id: 35, name: "Comedy" },
@@ -227,35 +228,15 @@ async function handleApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/bootstrap") {
-    const dbDirectory = await getPeopleDirectoryFromPostgres(DB_BOOTSTRAP_LIMIT);
-    const localPeopleIndex = dbDirectory || readPeopleIndex();
-    const [genres, featuredPeople] = await Promise.allSettled([
-      tmdb("/genre/movie/list"),
-      localPeopleIndex ? Promise.resolve(localPeopleIndex) : fetchPopularPeopleSample(FEATURED_PEOPLE_PAGE_COUNT),
-    ]);
+    const mode = requestUrl.searchParams.get("mode");
+    const bootstrap = await buildBootstrapPayload({ includePeople: mode !== "lite" });
+    sendJson(res, 200, bootstrap);
+    return;
+  }
 
-    const resolvedGenres =
-      genres.status === "fulfilled" ? genres.value.genres ?? [] : demoGenres;
-    const rankedPeople =
-      featuredPeople.status === "fulfilled"
-        ? normalizeFeaturedPeopleSource(featuredPeople.value)
-        : {
-            actors: demoPeople.filter((person) => isActingDepartment(person.department)),
-            directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
-            producers: demoPeople.filter((person) => isProducerDepartment(person.department)),
-          };
-
-    sendJson(res, 200, {
-      config: {
-        hasOmdb: Boolean(omdbApiKey),
-        imageBaseUrl: "https://image.tmdb.org/t/p/w500",
-        hasLocalPeopleIndex: Boolean(localPeopleIndex || dbDirectory),
-      },
-      genres: resolvedGenres,
-      featuredActors: rankedPeople.actors,
-      featuredDirectors: rankedPeople.directors,
-      featuredProducers: rankedPeople.producers,
-    });
+  if (requestUrl.pathname === "/api/featured-people") {
+    const featuredPayload = await buildFeaturedPeoplePayload();
+    sendJson(res, 200, featuredPayload);
     return;
   }
 
@@ -370,13 +351,26 @@ async function handleApi(requestUrl, res) {
 
 function handleDemoApi(requestUrl, res) {
   if (requestUrl.pathname === "/api/bootstrap") {
-    sendJson(res, 200, {
+    const mode = requestUrl.searchParams.get("mode");
+    const payload = {
       config: {
         hasOmdb: true,
         imageBaseUrl: "",
         mode: "demo",
       },
       genres: demoGenres,
+    };
+    if (mode !== "lite") {
+      payload.featuredActors = demoPeople.filter((person) => isActingDepartment(person.department));
+      payload.featuredDirectors = demoPeople.filter((person) => isDirectorDepartment(person.department));
+      payload.featuredProducers = demoPeople.filter((person) => isProducerDepartment(person.department));
+    }
+    sendJson(res, 200, payload);
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/featured-people") {
+    sendJson(res, 200, {
       featuredActors: demoPeople.filter((person) => isActingDepartment(person.department)),
       featuredDirectors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
       featuredProducers: demoPeople.filter((person) => isProducerDepartment(person.department)),
@@ -459,6 +453,57 @@ function buildDemoDiscoverPayload(filters) {
   return {
     matchedPerson,
     movies,
+  };
+}
+
+async function buildBootstrapPayload(options = {}) {
+  const includePeople = options.includePeople !== false;
+  const localPeopleIndex = includePeople ? await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT) : null;
+  const hasLocalPeopleIndex = includePeople
+    ? Boolean(localPeopleIndex)
+    : await isLocalPeopleIndexAvailable();
+  const genresResult = await Promise.allSettled([tmdb("/genre/movie/list")]);
+  const resolvedGenres =
+    genresResult[0].status === "fulfilled" ? genresResult[0].value.genres ?? [] : demoGenres;
+
+  const payload = {
+    config: {
+      hasOmdb: Boolean(omdbApiKey),
+      imageBaseUrl: "https://image.tmdb.org/t/p/w500",
+      hasLocalPeopleIndex,
+    },
+    genres: resolvedGenres,
+  };
+
+  if (includePeople) {
+    const featured = await buildFeaturedPeoplePayload(localPeopleIndex);
+    payload.featuredActors = featured.featuredActors;
+    payload.featuredDirectors = featured.featuredDirectors;
+    payload.featuredProducers = featured.featuredProducers;
+  }
+
+  return payload;
+}
+
+async function buildFeaturedPeoplePayload(localPeopleIndex = null) {
+  const localSource = localPeopleIndex || (await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT));
+  const [featuredPeople] = await Promise.allSettled([
+    localSource ? Promise.resolve(localSource) : fetchPopularPeopleSample(FEATURED_PEOPLE_PAGE_COUNT),
+  ]);
+
+  const rankedPeople =
+    featuredPeople.status === "fulfilled"
+      ? normalizeFeaturedPeopleSource(featuredPeople.value)
+      : {
+          actors: demoPeople.filter((person) => isActingDepartment(person.department)),
+          directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
+          producers: demoPeople.filter((person) => isProducerDepartment(person.department)),
+        };
+
+  return {
+    featuredActors: rankedPeople.actors,
+    featuredDirectors: rankedPeople.directors,
+    featuredProducers: rankedPeople.producers,
   };
 }
 
@@ -821,6 +866,20 @@ async function getPeopleDirectory() {
   cache.set(cacheKey, entry);
   writeDiskCache(cacheKey, entry);
   return directory;
+}
+
+async function getAvailablePeopleDirectory(limit = DB_FEATURED_LIMIT) {
+  return (await getPeopleDirectoryFromPostgres(limit)) || readPeopleIndex() || null;
+}
+
+async function isLocalPeopleIndexAvailable() {
+  const dbStatus = await getIndexStatusFromPostgres();
+  if (dbStatus && dbStatus.ready) {
+    return true;
+  }
+
+  const localIndex = readPeopleIndex();
+  return Boolean(localIndex);
 }
 
 function readPeopleIndex() {
@@ -1557,14 +1616,47 @@ function serveStatic(requestPath, res) {
     return;
   }
 
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) {
       sendPlain(res, 404, "Not found");
       return;
     }
 
-    res.writeHead(200, { "Content-Type": contentType(filePath) });
-    res.end(content);
+    const etag = `"${stats.size}-${Number(stats.mtimeMs).toString(16)}"`;
+    if (res.req?.headers["if-none-match"] === etag) {
+      res.writeHead(304);
+      res.end();
+      return;
+    }
+
+    const immutableAsset =
+      filePath.endsWith(".css") ||
+      filePath.endsWith(".js") ||
+      filePath.endsWith(".woff2") ||
+      filePath.endsWith(".png") ||
+      filePath.endsWith(".jpg") ||
+      filePath.endsWith(".jpeg") ||
+      filePath.endsWith(".webp") ||
+      filePath.endsWith(".svg");
+    const cacheControl = immutableAsset
+      ? `public, max-age=${STATIC_ASSET_CACHE_TTL_SECONDS}, immutable`
+      : "no-cache";
+
+    res.writeHead(200, {
+      "Content-Type": contentType(filePath),
+      "Cache-Control": cacheControl,
+      ETag: etag,
+    });
+
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", () => {
+      if (!res.headersSent) {
+        sendPlain(res, 500, "Failed to read static file");
+      } else {
+        res.destroy();
+      }
+    });
+    stream.pipe(res);
   });
 }
 

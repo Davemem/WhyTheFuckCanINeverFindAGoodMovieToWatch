@@ -1,4 +1,5 @@
 const decadeOptions = buildDecadeOptions();
+const bootstrapLiteCacheKey = "wtfcineverfind-bootstrap-lite-v1";
 
 document.querySelectorAll("[data-catalog-search]").forEach((form) => {
   setupCatalogSearch(form).catch(() => {
@@ -98,7 +99,7 @@ async function setupCatalogSearch(form) {
     }
   }, 250));
 
-  const bootstrap = await fetchJson("/api/bootstrap");
+  const bootstrap = await fetchBootstrapLite();
   populateGenres(genreSelect, bootstrap.genres || []);
 }
 
@@ -143,6 +144,28 @@ async function fetchJson(url) {
     throw new Error(payload.detail || payload.error || "Request failed");
   }
 
+  return payload;
+}
+
+async function fetchBootstrapLite() {
+  try {
+    const cached = window.sessionStorage.getItem(bootstrapLiteCacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && Array.isArray(parsed.genres)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore session cache parse errors.
+  }
+
+  const payload = await fetchJson("/api/bootstrap?mode=lite");
+  try {
+    window.sessionStorage.setItem(bootstrapLiteCacheKey, JSON.stringify(payload));
+  } catch {
+    // Ignore storage write failures.
+  }
   return payload;
 }
 

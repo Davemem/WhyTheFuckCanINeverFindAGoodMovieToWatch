@@ -19,6 +19,7 @@ const pageState = {
     directors: [],
     producers: [],
   },
+  renderToken: 0,
 };
 
 bootstrap().catch((error) => {
@@ -31,20 +32,22 @@ async function bootstrap() {
   applyStateFromUrl();
   bindEvents();
 
-  const [statusPayload] = await Promise.all([
-    fetchJson("/api/index-status"),
-    loadDirectoryForDepartment(pageState.department),
-  ]);
-
-  if (statusPayload.ready) {
-    elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, and ${statusPayload.counts.producers} producers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
-  } else {
-    elements.indexSummary.textContent =
-      "The local index is not available yet, so this page is showing the fallback sample.";
-  }
-
-  elements.directoryStatus.textContent = "Local ranked people directory ready.";
+  const statusPromise = fetchJson("/api/index-status");
+  await loadDirectoryForDepartment(pageState.department);
   renderDirectory();
+  elements.directoryStatus.textContent = "Local ranked people directory ready.";
+
+  try {
+    const statusPayload = await statusPromise;
+    if (statusPayload.ready) {
+      elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, and ${statusPayload.counts.producers} producers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
+    } else {
+      elements.indexSummary.textContent =
+        "The local index is not available yet, so this page is showing the fallback sample.";
+    }
+  } catch {
+    elements.indexSummary.textContent = "Index status unavailable right now.";
+  }
 }
 
 function bindEvents() {
@@ -55,6 +58,8 @@ function bindEvents() {
 }
 
 function renderDirectory() {
+  pageState.renderToken += 1;
+  const renderToken = pageState.renderToken;
   const source = pageState.directories[pageState.department] || [];
   const filtered = filterPeopleDirectory(source, elements.directorySearch.value);
   const sorted = sortPeopleDirectory(filtered, elements.directorySort.value);
@@ -70,9 +75,27 @@ function renderDirectory() {
     return;
   }
 
-  sorted.forEach((person) => {
-    elements.directoryGrid.append(buildPersonCard(person));
-  });
+  const batchSize = 80;
+  let index = 0;
+  const appendBatch = () => {
+    if (renderToken !== pageState.renderToken) {
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(index + batchSize, sorted.length);
+    for (let cursor = index; cursor < end; cursor += 1) {
+      fragment.append(buildPersonCard(sorted[cursor]));
+    }
+    elements.directoryGrid.append(fragment);
+    index = end;
+
+    if (index < sorted.length) {
+      window.requestAnimationFrame(appendBatch);
+    }
+  };
+
+  window.requestAnimationFrame(appendBatch);
 }
 
 function buildPersonCard(person) {
