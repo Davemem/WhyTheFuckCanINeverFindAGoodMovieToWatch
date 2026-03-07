@@ -31,6 +31,7 @@ const DB_BOOTSTRAP_LIMIT = 120;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
+const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const demoGenres = [
   { id: 18, name: "Drama" },
   { id: 35, name: "Comedy" },
@@ -309,7 +310,7 @@ async function handleApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/discover") {
-    const payload = await buildDiscoverPayload({
+    const filters = {
       personQuery: requestUrl.searchParams.get("personQuery")?.trim() || "",
       role: requestUrl.searchParams.get("role") || "any",
       genreId: requestUrl.searchParams.get("genre") || "all",
@@ -317,7 +318,26 @@ async function handleApi(requestUrl, res) {
       sort: requestUrl.searchParams.get("sort") || "match",
       imdbMin: Number(requestUrl.searchParams.get("imdbMin") || "0"),
       rtMin: Number(requestUrl.searchParams.get("rtMin") || "0"),
-    });
+    };
+
+    const cacheKey = buildDiscoverCacheKey(filters);
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      sendJson(res, 200, cached.value);
+      return;
+    }
+
+    const diskCached = readDiskCache(cacheKey);
+    if (diskCached && diskCached.expiresAt > Date.now()) {
+      cache.set(cacheKey, diskCached);
+      sendJson(res, 200, diskCached.value);
+      return;
+    }
+
+    const payload = await buildDiscoverPayload(filters);
+    const entry = { value: payload, expiresAt: Date.now() + DISCOVER_CACHE_TTL_MS };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
 
     sendJson(res, 200, payload);
     return;
@@ -946,6 +966,20 @@ function normalizeName(value) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function buildDiscoverCacheKey(filters) {
+  const normalized = {
+    personQuery: normalizeName(filters.personQuery || ""),
+    role: filters.role || "any",
+    genreId: filters.genreId || "all",
+    decade: filters.decade || "all",
+    sort: filters.sort || "match",
+    imdbMin: Number.isFinite(Number(filters.imdbMin)) ? Number(filters.imdbMin) : 0,
+    rtMin: Number.isFinite(Number(filters.rtMin)) ? Number(filters.rtMin) : 0,
+  };
+
+  return `discover:v1:${JSON.stringify(normalized)}`;
 }
 
 function normalizeDiscoverMovie(movie) {
