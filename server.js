@@ -459,12 +459,8 @@ function buildDemoDiscoverPayload(filters) {
 async function buildBootstrapPayload(options = {}) {
   const includePeople = options.includePeople !== false;
   const localPeopleIndex = includePeople ? await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT) : null;
-  const hasLocalPeopleIndex = includePeople
-    ? Boolean(localPeopleIndex)
-    : await isLocalPeopleIndexAvailable();
-  const genresResult = await Promise.allSettled([tmdb("/genre/movie/list")]);
-  const resolvedGenres =
-    genresResult[0].status === "fulfilled" ? genresResult[0].value.genres ?? [] : demoGenres;
+  const hasLocalPeopleIndex = includePeople ? Boolean(localPeopleIndex) : false;
+  const resolvedGenres = await getGenresFast();
 
   const payload = {
     config: {
@@ -882,6 +878,50 @@ async function isLocalPeopleIndexAvailable() {
   return Boolean(localIndex);
 }
 
+async function getGenresFast() {
+  const cacheKey = "genres:v1";
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
+  }
+
+  try {
+    const response = await withTimeout(tmdb("/genre/movie/list"), 3500);
+    const genres = Array.isArray(response?.genres) ? response.genres : demoGenres;
+    const entry = { value: genres, expiresAt: Date.now() + 1000 * 60 * 60 * 24 };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
+    return genres;
+  } catch {
+    return demoGenres;
+  }
+}
+
+function withTimeout(promise, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
 function readPeopleIndex() {
   try {
     if (!fs.existsSync(peopleIndexPath)) {
@@ -908,7 +948,8 @@ function readPeopleIndex() {
       directors: (parsed.filmmakers || []).filter((person) => isDirectorDepartment(person.department)),
       producers: (parsed.filmmakers || []).filter((person) => isProducerDepartment(person.department)),
     };
-  } catch {
+  } catch (error) {
+    logServerError("getIndexStatusFromPostgres", error);
     return null;
   }
 }
@@ -1417,7 +1458,8 @@ async function getIndexStatusFromPostgres() {
     cache.set(cacheKey, entry);
     writeDiskCache(cacheKey, entry);
     return value;
-  } catch {
+  } catch (error) {
+    logServerError("getPeopleDirectoryFromPostgres", error);
     return null;
   }
 }
@@ -1588,9 +1630,15 @@ async function searchPeopleFromPostgres(query) {
     cache.set(cacheKey, entry);
     writeDiskCache(cacheKey, entry);
     return value;
-  } catch {
+  } catch (error) {
+    logServerError("searchPeopleFromPostgres", error);
     return [];
   }
+}
+
+function logServerError(scope, error) {
+  const detail = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`[${new Date().toISOString()}] ${scope}: ${detail}\n`);
 }
 
 function normalizeDbPersonRow(row) {

@@ -251,7 +251,14 @@ function sortPeopleDirectory(people, sort) {
 
 async function fetchJson(url) {
   const response = await fetch(url);
-  const payload = await response.json();
+  const text = await response.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    const snippet = text.trim().slice(0, 80).replace(/\s+/g, " ");
+    throw new Error(`Unexpected non-JSON response (${response.status}) from ${url}: ${snippet}`);
+  }
 
   if (!response.ok) {
     throw new Error(payload.detail || payload.error || "Request failed");
