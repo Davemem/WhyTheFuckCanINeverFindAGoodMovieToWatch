@@ -31,16 +31,10 @@ async function bootstrap() {
   applyStateFromUrl();
   bindEvents();
 
-  const [statusPayload, actorsPayload, directorsPayload, producersPayload] = await Promise.all([
+  const [statusPayload] = await Promise.all([
     fetchJson("/api/index-status"),
-    fetchJson("/api/people-directory?department=actors"),
-    fetchJson("/api/people-directory?department=directors"),
-    fetchJson("/api/people-directory?department=producers"),
+    loadDirectoryForDepartment(pageState.department),
   ]);
-
-  pageState.directories.actors = actorsPayload.people || [];
-  pageState.directories.directors = directorsPayload.people || [];
-  pageState.directories.producers = producersPayload.people || [];
 
   if (statusPayload.ready) {
     elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, and ${statusPayload.counts.producers} producers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
@@ -124,11 +118,14 @@ function handleControlChange() {
   renderDirectory();
 }
 
-function handlePopState() {
+async function handlePopState() {
   pageState.department = readDepartmentFromUrl();
   applyStateFromUrl();
   updateActiveTab();
   applyDepartmentCopy();
+  if (!pageState.directories[pageState.department]?.length) {
+    await loadDirectoryForDepartment(pageState.department);
+  }
   renderDirectory();
 }
 
@@ -182,6 +179,11 @@ function updateUrlState() {
     params.set("sort", elements.directorySort.value);
   }
   window.history.replaceState(null, "", `/people.html?${params.toString()}`);
+}
+
+async function loadDirectoryForDepartment(department) {
+  const payload = await fetchJson(`/api/people-directory?department=${encodeURIComponent(department)}`);
+  pageState.directories[department] = payload.people || [];
 }
 
 function departmentLabelPlural(department) {

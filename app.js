@@ -129,8 +129,19 @@ function populateDecades() {
 }
 
 function bindEvents() {
-  [elements.imdbMin, elements.rtMin, elements.genreFilter, elements.decadeFilter].forEach((element) => {
-    element.addEventListener("input", refreshMovies);
+  const debouncedRefreshMovies = debounce(() => {
+    refreshMovies();
+  }, 220);
+
+  [elements.genreFilter, elements.decadeFilter].forEach((element) => {
+    element.addEventListener("change", refreshMovies);
+  });
+
+  [elements.imdbMin, elements.rtMin].forEach((element) => {
+    element.addEventListener("input", () => {
+      syncRangeLabels();
+      debouncedRefreshMovies();
+    });
     element.addEventListener("change", refreshMovies);
   });
   elements.sortFilter.addEventListener("change", handleSortChange);
@@ -196,8 +207,7 @@ async function refreshMovies() {
   }
 
   liveState.lastQueryKey = queryKey;
-  elements.imdbValue.textContent = `${state.imdbMin.toFixed(1)}+`;
-  elements.rtValue.textContent = `${state.rtMin}%+`;
+  syncRangeLabels();
   elements.roleDescription.textContent =
     state.role === "any" ? "Any role" : `Only ${state.role} matches`;
 
@@ -238,6 +248,11 @@ async function refreshMovies() {
     renderErrorState(error.message);
     setStatus(error.message, true);
   }
+}
+
+function syncRangeLabels() {
+  elements.imdbValue.textContent = `${Number(elements.imdbMin.value).toFixed(1)}+`;
+  elements.rtValue.textContent = `${Number(elements.rtMin.value)}%+`;
 }
 
 function renderMovies(movies) {

@@ -27,6 +27,7 @@ const PEOPLE_DIRECTORY_PAGE_COUNT = 30;
 const PEOPLE_DIRECTORY_LIMIT = 1000;
 const PEOPLE_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24;
 const DB_FEATURED_LIMIT = 1000;
+const DB_BOOTSTRAP_LIMIT = 120;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
@@ -225,7 +226,7 @@ async function handleApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/bootstrap") {
-    const dbDirectory = await getPeopleDirectoryFromPostgres();
+    const dbDirectory = await getPeopleDirectoryFromPostgres(DB_BOOTSTRAP_LIMIT);
     const localPeopleIndex = dbDirectory || readPeopleIndex();
     const [genres, featuredPeople] = await Promise.allSettled([
       tmdb("/genre/movie/list"),
@@ -271,7 +272,7 @@ async function handleApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people-directory") {
     const department = requestUrl.searchParams.get("department") || "actors";
-    const directory = (await getPeopleDirectoryFromPostgres()) || (await getPeopleDirectory());
+    const directory = (await getPeopleDirectoryFromPostgres(DB_FEATURED_LIMIT)) || (await getPeopleDirectory());
     const people = peopleDirectorySlice(directory, department);
     sendJson(res, 200, {
       department,
