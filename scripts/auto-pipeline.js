@@ -12,7 +12,7 @@ const pollSeconds = getNumberArg("--poll-seconds", 30);
 const hydrateBatchSize = getNumberArg("--batch-size", 500);
 const hydrateConcurrency = getNumberArg("--concurrency", 6);
 const hydrateMaxAttempts = getNumberArg("--max-attempts", 4);
-const ingestMaxIds = getNumberArg("--max-ids", 0);
+const ingestMaxIds = getNumberArg("--max-ids", 100000);
 
 let nextIngestAt = 0;
 
@@ -32,7 +32,7 @@ async function main() {
   while (true) {
     try {
       if (Date.now() >= nextIngestAt) {
-        const ingestArgs = ingestMaxIds > 0 ? [`--max-ids=${ingestMaxIds}`] : [];
+        const ingestArgs = [`--max-ids=${ingestMaxIds}`];
         await runScript("ingest-person-ids.js", ingestArgs);
         nextIngestAt = Date.now() + ingestEveryHours * 60 * 60 * 1000;
         process.stdout.write(

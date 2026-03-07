@@ -1,4 +1,8 @@
-const { loadEnv, getNumberArg, downloadLatestPersonExport } = require("./lib/common");
+const {
+  loadEnv,
+  getNumberArg,
+  downloadLatestPersonExportTopByPopularity,
+} = require("./lib/common");
 const { createPool, applySchema } = require("./lib/ingest-db");
 
 loadEnv();
@@ -9,15 +13,11 @@ main().catch((error) => {
 });
 
 async function main() {
-  const maxIds = getNumberArg("--max-ids", 0);
+  const maxIds = getNumberArg("--max-ids", 100000);
   const pool = createPool();
   await applySchema(pool);
 
-  const { stamp, rows } = await downloadLatestPersonExport();
-  const candidates = rows
-    .filter((row) => Number.isFinite(row.id))
-    .sort((left, right) => Number(right.popularity || 0) - Number(left.popularity || 0));
-  const selected = maxIds > 0 ? candidates.slice(0, maxIds) : candidates;
+  const { stamp, rows: selected } = await downloadLatestPersonExportTopByPopularity(maxIds);
 
   process.stdout.write(`Queueing ${selected.length} people from export ${stamp}...\n`);
 

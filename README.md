@@ -54,7 +54,7 @@ npm run pipeline:auto
 Optional worker flags:
 
 ```bash
-npm run pipeline:auto -- --ingest-every-hours=24 --poll-seconds=30 --batch-size=500 --concurrency=6 --max-attempts=4 --max-ids=50000
+npm run pipeline:auto -- --ingest-every-hours=24 --poll-seconds=30 --batch-size=300 --concurrency=4 --max-attempts=4 --max-ids=100000
 ```
 
 Useful flags:
