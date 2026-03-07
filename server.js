@@ -27,6 +27,9 @@ const PEOPLE_DIRECTORY_PAGE_COUNT = 30;
 const PEOPLE_DIRECTORY_LIMIT = 1000;
 const PEOPLE_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24;
 const DB_FEATURED_LIMIT = 1000;
+const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
+const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
+const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
 const demoGenres = [
   { id: 18, name: "Drama" },
   { id: 35, name: "Comedy" },
@@ -1262,6 +1265,9 @@ function createDbPool() {
   return new Pool({
     connectionString: databaseUrl,
     ssl: shouldUseDbSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
 }
 
@@ -1282,6 +1288,18 @@ async function getIndexStatusFromPostgres() {
     return null;
   }
 
+  const cacheKey = "pg:index-status:v1";
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
+  }
+
   try {
     const result = await dbPool.query(`
       SELECT
@@ -1292,7 +1310,7 @@ async function getIndexStatusFromPostgres() {
     `);
     const row = result.rows[0];
     const total = Number(row.actors_count || 0) + Number(row.directors_count || 0) + Number(row.producers_count || 0);
-    return {
+    const value = {
       ready: total > 0,
       generatedAt: row.generated_at || null,
       counts: {
@@ -1301,6 +1319,10 @@ async function getIndexStatusFromPostgres() {
         producers: Number(row.producers_count || 0),
       },
     };
+    const entry = { value, expiresAt: Date.now() + DB_STATUS_CACHE_TTL_MS };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
+    return value;
   } catch {
     return null;
   }
@@ -1309,6 +1331,18 @@ async function getIndexStatusFromPostgres() {
 async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
   if (!dbPool) {
     return null;
+  }
+
+  const cacheKey = `pg:people-directory:v1:${limit}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
   }
 
   try {
@@ -1320,7 +1354,11 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
     if (!actors.length && !directors.length && !producers.length) {
       return null;
     }
-    return { actors, directors, producers };
+    const value = { actors, directors, producers };
+    const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
+    return value;
   } catch {
     return null;
   }
@@ -1395,6 +1433,23 @@ async function searchPeopleFromPostgres(query) {
     return [];
   }
 
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const cacheKey = `pg:people-search:v1:${normalizedQuery}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
+  }
+
   try {
     const result = await dbPool.query(
       `
@@ -1434,7 +1489,11 @@ async function searchPeopleFromPostgres(query) {
       `,
       [`%${query}%`, query, `${query}%`],
     );
-    return result.rows.map(normalizeDbPersonRow);
+    const value = result.rows.map(normalizeDbPersonRow);
+    const entry = { value, expiresAt: Date.now() + DB_PEOPLE_SEARCH_CACHE_TTL_MS };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
+    return value;
   } catch {
     return [];
   }
