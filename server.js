@@ -194,7 +194,8 @@ const demoPeople = [
 ];
 
 ensureCacheDir();
-const dbPool = createDbPool();
+const dbPools = createDbPools();
+let preferredDbPool = null;
 
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
@@ -1392,18 +1393,27 @@ function capitalizeRole(role) {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-function createDbPool() {
+function createDbPools() {
   if (!databaseUrl) {
     return null;
   }
 
-  return new Pool({
+  const sslPool = new Pool({
     connectionString: databaseUrl,
-    ssl: shouldUseDbSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,
+    ssl: { rejectUnauthorized: false },
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
+  const plainPool = new Pool({
+    connectionString: databaseUrl,
+    ssl: false,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  preferredDbPool = shouldUseDbSsl(databaseUrl) ? "ssl" : "plain";
+  return { ssl: sslPool, plain: plainPool };
 }
 
 function shouldUseDbSsl(connectionString) {
@@ -1419,7 +1429,7 @@ function shouldUseDbSsl(connectionString) {
 }
 
 async function getIndexStatusFromPostgres() {
-  if (!dbPool) {
+  if (!dbPools) {
     return null;
   }
 
@@ -1436,13 +1446,16 @@ async function getIndexStatusFromPostgres() {
   }
 
   try {
-    const result = await dbPool.query(`
+    const result = await withTimeout(
+      queryDb(`
       SELECT
         (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'cast')::int AS actors_count,
         (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job = 'Director')::int AS directors_count,
         (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%')::int AS producers_count,
         (SELECT MAX(updated_at) FROM people) AS generated_at
-    `);
+    `),
+      3000,
+    );
     const row = result.rows[0];
     const total = Number(row.actors_count || 0) + Number(row.directors_count || 0) + Number(row.producers_count || 0);
     const value = {
@@ -1459,13 +1472,13 @@ async function getIndexStatusFromPostgres() {
     writeDiskCache(cacheKey, entry);
     return value;
   } catch (error) {
-    logServerError("getPeopleDirectoryFromPostgres", error);
+    logServerError("getIndexStatusFromPostgres", error);
     return null;
   }
 }
 
 async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
-  if (!dbPool) {
+  if (!dbPools) {
     return null;
   }
 
@@ -1495,7 +1508,8 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
     cache.set(cacheKey, entry);
     writeDiskCache(cacheKey, entry);
     return value;
-  } catch {
+  } catch (error) {
+    logServerError("getPeopleDirectoryFromPostgres", error);
     return null;
   }
 }
@@ -1548,7 +1562,7 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
     ORDER BY r.score DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
   `;
 
-  const result = await dbPool.query(sql, [limit]);
+  const result = await queryDb(sql, [limit]);
   return result.rows.map(normalizeDbPersonRow);
 }
 
@@ -1565,7 +1579,7 @@ function roleToSqlFilter(role, alias) {
 }
 
 async function searchPeopleFromPostgres(query) {
-  if (!dbPool) {
+  if (!dbPools) {
     return [];
   }
 
@@ -1587,7 +1601,7 @@ async function searchPeopleFromPostgres(query) {
   }
 
   try {
-    const result = await dbPool.query(
+    const result = await queryDb(
       `
         SELECT
           p.person_id AS id,
@@ -1634,6 +1648,27 @@ async function searchPeopleFromPostgres(query) {
     logServerError("searchPeopleFromPostgres", error);
     return [];
   }
+}
+
+async function queryDb(sql, params = []) {
+  if (!dbPools) {
+    throw new Error("Database pool not configured");
+  }
+
+  const order = preferredDbPool === "plain" ? ["plain", "ssl"] : ["ssl", "plain"];
+  let lastError = null;
+  for (const mode of order) {
+    try {
+      const result = await dbPools[mode].query(sql, params);
+      preferredDbPool = mode;
+      return result;
+    } catch (error) {
+      lastError = error;
+      logServerError(`db-query-${mode}`, error);
+    }
+  }
+
+  throw lastError || new Error("Database query failed");
 }
 
 function logServerError(scope, error) {
