@@ -1840,17 +1840,20 @@ function serveStatic(requestPath, res) {
     }
 
     const immutableAsset =
-      filePath.endsWith(".css") ||
-      filePath.endsWith(".js") ||
       filePath.endsWith(".woff2") ||
       filePath.endsWith(".png") ||
       filePath.endsWith(".jpg") ||
       filePath.endsWith(".jpeg") ||
       filePath.endsWith(".webp") ||
       filePath.endsWith(".svg");
+    const revalidateAsset =
+      filePath.endsWith(".css") ||
+      filePath.endsWith(".js");
     const cacheControl = immutableAsset
       ? `public, max-age=${STATIC_ASSET_CACHE_TTL_SECONDS}, immutable`
-      : "no-cache";
+      : revalidateAsset
+        ? "public, max-age=0, must-revalidate"
+        : "no-cache";
 
     res.writeHead(200, {
       "Content-Type": contentType(filePath),
