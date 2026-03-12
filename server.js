@@ -194,8 +194,8 @@ const demoPeople = [
 ];
 
 ensureCacheDir();
-const dbPools = createDbPools();
 let preferredDbPool = null;
+const dbPools = createDbPools();
 
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
