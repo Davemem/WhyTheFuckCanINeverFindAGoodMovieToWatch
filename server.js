@@ -1414,22 +1414,46 @@ function createDbPools() {
     return null;
   }
 
-  const sslPool = new Pool({
+  const baseConfig = {
     connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-  });
-  const plainPool = new Pool({
-    connectionString: databaseUrl,
-    ssl: false,
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
-  });
-  preferredDbPool = shouldUseDbSsl(databaseUrl) ? "ssl" : "plain";
-  return { ssl: sslPool, plain: plainPool };
+  };
+  const pools = { ssl: null, plain: null };
+  const prefersSsl = shouldUseDbSsl(databaseUrl);
+  preferredDbPool = prefersSsl ? "ssl" : "plain";
+
+  try {
+    pools.ssl = new Pool({
+      ...baseConfig,
+      ssl: { rejectUnauthorized: false },
+    });
+  } catch (error) {
+    logServerError("createDbPools-ssl", error);
+  }
+
+  try {
+    pools.plain = new Pool({
+      ...baseConfig,
+      ssl: false,
+    });
+  } catch (error) {
+    logServerError("createDbPools-plain", error);
+  }
+
+  if (!pools.ssl && !pools.plain) {
+    logServerError("createDbPools", "No database pool could be created");
+    return null;
+  }
+
+  if (preferredDbPool === "ssl" && !pools.ssl) {
+    preferredDbPool = "plain";
+  } else if (preferredDbPool === "plain" && !pools.plain) {
+    preferredDbPool = "ssl";
+  }
+
+  return pools;
 }
 
 function shouldUseDbSsl(connectionString) {
@@ -1674,8 +1698,12 @@ async function queryDb(sql, params = []) {
   const order = preferredDbPool === "plain" ? ["plain", "ssl"] : ["ssl", "plain"];
   let lastError = null;
   for (const mode of order) {
+    const pool = dbPools[mode];
+    if (!pool) {
+      continue;
+    }
     try {
-      const result = await dbPools[mode].query(sql, params);
+      const result = await pool.query(sql, params);
       preferredDbPool = mode;
       return result;
     } catch (error) {
