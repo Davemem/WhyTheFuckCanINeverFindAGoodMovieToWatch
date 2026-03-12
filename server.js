@@ -22,12 +22,9 @@ const DISCOVER_HYDRATE_LIMIT = 6;
 const ENRICH_BATCH_LIMIT = 2;
 const PERSON_RESULT_LIMIT = 200;
 const FEATURED_PEOPLE_PAGE_COUNT = 15;
-const FEATURED_PEOPLE_LIMIT = 24;
-const PEOPLE_DIRECTORY_PAGE_COUNT = 30;
-const PEOPLE_DIRECTORY_LIMIT = 1000;
-const PEOPLE_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24;
-const DB_FEATURED_LIMIT = 1000;
-const DB_BOOTSTRAP_LIMIT = 120;
+const FEATURED_PEOPLE_LIMIT = 5;
+const DB_FEATURED_LIMIT = 5000;
+const DB_BOOTSTRAP_LIMIT = 20;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
@@ -255,11 +252,17 @@ async function handleApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people-directory") {
     const department = requestUrl.searchParams.get("department") || "actors";
-    const directory = (await getPeopleDirectoryFromPostgres(DB_FEATURED_LIMIT)) || (await getPeopleDirectory());
-    const people = peopleDirectorySlice(directory, department);
+    const query = requestUrl.searchParams.get("q")?.trim() || "";
+    const sort = requestUrl.searchParams.get("sort") || "score";
+    const requestedLimit = clampNumber(requestUrl.searchParams.get("limit"), 10, 1, DB_FEATURED_LIMIT);
+    const directory = await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
+    const source = directory ? peopleDirectorySlice(directory, department) : [];
+    const filtered = filterPeopleDirectory(source, query);
+    const sorted = sortPeopleDirectory(filtered, sort);
+    const people = sorted.slice(0, requestedLimit);
     sendJson(res, 200, {
       department,
-      total: people.length,
+      total: filtered.length,
       people,
     });
     return;
@@ -273,21 +276,7 @@ async function handleApi(requestUrl, res) {
     }
 
     const dbResults = await searchPeopleFromPostgres(query);
-    if (dbResults.length) {
-      sendJson(res, 200, { results: dbResults });
-      return;
-    }
-
-    const localPeopleIndex = readPeopleIndex();
-    if (localPeopleIndex) {
-      sendJson(res, 200, {
-        results: searchLocalPeopleIndex(localPeopleIndex, query),
-      });
-      return;
-    }
-
-    const response = await tmdb("/search/person", { query, include_adult: "false", page: "1" });
-    sendJson(res, 200, { results: (response.results ?? []).slice(0, 8).map(normalizePerson) });
+    sendJson(res, 200, { results: dbResults });
     return;
   }
 
@@ -486,18 +475,13 @@ async function buildBootstrapPayload(options = {}) {
 
 async function buildFeaturedPeoplePayload(localPeopleIndex = null) {
   const localSource = localPeopleIndex || (await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT));
-  const [featuredPeople] = await Promise.allSettled([
-    localSource ? Promise.resolve(localSource) : fetchPopularPeopleSample(FEATURED_PEOPLE_PAGE_COUNT),
-  ]);
-
-  const rankedPeople =
-    featuredPeople.status === "fulfilled"
-      ? normalizeFeaturedPeopleSource(featuredPeople.value)
-      : {
-          actors: demoPeople.filter((person) => isActingDepartment(person.department)),
-          directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
-          producers: demoPeople.filter((person) => isProducerDepartment(person.department)),
-        };
+  const rankedPeople = localSource
+    ? normalizeFeaturedPeopleSource(localSource)
+    : {
+        actors: [],
+        directors: [],
+        producers: [],
+      };
 
   return {
     featuredActors: rankedPeople.actors,
@@ -584,48 +568,148 @@ async function discoverBroad(filters) {
 }
 
 async function discoverByPerson(filters) {
-  const peopleSearch = await tmdb("/search/person", {
-    query: filters.personQuery,
-    include_adult: "false",
-    page: "1",
-  });
-
-  const person = selectBestPersonMatch(peopleSearch.results ?? [], filters.personQuery);
+  const dbResults = await searchPeopleFromPostgres(filters.personQuery);
+  const person = dbResults[0];
   if (!person) {
-    return { matchedPerson: null, movies: [] };
+    return { matchedPerson: null, totalMatches: 0, movies: [] };
   }
 
-  const credits = await tmdb(`/person/${person.id}/movie_credits`);
-  const creditMap = new Map();
-
-  for (const credit of credits.cast ?? []) {
-    upsertCredit(creditMap, credit, "cast", person.name, filters);
-  }
-
-  for (const credit of credits.crew ?? []) {
-    const normalizedRole = normalizeCrewRole(credit.job);
-    if (normalizedRole) {
-      upsertCredit(creditMap, credit, normalizedRole, person.name, filters);
-    }
-  }
-
-  const allCredits = [...creditMap.values()]
-    .filter((credit) => matchesGenreAndDecade(credit, filters))
-    .sort((left, right) => sortCreditCandidates(left, right, filters.sort));
-
-  const selectedCredits = allCredits.slice(0, PERSON_RESULT_LIMIT);
-
-  const needsRatings = filters.imdbMin > 0 || filters.rtMin > 0;
-  const movies = needsRatings
-    ? await hydrateMovies(selectedCredits.slice(0, DISCOVER_HYDRATE_LIMIT), filters)
-    : selectedCredits.map(normalizeCreditMovie);
+  const allCredits = await fetchPersonMoviesFromPostgres(person.id, filters, PERSON_RESULT_LIMIT);
+  const movies = allCredits.map(normalizeDbCreditMovie);
 
   return {
-    matchedPerson: normalizePerson(person),
+    matchedPerson: person,
     totalMatches: allCredits.length,
     movies: movies
       .filter((movie) => passesRatingFilters(movie, filters))
       .sort((left, right) => sortMovies(left, right, filters.sort)),
+  };
+}
+
+async function fetchPersonMoviesFromPostgres(personId, filters, limit) {
+  if (!dbPools) {
+    return [];
+  }
+
+  const params = [personId];
+  const whereParts = [];
+  whereParts.push(buildRoleSqlFilter(filters.role, "pmc"));
+
+  if (filters.genreId !== "all") {
+    params.push(String(filters.genreId));
+    whereParts.push(`
+      EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(COALESCE(m.genre_ids_json, '[]'::jsonb)) AS g(value)
+        WHERE g.value = $${params.length}
+      )
+    `);
+  }
+
+  if (filters.decade !== "all") {
+    const start = Number(filters.decade);
+    params.push(`${start}-01-01`);
+    params.push(`${start + 9}-12-31`);
+    whereParts.push(`m.release_date IS NOT NULL AND m.release_date >= $${params.length - 1} AND m.release_date <= $${params.length}`);
+  }
+
+  params.push(limit);
+  const sql = `
+    SELECT
+      m.movie_id AS id,
+      m.title,
+      m.release_date,
+      m.vote_average,
+      m.vote_count,
+      m.genre_ids_json,
+      m.tmdb_json,
+      bool_or(pmc.credit_type = 'cast') AS cast_match,
+      bool_or(pmc.credit_type = 'crew' AND pmc.job = 'Director') AS director_match,
+      bool_or(pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%') AS producer_match
+    FROM person_movie_credits pmc
+    JOIN movies m ON m.movie_id = pmc.movie_id
+    WHERE
+      pmc.person_id = $1
+      AND (${whereParts.join(" AND ")})
+    GROUP BY
+      m.movie_id,
+      m.title,
+      m.release_date,
+      m.vote_average,
+      m.vote_count,
+      m.genre_ids_json,
+      m.tmdb_json
+    ORDER BY ${buildMovieSortSql(filters.sort)}
+    LIMIT $${params.length}
+  `;
+
+  const result = await queryDb(sql, params);
+  return result.rows;
+}
+
+function buildRoleSqlFilter(role, alias) {
+  if (role === "cast") {
+    return `${alias}.credit_type = 'cast'`;
+  }
+  if (role === "director") {
+    return `${alias}.credit_type = 'crew' AND ${alias}.job = 'Director'`;
+  }
+  if (role === "producer") {
+    return `${alias}.credit_type = 'crew' AND ${alias}.job ILIKE '%producer%'`;
+  }
+  return `(
+    ${alias}.credit_type = 'cast'
+    OR (${alias}.credit_type = 'crew' AND ${alias}.job = 'Director')
+    OR (${alias}.credit_type = 'crew' AND ${alias}.job ILIKE '%producer%')
+  )`;
+}
+
+function buildMovieSortSql(sort) {
+  switch (sort) {
+    case "year-asc":
+      return "m.release_date ASC NULLS LAST, m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST";
+    case "year-desc":
+      return "m.release_date DESC NULLS LAST, m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST";
+    case "imdb":
+    case "rt":
+      return "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.release_date DESC NULLS LAST";
+    case "match":
+    default:
+      return "m.vote_count DESC NULLS LAST, m.vote_average DESC NULLS LAST, m.release_date DESC NULLS LAST";
+  }
+}
+
+function normalizeDbCreditMovie(row) {
+  const tmdbJson = row.tmdb_json && typeof row.tmdb_json === "object" ? row.tmdb_json : {};
+  const reasons = [];
+  if (row.cast_match) {
+    reasons.push("Cast");
+  }
+  if (row.director_match) {
+    reasons.push("Director");
+  }
+  if (row.producer_match) {
+    reasons.push("Producer");
+  }
+
+  return {
+    id: Number(row.id),
+    title: row.title,
+    year: row.release_date ? Number(String(row.release_date).slice(0, 4)) : null,
+    runtime: "Runtime on detail view",
+    imdb: null,
+    rt: null,
+    metacritic: null,
+    tmdb: typeof row.vote_average === "number" ? Number(Number(row.vote_average).toFixed(1)) : null,
+    genres: [],
+    genreIds: Array.isArray(row.genre_ids_json) ? row.genre_ids_json : [],
+    cast: [],
+    director: "",
+    producers: [],
+    logline: tmdbJson.overview || "No overview available yet.",
+    posterUrl: tmdbJson.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbJson.poster_path}` : "",
+    matchReason: reasons.length ? reasons.join(" / ") : "Matched by person credit.",
+    isEnriched: false,
   };
 }
 
@@ -777,18 +861,6 @@ function curateFeaturedPeople(results, limit = FEATURED_PEOPLE_LIMIT) {
   return { actors, directors, producers };
 }
 
-async function fetchPopularPeopleSample(pageCount) {
-  const pages = await Promise.allSettled(
-    Array.from({ length: pageCount }, (_, index) =>
-      tmdb("/person/popular", { page: String(index + 1) }),
-    ),
-  );
-
-  return pages
-    .filter((result) => result.status === "fulfilled")
-    .flatMap((result) => result.value.results ?? []);
-}
-
 function dedupePeople(results) {
   const byId = new Map();
   for (const person of results) {
@@ -836,35 +908,6 @@ function personKnownForScore(person) {
     0,
   );
   return Number((weightedScore / totalWeight).toFixed(1));
-}
-
-async function getPeopleDirectory() {
-  const localIndex = readPeopleIndex();
-  if (localIndex) {
-    return localIndex;
-  }
-
-  const cacheKey = `people-directory:v1:${PEOPLE_DIRECTORY_PAGE_COUNT}:${PEOPLE_DIRECTORY_LIMIT}`;
-  const cached = cache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
-
-  const diskCached = readDiskCache(cacheKey);
-  if (diskCached && diskCached.expiresAt > Date.now()) {
-    cache.set(cacheKey, diskCached);
-    return diskCached.value;
-  }
-
-  const rawPeople = await fetchPopularPeopleSample(PEOPLE_DIRECTORY_PAGE_COUNT);
-  const directory = curateFeaturedPeople(rawPeople, PEOPLE_DIRECTORY_LIMIT);
-  const entry = {
-    value: directory,
-    expiresAt: Date.now() + PEOPLE_DIRECTORY_TTL_MS,
-  };
-  cache.set(cacheKey, entry);
-  writeDiskCache(cacheKey, entry);
-  return directory;
 }
 
 async function getAvailablePeopleDirectory(limit = DB_FEATURED_LIMIT) {
@@ -1009,6 +1052,44 @@ function peopleDirectorySlice(directory, department) {
   }
 
   return directory.actors || [];
+}
+
+function filterPeopleDirectory(people, query) {
+  const normalizedQuery = normalizeName(query || "");
+  if (!normalizedQuery) {
+    return [...people];
+  }
+
+  return people.filter((person) => {
+    const haystack = [person.name, person.department, ...(person.knownFor || [])]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+function sortPeopleDirectory(people, sort) {
+  const sorted = [...people];
+  sorted.sort((left, right) => {
+    if (sort === "name") {
+      return String(left.name || "").localeCompare(String(right.name || ""));
+    }
+    if (sort === "popularity") {
+      return (Number(right.popularity || 0) - Number(left.popularity || 0))
+        || String(left.name || "").localeCompare(String(right.name || ""));
+    }
+    return (Number(right.score || 0) - Number(left.score || 0))
+      || String(left.name || "").localeCompare(String(right.name || ""));
+  });
+  return sorted;
+}
+
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
 }
 
 function searchLocalPeopleIndex(index, query) {
@@ -1342,8 +1423,10 @@ function matchesGenreAndDecade(credit, filters) {
 }
 
 function passesRatingFilters(movie, filters) {
-  const imdbOk = filters.imdbMin <= 0 || (movie.imdb !== null && movie.imdb >= filters.imdbMin);
-  const rtOk = filters.rtMin <= 0 || (movie.rt !== null && movie.rt >= filters.rtMin);
+  const imdbCandidate = movie.imdb ?? movie.tmdb ?? null;
+  const rtCandidate = movie.rt ?? (movie.tmdb !== null && movie.tmdb !== undefined ? Math.round(movie.tmdb * 10) : null);
+  const imdbOk = filters.imdbMin <= 0 || (imdbCandidate !== null && imdbCandidate >= filters.imdbMin);
+  const rtOk = filters.rtMin <= 0 || (rtCandidate !== null && rtCandidate >= filters.rtMin);
   return imdbOk && rtOk;
 }
 

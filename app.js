@@ -55,7 +55,6 @@ const liveState = {
   totalMatches: 0,
   refreshTokens: {
     actors: 0,
-    producers: 0,
   },
   renderToken: 0,
 };
@@ -95,7 +94,6 @@ async function bootstrap() {
   populateDecades();
   applyStateFromUrl();
   bindEvents();
-  renderFeaturedPeople();
   renderActorPreview();
   renderWatchlist();
   renderIdleState();
@@ -114,10 +112,7 @@ async function loadFeaturedPeople() {
     liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
     liveState.featuredProducers = payload.featuredProducers || [];
 
-    elements.peopleCount.textContent = String(
-      liveState.featuredActors.length + liveState.featuredDirectors.length + liveState.featuredProducers.length,
-    );
-    renderFeaturedPeople();
+    elements.peopleCount.textContent = String(liveState.featuredActors.length);
     renderActorPreview();
   } catch {
     // Keep page usable even when featured people cannot be loaded.
@@ -178,10 +173,18 @@ function bindEvents() {
     await refreshMovies();
   });
 
-  elements.personChips.addEventListener("click", handlePersonSelection);
-  elements.actorsGrid.addEventListener("click", handlePersonSelection);
-  elements.actorsRefresh.addEventListener("click", () => refreshRotatingSection("actors"));
-  elements.producersRefresh.addEventListener("click", () => refreshRotatingSection("producers"));
+  if (elements.actorsGrid) {
+    elements.actorsGrid.addEventListener("click", handlePersonSelection);
+  }
+  if (elements.personChips) {
+    elements.personChips.addEventListener("click", handlePersonSelection);
+  }
+  if (elements.actorsRefresh) {
+    elements.actorsRefresh.addEventListener("click", () => refreshRotatingSection("actors"));
+  }
+  if (elements.producersRefresh) {
+    elements.producersRefresh.addEventListener("click", () => refreshRotatingSection("producers"));
+  }
   elements.resultsGrid.addEventListener("click", handleWatchlistAction);
   if (elements.watchlistGrid) {
     elements.watchlistGrid.addEventListener("click", handleWatchlistAction);
@@ -379,6 +382,9 @@ function setCardField(element, value, pending = false) {
 }
 
 function renderFeaturedPeople() {
+  if (!elements.personChips) {
+    return;
+  }
   elements.personChips.replaceChildren();
   const picks = pickRotatingPeopleForRole("producers");
 
@@ -391,13 +397,13 @@ function renderFeaturedPeople() {
 }
 
 function renderActorPreview() {
-  const preview = pickRotatingPeopleForRole("actors");
+  const preview = pickTopPeopleForRole("actors", 5);
   elements.actorsGrid.replaceChildren();
   preview.forEach((person, index) => {
     elements.actorsGrid.append(buildRotatingPersonCard(person, index + 1));
   });
   elements.actorsSummary.textContent = preview.length
-    ? `${preview.length} actors shown here. Refresh to reshuffle this set for yourself.`
+    ? `${preview.length} top actors shown here.`
     : "Actor preview unavailable right now.";
 }
 
@@ -408,7 +414,14 @@ function refreshRotatingSection(role) {
     return;
   }
 
-  renderFeaturedPeople();
+  if (elements.personChips) {
+    renderFeaturedPeople();
+  }
+}
+
+function pickTopPeopleForRole(role, count) {
+  const ranked = [...dedupePeopleById(getRotatingPool(role))].sort(compareDiscoveryPeople);
+  return ranked.slice(0, count);
 }
 
 function buildRotatingPersonCard(person, rank) {
@@ -476,23 +489,18 @@ async function loadIndexStatus() {
   if (liveState.hasLocalPeopleIndex) {
     elements.indexStatus.textContent = "Local ranked people index is connected.";
   } else {
-    elements.indexStatus.textContent =
-      "Local people index is not available on this deployment yet. The app is falling back to the smaller live sample.";
+    elements.indexStatus.textContent = "People index is syncing.";
     return;
   }
 
   try {
     const payload = await fetchJsonWithTimeout("/api/index-status", 2500);
     if (!payload.ready) {
-      elements.indexStatus.textContent =
-        "Local people index is not available on this deployment yet. The app is falling back to the smaller live sample.";
+      elements.indexStatus.textContent = "People index is syncing.";
       return;
     }
 
     elements.indexStatus.textContent = `${payload.counts.actors} actors, ${payload.counts.directors} directors, and ${payload.counts.producers} producers are available from the local ranked index${payload.generatedAt ? ` (built ${formatDateTime(payload.generatedAt)})` : ""}.`;
-    elements.peopleCount.textContent = String(
-      payload.counts.actors + payload.counts.directors + payload.counts.producers,
-    );
   } catch {
     // Keep the optimistic message when status endpoint is slow/unreachable.
   }

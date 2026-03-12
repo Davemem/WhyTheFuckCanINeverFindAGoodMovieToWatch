@@ -14,11 +14,8 @@ const elements = {
 
 const pageState = {
   department: readDepartmentFromUrl(),
-  directories: {
-    actors: [],
-    directors: [],
-    producers: [],
-  },
+  currentPeople: [],
+  currentTotal: 0,
   renderToken: 0,
 };
 
@@ -33,7 +30,7 @@ async function bootstrap() {
   bindEvents();
 
   const statusPromise = fetchJsonWithTimeout("/api/index-status", 2500);
-  await loadDirectoryForDepartment(pageState.department);
+  await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
   renderDirectory();
   elements.directoryStatus.textContent = "Local ranked people directory ready.";
 
@@ -42,8 +39,7 @@ async function bootstrap() {
     if (statusPayload.ready) {
       elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, and ${statusPayload.counts.producers} producers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
     } else {
-      elements.indexSummary.textContent =
-        "The local index is not available yet, so this page is showing the fallback sample.";
+      elements.indexSummary.textContent = "People index is syncing.";
     }
   } catch {
     elements.indexSummary.textContent = "Index status unavailable right now.";
@@ -51,7 +47,10 @@ async function bootstrap() {
 }
 
 function bindEvents() {
-  elements.directorySearch.addEventListener("input", handleControlChange);
+  const debouncedRefresh = debounce(() => {
+    void refreshDirectory();
+  }, 220);
+  elements.directorySearch.addEventListener("input", debouncedRefresh);
   elements.directorySort.addEventListener("change", handleControlChange);
   elements.directoryGrid.addEventListener("click", handlePersonSelection);
   window.addEventListener("popstate", handlePopState);
@@ -60,11 +59,9 @@ function bindEvents() {
 function renderDirectory() {
   pageState.renderToken += 1;
   const renderToken = pageState.renderToken;
-  const source = pageState.directories[pageState.department] || [];
-  const filtered = filterPeopleDirectory(source, elements.directorySearch.value);
-  const sorted = sortPeopleDirectory(filtered, elements.directorySort.value);
+  const sorted = pageState.currentPeople || [];
 
-  elements.directoryResultsSummary.textContent = `${sorted.length} ${departmentLabelPlural(pageState.department)} in this ranked view.`;
+  elements.directoryResultsSummary.textContent = `${pageState.currentTotal || sorted.length} ${departmentLabelPlural(pageState.department)} in this ranked view.`;
   elements.directoryGrid.replaceChildren();
 
   if (!sorted.length) {
@@ -137,7 +134,12 @@ function handlePersonSelection(event) {
 }
 
 function handleControlChange() {
+  void refreshDirectory();
+}
+
+async function refreshDirectory() {
   updateUrlState();
+  await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
   renderDirectory();
 }
 
@@ -146,9 +148,7 @@ async function handlePopState() {
   applyStateFromUrl();
   updateActiveTab();
   applyDepartmentCopy();
-  if (!pageState.directories[pageState.department]?.length) {
-    await loadDirectoryForDepartment(pageState.department);
-  }
+  await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
   renderDirectory();
 }
 
@@ -204,9 +204,27 @@ function updateUrlState() {
   window.history.replaceState(null, "", `/people.html?${params.toString()}`);
 }
 
-async function loadDirectoryForDepartment(department) {
-  const payload = await fetchJson(`/api/people-directory?department=${encodeURIComponent(department)}`);
-  pageState.directories[department] = payload.people || [];
+async function loadDirectoryForDepartment(department, options = {}) {
+  const params = new URLSearchParams();
+  params.set("department", department);
+  params.set("sort", options.sort || "score");
+  if (options.query) {
+    params.set("q", options.query);
+  }
+  params.set("limit", String(options.limit || 10));
+
+  const payload = await fetchJson(`/api/people-directory?${params.toString()}`);
+  pageState.currentPeople = payload.people || [];
+  pageState.currentTotal = Number(payload.total || pageState.currentPeople.length);
+}
+
+function currentDirectoryQuery() {
+  const query = elements.directorySearch.value.trim();
+  return {
+    query,
+    sort: elements.directorySort.value || "score",
+    limit: query ? 500 : 10,
+  };
 }
 
 function departmentLabelPlural(department) {
@@ -217,36 +235,6 @@ function departmentLabelPlural(department) {
     return "producers";
   }
   return "actors and actresses";
-}
-
-function filterPeopleDirectory(people, query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) {
-    return [...people];
-  }
-
-  return people.filter((person) => {
-    const haystack = [person.name, person.department, ...(person.knownFor || [])]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(normalizedQuery);
-  });
-}
-
-function sortPeopleDirectory(people, sort) {
-  const sorted = [...people];
-  sorted.sort((left, right) => {
-    switch (sort) {
-      case "name":
-        return left.name.localeCompare(right.name);
-      case "popularity":
-        return (right.popularity ?? -1) - (left.popularity ?? -1) || left.name.localeCompare(right.name);
-      case "score":
-      default:
-        return (right.score ?? -1) - (left.score ?? -1) || left.name.localeCompare(right.name);
-    }
-  });
-  return sorted;
 }
 
 async function fetchJson(url, options = {}) {
@@ -275,6 +263,14 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
   } finally {
     window.clearTimeout(timeoutId);
   }
+}
+
+function debounce(callback, delayMs) {
+  let timeoutId = 0;
+  return (...args) => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => callback(...args), delayMs);
+  };
 }
 
 function formatDateTime(value) {
