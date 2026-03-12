@@ -468,8 +468,21 @@ function renderPeopleDirectory(container, people) {
 }
 
 async function loadIndexStatus() {
+  if (!liveState.hasOmdb) {
+    elements.indexStatus.textContent = "Index status unavailable right now.";
+    return;
+  }
+
+  if (liveState.hasLocalPeopleIndex) {
+    elements.indexStatus.textContent = "Local ranked people index is connected.";
+  } else {
+    elements.indexStatus.textContent =
+      "Local people index is not available on this deployment yet. The app is falling back to the smaller live sample.";
+    return;
+  }
+
   try {
-    const payload = await fetchJson("/api/index-status");
+    const payload = await fetchJsonWithTimeout("/api/index-status", 2500);
     if (!payload.ready) {
       elements.indexStatus.textContent =
         "Local people index is not available on this deployment yet. The app is falling back to the smaller live sample.";
@@ -481,7 +494,7 @@ async function loadIndexStatus() {
       payload.counts.actors + payload.counts.directors + payload.counts.producers,
     );
   } catch {
-    elements.indexStatus.textContent = "Index status unavailable right now.";
+    // Keep the optimistic message when status endpoint is slow/unreachable.
   }
 }
 
@@ -787,8 +800,8 @@ function handlePopState() {
   renderIdleState();
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
   const text = await response.text();
   let payload;
   try {
@@ -803,6 +816,16 @@ async function fetchJson(url) {
   }
 
   return payload;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchJson(url, { signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function setStatus(message, isError) {

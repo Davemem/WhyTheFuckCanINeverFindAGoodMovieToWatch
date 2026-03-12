@@ -32,7 +32,7 @@ async function bootstrap() {
   applyStateFromUrl();
   bindEvents();
 
-  const statusPromise = fetchJson("/api/index-status");
+  const statusPromise = fetchJsonWithTimeout("/api/index-status", 2500);
   await loadDirectoryForDepartment(pageState.department);
   renderDirectory();
   elements.directoryStatus.textContent = "Local ranked people directory ready.";
@@ -249,8 +249,8 @@ function sortPeopleDirectory(people, sort) {
   return sorted;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
   const text = await response.text();
   let payload;
   try {
@@ -265,6 +265,16 @@ async function fetchJson(url) {
   }
 
   return payload;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchJson(url, { signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function formatDateTime(value) {

@@ -460,7 +460,9 @@ function buildDemoDiscoverPayload(filters) {
 async function buildBootstrapPayload(options = {}) {
   const includePeople = options.includePeople !== false;
   const localPeopleIndex = includePeople ? await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT) : null;
-  const hasLocalPeopleIndex = includePeople ? Boolean(localPeopleIndex) : false;
+  const hasLocalPeopleIndex = includePeople
+    ? Boolean(localPeopleIndex)
+    : await isLocalPeopleIndexAvailableFast();
   const resolvedGenres = await getGenresFast();
 
   const payload = {
@@ -873,6 +875,20 @@ async function isLocalPeopleIndexAvailable() {
   const dbStatus = await getIndexStatusFromPostgres();
   if (dbStatus && dbStatus.ready) {
     return true;
+  }
+
+  const localIndex = readPeopleIndex();
+  return Boolean(localIndex);
+}
+
+async function isLocalPeopleIndexAvailableFast() {
+  try {
+    const status = await withTimeout(getIndexStatusFromPostgres(), 1500);
+    if (status && status.ready) {
+      return true;
+    }
+  } catch {
+    // Fall through to local file check.
   }
 
   const localIndex = readPeopleIndex();
