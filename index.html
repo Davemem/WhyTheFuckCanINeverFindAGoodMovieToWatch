@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260312b" />
+    <link rel="stylesheet" href="./styles.css?v=20260313d" />
   </head>
   <body>
     <div class="page-shell">
@@ -22,7 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a class="is-active" href="/">Home</a>
           <a href="/people.html?department=actors">Actors / Actresses</a>
-          <a href="/people.html?department=directors">Producers / Directors</a>
+          <a href="/people.html?department=producers">Producers / Directors</a>
           <a href="/saved.html">Saved</a>
         </nav>
       </div>
@@ -70,7 +70,8 @@
                 name="person-search"
                 type="search"
                 list="people-suggestions"
-                placeholder="Try: Florence Pugh, Denis Villeneuve, Emma Stone"
+                data-placeholder-profile="mixed"
+                placeholder="Try: Kevin Feige, Kathleen Kennedy, Denis Villeneuve"
               />
             </label>
             <datalist id="people-suggestions"></datalist>
@@ -157,15 +158,38 @@
           <p id="index-status">Local people index not built yet.</p>
         </section>
 
+        <section
+          class="catalog-section results-section"
+          id="results-section"
+          aria-live="polite"
+          aria-labelledby="results-title"
+          hidden
+        >
+          <div class="results-header">
+            <div>
+              <p class="section-label">Results</p>
+              <h2 id="results-title">Movies selected by the people behind them</h2>
+            </div>
+            <div class="section-actions">
+              <p id="results-summary" class="results-summary"></p>
+              <button id="results-back" type="button" class="ghost-button">
+                Back to suggestions
+              </button>
+            </div>
+          </div>
+          <section id="results-grid" class="results-grid" aria-live="polite"></section>
+        </section>
+
+        <div id="suggested-panels" class="suggested-panels">
         <section class="catalog-section" id="actors" aria-labelledby="actors-preview-heading">
           <div class="results-header">
             <div>
               <p class="section-label">Actors / Actresses</p>
-              <h2 id="actors-preview-heading">Top 5 actors</h2>
+              <h2 id="actors-preview-heading">Suggested 10 actors</h2>
             </div>
             <div class="section-actions">
               <p id="actors-summary" class="results-summary">
-                The top 5 actors from the ranked local index.
+                Suggested actors from the ranked local index.
               </p>
               <button id="actors-refresh" type="button" class="ghost-button">
                 Refresh picks
@@ -179,11 +203,11 @@
           <div class="results-header">
             <div>
               <p class="section-label">Producers / Directors</p>
-              <h2 id="producers-preview-heading">Today&apos;s rotating 5</h2>
+              <h2 id="producers-preview-heading">Suggested 10 producers / directors</h2>
             </div>
             <div class="section-actions">
               <p id="producers-summary" class="results-summary">
-                5 producer and director picks shown here.
+                Suggested producer and director picks.
               </p>
               <button id="producers-refresh" type="button" class="ghost-button">
                 Refresh picks
@@ -192,17 +216,7 @@
           </div>
           <div id="person-chips" class="rotating-grid compact-grid"></div>
         </section>
-
-        <section class="catalog-section results-section" aria-live="polite" aria-labelledby="results-title">
-          <div class="results-header">
-            <div>
-              <p class="section-label">Results</p>
-              <h2 id="results-title">Movies selected by the people behind them</h2>
-            </div>
-            <p id="results-summary" class="results-summary"></p>
-          </div>
-          <section id="results-grid" class="results-grid" aria-live="polite"></section>
-        </section>
+        </div>
       </main>
     </div>
 
@@ -306,6 +320,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=20260313a" defer></script>
+    <script src="./app.js?v=20260313e" defer></script>
   </body>
 </html>

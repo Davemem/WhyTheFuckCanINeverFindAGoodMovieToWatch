@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260312b" />
+    <link rel="stylesheet" href="./styles.css?v=20260313d" />
   </head>
   <body>
     <div class="page-shell">
@@ -22,7 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a href="/">Home</a>
           <a id="nav-actors" href="/people.html?department=actors">Actors / Actresses</a>
-          <a id="nav-producers" href="/people.html?department=directors">Producers / Directors</a>
+          <a id="nav-producers" href="/people.html?department=producers">Producers / Directors</a>
           <a href="/saved.html">Saved</a>
         </nav>
       </div>
@@ -34,6 +34,11 @@
           <p id="directory-copy" class="hero-text">
             Browse the full local ranked directory and jump back into the movie catalog from any person.
           </p>
+          <nav class="people-page-tabs" aria-label="People directories">
+            <a id="tab-actors" href="/people.html?department=actors">Actors</a>
+            <a id="tab-directors" href="/people.html?department=directors">Directors</a>
+            <a id="tab-producers" href="/people.html?department=producers">Producers</a>
+          </nav>
           <p id="directory-status" class="hero-subtext">
             Loading local people index.
           </p>
@@ -73,7 +78,8 @@
                 name="person"
                 type="search"
                 list="catalog-people-suggestions"
-                placeholder="Try: Florence Pugh, Denis Villeneuve, Emma Stone"
+                data-placeholder-profile="producer"
+                placeholder="Try: Kevin Feige, Kathleen Kennedy, Jerry Bruckheimer"
               />
             </label>
             <datalist id="catalog-people-suggestions"></datalist>
@@ -137,7 +143,7 @@
           </form>
         </section>
 
-        <section class="status-strip index-status-strip" aria-live="polite">
+        <section class="status-strip index-status-strip" aria-live="polite" hidden>
           <p id="index-summary">Waiting for the local ranked directory.</p>
         </section>
 
@@ -145,7 +151,7 @@
           <div class="results-header">
             <div>
               <p class="section-label">Directory</p>
-              <h2 id="directory-grid-heading">Full ranked list</h2>
+              <h2 id="directory-grid-heading">Suggested 50</h2>
             </div>
             <p id="directory-results-summary" class="results-summary"></p>
           </div>
@@ -167,7 +173,7 @@
       </article>
     </template>
 
-    <script src="./people.js?v=20260312b" defer></script>
-    <script src="./catalog-search.js?v=20260312b" defer></script>
+    <script src="./people.js?v=20260313e" defer></script>
+    <script src="./catalog-search.js?v=20260313e" defer></script>
   </body>
 </html>

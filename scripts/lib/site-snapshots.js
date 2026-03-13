@@ -1,9 +1,23 @@
 async function publishSiteSnapshot(pool) {
-  const [actorsTop5, actorsTop10, directorsTop10, producersTop10, counts] = await Promise.all([
+  const [
+    actorsTop5,
+    actorsTop10,
+    directorsTop10,
+    producersTop10,
+    actorsBrowse,
+    directorsBrowse,
+    producersBrowse,
+    placeholderPools,
+    counts,
+  ] = await Promise.all([
     fetchRankedPeople(pool, "actors", 5),
     fetchRankedPeople(pool, "actors", 10),
     fetchRankedPeople(pool, "directors", 10),
     fetchRankedPeople(pool, "producers", 10),
+    fetchRankedPeople(pool, "actors", 120),
+    fetchRankedPeople(pool, "directors", 120),
+    fetchRankedPeople(pool, "producers", 120),
+    fetchPlaceholderPools(pool),
     fetchCounts(pool),
   ]);
 
@@ -12,6 +26,10 @@ async function publishSiteSnapshot(pool) {
     actorsTop10,
     directorsTop10,
     producersTop10,
+    actorsBrowse,
+    directorsBrowse,
+    producersBrowse,
+    placeholderPools,
     counts,
   };
 
@@ -27,6 +45,20 @@ async function publishSiteSnapshot(pool) {
   );
 
   return payload;
+}
+
+async function fetchPlaceholderPools(pool) {
+  const [actors, directors, producers] = await Promise.all([
+    fetchRankedPeople(pool, "actors", 500),
+    fetchRankedPeople(pool, "directors", 500),
+    fetchRankedPeople(pool, "producers", 500),
+  ]);
+
+  return {
+    actors: actors.map((person) => person.name).filter(Boolean),
+    directors: directors.map((person) => person.name).filter(Boolean),
+    producers: producers.map((person) => person.name).filter(Boolean),
+  };
 }
 
 async function fetchCounts(pool) {

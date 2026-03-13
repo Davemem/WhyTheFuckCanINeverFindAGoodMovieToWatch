@@ -22,7 +22,8 @@ const DISCOVER_HYDRATE_LIMIT = 6;
 const ENRICH_BATCH_LIMIT = 2;
 const PERSON_RESULT_LIMIT = 200;
 const FEATURED_PEOPLE_PAGE_COUNT = 15;
-const FEATURED_PEOPLE_LIMIT = 5;
+const FEATURED_PEOPLE_LIMIT = 10;
+const SNAPSHOT_BROWSE_LIMIT = 50;
 const DB_FEATURED_LIMIT = 5000;
 const DB_BOOTSTRAP_LIMIT = 20;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
@@ -463,12 +464,13 @@ async function buildBootstrapPayload(options = {}) {
       hasLocalPeopleIndex,
       peopleCounts: snapshot?.counts || { actors: 0, directors: 0, producers: 0 },
       peopleGeneratedAt: snapshot?.generatedAt || null,
+      placeholderPools: snapshot?.placeholderPools || null,
     },
     genres: resolvedGenres,
   };
 
-  if (snapshot?.actorsTop5?.length) {
-    payload.featuredActors = snapshot.actorsTop5;
+  if (snapshot?.actorsTop10?.length) {
+    payload.featuredActors = snapshot.actorsTop10;
     payload.featuredDirectors = (snapshot.directorsTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
     payload.featuredProducers = (snapshot.producersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
   } else if (includePeople) {
@@ -485,9 +487,9 @@ async function buildFeaturedPeoplePayload() {
   const snapshot = await getSiteSnapshotFromPostgres();
   if (snapshot) {
     return {
-      featuredActors: snapshot.actorsTop5 || [],
-      featuredDirectors: (snapshot.directorsTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT),
-      featuredProducers: (snapshot.producersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT),
+      featuredActors: snapshot.actorsBrowse || snapshot.actorsTop10 || [],
+      featuredDirectors: snapshot.directorsBrowse || snapshot.directorsTop10 || [],
+      featuredProducers: snapshot.producersBrowse || snapshot.producersTop10 || [],
     };
   }
 
@@ -1573,11 +1575,16 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
 
   try {
     const snapshot = await getSiteSnapshotFromPostgres();
-    if (snapshot && limit <= 10) {
+    const hasSnapshotBrowsePools =
+      Array.isArray(snapshot?.actorsBrowse) &&
+      Array.isArray(snapshot?.directorsBrowse) &&
+      Array.isArray(snapshot?.producersBrowse);
+
+    if (snapshot && hasSnapshotBrowsePools && limit <= SNAPSHOT_BROWSE_LIMIT) {
       const value = {
-        actors: snapshot.actorsTop10 || [],
-        directors: snapshot.directorsTop10 || [],
-        producers: snapshot.producersTop10 || [],
+        actors: (snapshot.actorsBrowse || snapshot.actorsTop10 || []).slice(0, limit),
+        directors: (snapshot.directorsBrowse || snapshot.directorsTop10 || []).slice(0, limit),
+        producers: (snapshot.producersBrowse || snapshot.producersTop10 || []).slice(0, limit),
       };
       const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
       cache.set(cacheKey, entry);

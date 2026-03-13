@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260312b" />
+    <link rel="stylesheet" href="./styles.css?v=20260313d" />
   </head>
   <body>
     <div class="page-shell">
@@ -22,7 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a href="/">Home</a>
           <a href="/people.html?department=actors">Actors / Actresses</a>
-          <a href="/people.html?department=directors">Producers / Directors</a>
+          <a href="/people.html?department=producers">Producers / Directors</a>
           <a class="is-active" href="/saved.html">Saved</a>
         </nav>
       </div>
@@ -65,7 +65,8 @@
                 name="person"
                 type="search"
                 list="saved-catalog-people-suggestions"
-                placeholder="Try: Florence Pugh, Denis Villeneuve, Emma Stone"
+                data-placeholder-profile="producer"
+                placeholder="Try: Kevin Feige, Kathleen Kennedy, Jerry Bruckheimer"
               />
             </label>
             <datalist id="saved-catalog-people-suggestions"></datalist>
@@ -199,7 +200,7 @@
       </article>
     </template>
 
-    <script src="./saved.js?v=20260312b" defer></script>
-    <script src="./catalog-search.js?v=20260312b" defer></script>
+    <script src="./saved.js?v=20260313e" defer></script>
+    <script src="./catalog-search.js?v=20260313e" defer></script>
   </body>
 </html>

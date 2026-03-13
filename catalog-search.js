@@ -101,6 +101,7 @@ async function setupCatalogSearch(form) {
 
   const bootstrap = await fetchBootstrapLite();
   populateGenres(genreSelect, bootstrap.genres || []);
+  applyRandomPlaceholder(personInput, bootstrap.config?.placeholderPools || null);
 }
 
 function populateGenres(select, genres) {
@@ -134,6 +135,49 @@ function buildDecadeOptions() {
     decades.push(decade);
   }
   return decades;
+}
+
+function applyRandomPlaceholder(input, pools) {
+  if (!input || !pools) {
+    return;
+  }
+
+  const profile = input.dataset.placeholderProfile || "mixed";
+  const parts =
+    profile === "producer"
+      ? [
+          pickRandomName(pools.producers, `producer-a:${window.location.pathname}`),
+          pickRandomName(pools.producers, `producer-b:${window.location.pathname}`, 1),
+          pickRandomName(pools.directors, `director:${window.location.pathname}`),
+        ]
+      : [
+          pickRandomName(pools.actors, `actor:${window.location.pathname}`),
+          pickRandomName(pools.producers, `producer:${window.location.pathname}`),
+          pickRandomName(pools.directors, `director:${window.location.pathname}`),
+        ];
+
+  const names = parts.filter(Boolean);
+  if (names.length) {
+    input.placeholder = `Try: ${names.join(", ")}`;
+  }
+}
+
+function pickRandomName(list, key, salt = 0) {
+  if (!Array.isArray(list) || !list.length) {
+    return "";
+  }
+
+  const seed = `${new Date().toISOString().slice(0, 10)}:${key}:${salt}`;
+  const start = hashString(seed) % Math.min(list.length, 500);
+  return list[start] || list[0] || "";
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
 async function fetchJson(url) {

@@ -19,6 +19,8 @@ const elements = {
   sortFilter: document.querySelector("#sort-filter"),
   resetButton: document.querySelector("#reset-button"),
   resultsGrid: document.querySelector("#results-grid"),
+  resultsSection: document.querySelector("#results-section"),
+  resultsBack: document.querySelector("#results-back"),
   resultsSummary: document.querySelector("#results-summary"),
   movieCount: document.querySelector("#movie-count"),
   peopleCount: document.querySelector("#people-count"),
@@ -36,6 +38,7 @@ const elements = {
   rotatingPersonTemplate: document.querySelector("#rotating-person-template"),
   rankedPersonTemplate: document.querySelector("#ranked-person-template"),
   watchlistGrid: document.querySelector("#watchlist-grid"),
+  suggestedPanels: document.querySelector("#suggested-panels"),
 };
 
 const watchlist = loadWatchlist();
@@ -79,6 +82,7 @@ async function bootstrap() {
   const peopleCounts = payload.config?.peopleCounts || { actors: 0, directors: 0, producers: 0 };
   const totalPeopleCount = Number(peopleCounts.actors || 0) + Number(peopleCounts.directors || 0) + Number(peopleCounts.producers || 0);
 
+  applyRandomPlaceholder(elements.personSearch, payload.config?.placeholderPools || null);
   elements.imdbMin.value = "0";
   elements.rtMin.value = "0";
 
@@ -106,7 +110,7 @@ async function bootstrap() {
   renderWatchlist();
   renderIdleState();
   const startupTasks = [];
-  if (!liveState.featuredActors.length) {
+  if (!liveState.featuredActors.length || liveState.featuredActors.length <= 10) {
     startupTasks.push(loadFeaturedPeople());
   }
   startupTasks.push(loadIndexStatus(payload.config));
@@ -124,13 +128,15 @@ async function loadFeaturedPeople() {
     liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
     liveState.featuredProducers = payload.featuredProducers || [];
 
-    elements.peopleCount.textContent = String(
-      dedupePeopleById([
-        ...liveState.featuredActors,
-        ...liveState.featuredDirectors,
-        ...liveState.featuredProducers,
-      ]).length,
-    );
+    if (!Number(elements.peopleCount.textContent || "0")) {
+      elements.peopleCount.textContent = String(
+        dedupePeopleById([
+          ...liveState.featuredActors,
+          ...liveState.featuredDirectors,
+          ...liveState.featuredProducers,
+        ]).length,
+      );
+    }
     renderActorPreview();
     renderFeaturedPeople();
   } catch {
@@ -223,6 +229,9 @@ function bindEvents() {
   if (elements.resetButton) {
     elements.resetButton.addEventListener("click", resetFilters);
   }
+  if (elements.resultsBack) {
+    elements.resultsBack.addEventListener("click", resetFilters);
+  }
   window.addEventListener("popstate", handlePopState);
 }
 
@@ -308,6 +317,7 @@ function syncRangeLabels() {
 function renderMovies(movies) {
   liveState.renderToken += 1;
   const renderToken = liveState.renderToken;
+  setSearchMode(true);
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = `${liveState.totalMatches || movies.length} live movie${
     (liveState.totalMatches || movies.length) === 1 ? "" : "s"
@@ -348,14 +358,10 @@ function renderMovies(movies) {
 
 function renderIdleState() {
   liveState.renderToken += 1;
+  setSearchMode(false);
   elements.resultsGrid.replaceChildren();
   elements.resultsTitle.textContent = "Movies selected by the people behind them";
   elements.resultsSummary.textContent = "Start with a person, genre, decade, or rating filter.";
-  const idleState = document.createElement("div");
-  idleState.className = "empty-state";
-  idleState.innerHTML =
-    "<h3>Catalog is standing by.</h3><p>Type a person, pick a genre or decade, or move the ratings sliders to fetch live results.</p>";
-  elements.resultsGrid.append(idleState);
 }
 
 function buildMovieCard(movie) {
@@ -434,13 +440,13 @@ function renderActorPreview() {
     return;
   }
 
-  const preview = pickTopPeopleForRole("actors", 5);
+  const preview = pickRotatingPeopleForRole("actors", 10);
   elements.actorsGrid.replaceChildren();
   preview.forEach((person, index) => {
     elements.actorsGrid.append(buildRotatingPersonCard(person, index + 1));
   });
   elements.actorsSummary.textContent = preview.length
-    ? `${preview.length} top actors shown here.`
+    ? `${preview.length} actors shown here. Refresh to reshuffle this set for yourself.`
     : "Actor preview unavailable right now.";
 }
 
@@ -458,6 +464,41 @@ function applyDevStatusVisibility() {
   });
 }
 
+function applyRandomPlaceholder(input, pools) {
+  if (!input || !pools) {
+    return;
+  }
+
+  const profile = input.dataset.placeholderProfile || "mixed";
+  const parts =
+    profile === "producer"
+      ? [
+          pickRandomName(pools.producers, `producer-a:${window.location.pathname}`),
+          pickRandomName(pools.producers, `producer-b:${window.location.pathname}`, 1),
+          pickRandomName(pools.directors, `director:${window.location.pathname}`),
+        ]
+      : [
+          pickRandomName(pools.actors, `actor:${window.location.pathname}`),
+          pickRandomName(pools.producers, `producer:${window.location.pathname}`),
+          pickRandomName(pools.directors, `director:${window.location.pathname}`),
+        ];
+
+  const names = parts.filter(Boolean);
+  if (names.length) {
+    input.placeholder = `Try: ${names.join(", ")}`;
+  }
+}
+
+function pickRandomName(list, key, salt = 0) {
+  if (!Array.isArray(list) || !list.length) {
+    return "";
+  }
+
+  const seed = `${new Date().toISOString().slice(0, 10)}:${key}:${salt}`;
+  const start = hashString(seed) % Math.min(list.length, 500);
+  return list[start] || list[0] || "";
+}
+
 function refreshRotatingSection(role) {
   liveState.refreshTokens[role] = Math.floor(Math.random() * 1000000);
   if (role === "actors") {
@@ -468,11 +509,6 @@ function refreshRotatingSection(role) {
   if (elements.personChips) {
     renderFeaturedPeople();
   }
-}
-
-function pickTopPeopleForRole(role, count) {
-  const ranked = [...dedupePeopleById(getRotatingPool(role))].sort(compareDiscoveryPeople);
-  return ranked.slice(0, count);
 }
 
 function buildRotatingPersonCard(person, rank) {
@@ -668,6 +704,7 @@ function syncWatchlistMovieDetails(enrichedById) {
 
 function renderLoadingState() {
   liveState.renderToken += 1;
+  setSearchMode(true);
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
@@ -677,6 +714,7 @@ function renderLoadingState() {
 
 function renderErrorState(message) {
   liveState.renderToken += 1;
+  setSearchMode(true);
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");
   errorState.className = "empty-state";
@@ -861,6 +899,15 @@ function handlePopState() {
   renderIdleState();
 }
 
+function setSearchMode(isSearchMode) {
+  if (elements.resultsSection) {
+    elements.resultsSection.hidden = !isSearchMode;
+  }
+  if (elements.suggestedPanels) {
+    elements.suggestedPanels.hidden = isSearchMode;
+  }
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -962,9 +1009,8 @@ function sortPeopleDirectory(people, sort) {
   return sorted;
 }
 
-function pickRotatingPeopleForRole(role) {
+function pickRotatingPeopleForRole(role, count = 10) {
   const people = getRotatingPool(role);
-  const count = 5;
   return pickFromRolePool(people, count, `${role}:${getDailySeed()}:${liveState.refreshTokens[role]}`);
 }
 

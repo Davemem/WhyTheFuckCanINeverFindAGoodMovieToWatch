@@ -10,7 +10,11 @@ const elements = {
   cardTemplate: document.querySelector("#person-card-template"),
   navActors: document.querySelector("#nav-actors"),
   navProducers: document.querySelector("#nav-producers"),
+  tabActors: document.querySelector("#tab-actors"),
+  tabDirectors: document.querySelector("#tab-directors"),
+  tabProducers: document.querySelector("#tab-producers"),
 };
+const devStatusFlagKey = "wtfcineverfind-debug";
 
 const pageState = {
   department: readDepartmentFromUrl(),
@@ -24,6 +28,7 @@ bootstrap().catch((error) => {
 });
 
 async function bootstrap() {
+  applyDevStatusVisibility();
   updateActiveTab();
   applyDepartmentCopy();
   applyStateFromUrl();
@@ -33,6 +38,7 @@ async function bootstrap() {
   await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
   renderDirectory();
   elements.directoryStatus.textContent = "Local ranked people directory ready.";
+  elements.indexSummary.textContent = "";
 
   try {
     const statusPayload = await statusPromise;
@@ -43,6 +49,17 @@ async function bootstrap() {
     }
   } catch {
     elements.indexSummary.textContent = "Index status unavailable right now.";
+  }
+}
+
+function applyDevStatusVisibility() {
+  const showDevStatus =
+    new URLSearchParams(window.location.search).get("debug") === "1" ||
+    window.localStorage.getItem(devStatusFlagKey) === "1";
+
+  const strip = elements.indexSummary?.closest(".status-strip");
+  if (strip) {
+    strip.hidden = !showDevStatus;
   }
 }
 
@@ -61,7 +78,7 @@ function renderDirectory() {
   const renderToken = pageState.renderToken;
   const sorted = pageState.currentPeople || [];
 
-  elements.directoryResultsSummary.textContent = `${pageState.currentTotal || sorted.length} ${departmentLabelPlural(pageState.department)} in this ranked view.`;
+  elements.directoryResultsSummary.textContent = `${pageState.currentTotal || sorted.length} ${departmentLabelPlural(pageState.department)} in this view.`;
   elements.directoryGrid.replaceChildren();
 
   if (!sorted.length) {
@@ -175,7 +192,13 @@ function applyDepartmentCopy() {
 
 function updateActiveTab() {
   elements.navActors.classList.toggle("is-active", pageState.department === "actors");
-  elements.navProducers.classList.toggle("is-active", pageState.department !== "actors");
+  elements.navProducers.classList.toggle(
+    "is-active",
+    pageState.department === "directors" || pageState.department === "producers",
+  );
+  elements.tabActors?.classList.toggle("is-active", pageState.department === "actors");
+  elements.tabDirectors?.classList.toggle("is-active", pageState.department === "directors");
+  elements.tabProducers?.classList.toggle("is-active", pageState.department === "producers");
 }
 
 function readDepartmentFromUrl() {
@@ -223,7 +246,7 @@ function currentDirectoryQuery() {
   return {
     query,
     sort: elements.directorySort.value || "score",
-    limit: query ? 500 : 10,
+    limit: query ? 500 : 50,
   };
 }
 
