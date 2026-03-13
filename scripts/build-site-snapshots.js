@@ -17,7 +17,7 @@ async function main() {
     const payload = await publishSiteSnapshot(pool);
 
     process.stdout.write(
-      `Published site snapshot. actors5=${payload.actorsTop5.length} actors10=${payload.actorsTop10.length} directors10=${payload.directorsTop10.length} producers10=${payload.producersTop10.length}\n`,
+      `Published site snapshot. actors10=${payload.actorsTop10.length} directors10=${payload.directorsTop10.length} producers10=${payload.producersTop10.length} actorsBrowse=${payload.actorsBrowse.length} directorsBrowse=${payload.directorsBrowse.length} producersBrowse=${payload.producersBrowse.length}\n`,
     );
   } finally {
     await pool.end();

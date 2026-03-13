@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260313e" />
+    <link rel="stylesheet" href="./styles.css?v=20260313f" />
   </head>
   <body>
     <div class="page-shell">
@@ -26,44 +26,6 @@
           <a href="/saved.html">Saved</a>
         </nav>
       </div>
-
-      <header class="hero people-page-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">ranked people directory</p>
-          <h1 id="directory-title">Actors</h1>
-          <p id="directory-copy" class="hero-text">
-            Browse the full local ranked directory and jump back into the movie catalog from any person.
-          </p>
-          <nav class="people-page-tabs" aria-label="People directories">
-            <a id="tab-actors" href="/people.html?department=actors">Actors</a>
-            <a id="tab-directors" href="/people.html?department=directors">Directors</a>
-            <a id="tab-producers" href="/people.html?department=producers">Producers</a>
-          </nav>
-          <p id="directory-status" class="hero-subtext">
-            Loading local people index.
-          </p>
-        </div>
-
-        <section class="filter-panel" aria-label="Directory filters">
-          <div class="filter-panel-header">
-            <h2>Refine this directory</h2>
-          </div>
-          <div class="directory-toolbar">
-            <label class="field">
-              <span>Search this list</span>
-              <input id="directory-search" type="search" placeholder="Search people or known-for titles" />
-            </label>
-            <label class="field">
-              <span>Sort this list</span>
-              <select id="directory-sort">
-                <option value="score">Highest rated</option>
-                <option value="name">Alphabetical</option>
-                <option value="popularity">Most popular</option>
-              </select>
-            </label>
-          </div>
-        </section>
-      </header>
 
       <main>
         <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
@@ -148,6 +110,35 @@
         </section>
 
         <section class="catalog-section" aria-labelledby="directory-grid-heading">
+          <div class="results-header directory-header">
+            <div>
+              <p class="section-label">Ranked people directory</p>
+              <h1 id="directory-title" class="directory-page-title">Actors</h1>
+              <p id="directory-copy" class="results-summary directory-copy">
+                Browse the full local ranked directory and jump back into the movie catalog from any person.
+              </p>
+              <p id="directory-status" class="directory-inline-status">Loading local people index.</p>
+            </div>
+            <nav class="people-page-tabs" aria-label="People directories">
+              <a id="tab-actors" href="/people.html?department=actors">Actors</a>
+              <a id="tab-directors" href="/people.html?department=directors">Directors</a>
+              <a id="tab-producers" href="/people.html?department=producers">Producers</a>
+            </nav>
+          </div>
+          <div class="directory-toolbar">
+            <label class="field">
+              <span>Search this list</span>
+              <input id="directory-search" type="search" placeholder="Search people or known-for titles" />
+            </label>
+            <label class="field">
+              <span>Sort this list</span>
+              <select id="directory-sort">
+                <option value="score">Highest rated</option>
+                <option value="name">Alphabetical</option>
+                <option value="popularity">Most popular</option>
+              </select>
+            </label>
+          </div>
           <div class="results-header">
             <div>
               <p class="section-label">Directory</p>
@@ -173,7 +164,7 @@
       </article>
     </template>
 
-    <script src="./people.js?v=20260313e" defer></script>
-    <script src="./catalog-search.js?v=20260313e" defer></script>
+    <script src="./people.js?v=20260313f" defer></script>
+    <script src="./catalog-search.js?v=20260313f" defer></script>
   </body>
 </html>

@@ -104,7 +104,13 @@ async function main() {
     }
 
     if (successCount > 0) {
-      await publishSiteSnapshot(pool);
+      try {
+        await publishSiteSnapshot(pool);
+      } catch (error) {
+        process.stderr.write(
+          `Snapshot publish failed after hydrate batch: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
     }
 
     const notes = `success=${successCount};failed=${failureCount}${failures.length ? `;errors=${failures.slice(0, 8).join("|")}` : ""}`;

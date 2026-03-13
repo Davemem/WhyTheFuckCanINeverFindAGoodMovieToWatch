@@ -27,7 +27,13 @@ async function main() {
   await applySchema(pool);
   await pool.end();
 
-  await runScript("build-site-snapshots.js");
+  try {
+    await runScript("build-site-snapshots.js");
+  } catch (error) {
+    process.stderr.write(
+      `Initial snapshot publish failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
 
   nextIngestAt = Date.now();
 

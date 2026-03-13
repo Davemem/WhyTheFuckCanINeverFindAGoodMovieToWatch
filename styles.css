@@ -41,14 +41,14 @@ body::before {
 .page-shell {
   width: min(1320px, calc(100% - 28px));
   margin: 0 auto;
-  padding: 20px 0 36px;
+  padding: 10px 0 36px;
 }
 
 .title-bar {
   position: sticky;
-  top: 10px;
+  top: 0;
   z-index: 20;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding: 10px 14px;
   display: flex;
   justify-content: flex-end;
@@ -583,6 +583,25 @@ main {
   background: var(--text);
   color: #fff8f1;
   border-color: transparent;
+}
+
+.directory-header {
+  align-items: flex-start;
+}
+
+.directory-page-title {
+  font-size: clamp(2rem, 4vw, 3.1rem);
+}
+
+.directory-copy {
+  margin-top: 6px;
+  max-width: 56ch;
+}
+
+.directory-inline-status {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .directory-link-card {
