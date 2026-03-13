@@ -900,6 +900,7 @@ function handlePopState() {
 }
 
 function setSearchMode(isSearchMode) {
+  document.body.classList.toggle("has-search-results", Boolean(isSearchMode));
   if (elements.resultsSection) {
     elements.resultsSection.hidden = !isSearchMode;
   }

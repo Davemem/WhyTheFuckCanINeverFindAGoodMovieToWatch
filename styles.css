@@ -483,6 +483,10 @@ main {
   gap: 18px;
 }
 
+body.has-search-results .suggested-panels {
+  display: none !important;
+}
+
 .results-section {
   background:
     linear-gradient(180deg, rgba(255, 248, 236, 0.7), rgba(244, 239, 230, 0.86));

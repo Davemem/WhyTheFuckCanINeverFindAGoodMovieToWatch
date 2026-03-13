@@ -1,25 +1,23 @@
 async function publishSiteSnapshot(pool) {
-  const [
-    actorsTop5,
-    actorsTop10,
-    directorsTop10,
-    producersTop10,
-    actorsBrowse,
-    directorsBrowse,
-    producersBrowse,
-    placeholderPools,
-    counts,
-  ] = await Promise.all([
-    fetchRankedPeople(pool, "actors", 5),
-    fetchRankedPeople(pool, "actors", 10),
-    fetchRankedPeople(pool, "directors", 10),
-    fetchRankedPeople(pool, "producers", 10),
-    fetchRankedPeople(pool, "actors", 120),
-    fetchRankedPeople(pool, "directors", 120),
-    fetchRankedPeople(pool, "producers", 120),
-    fetchPlaceholderPools(pool),
+  const [actorsRanked, directorsRanked, producersRanked, counts] = await Promise.all([
+    fetchRankedPeople(pool, "actors", 500),
+    fetchRankedPeople(pool, "directors", 500),
+    fetchRankedPeople(pool, "producers", 500),
     fetchCounts(pool),
   ]);
+
+  const actorsTop10 = buildSuggestedPool(actorsRanked, 10, 2);
+  const directorsTop10 = buildSuggestedPool(directorsRanked, 10, 2);
+  const producersTop10 = buildSuggestedPool(producersRanked, 10, 2);
+  const actorsBrowse = buildSuggestedPool(actorsRanked, 50, 10);
+  const directorsBrowse = buildSuggestedPool(directorsRanked, 50, 10);
+  const producersBrowse = buildSuggestedPool(producersRanked, 50, 10);
+  const placeholderPools = {
+    actors: actorsRanked.map((person) => person.name).filter(Boolean),
+    directors: directorsRanked.map((person) => person.name).filter(Boolean),
+    producers: producersRanked.map((person) => person.name).filter(Boolean),
+  };
+  const actorsTop5 = actorsTop10.slice(0, 5);
 
   const payload = {
     actorsTop5,
@@ -45,20 +43,6 @@ async function publishSiteSnapshot(pool) {
   );
 
   return payload;
-}
-
-async function fetchPlaceholderPools(pool) {
-  const [actors, directors, producers] = await Promise.all([
-    fetchRankedPeople(pool, "actors", 500),
-    fetchRankedPeople(pool, "directors", 500),
-    fetchRankedPeople(pool, "producers", 500),
-  ]);
-
-  return {
-    actors: actors.map((person) => person.name).filter(Boolean),
-    directors: directors.map((person) => person.name).filter(Boolean),
-    producers: producers.map((person) => person.name).filter(Boolean),
-  };
 }
 
 async function fetchCounts(pool) {
@@ -88,6 +72,7 @@ async function fetchRankedPeople(pool, role, limit) {
           COALESCE(p.known_for_department, 'Person') AS department,
           p.profile_path,
           COALESCE(p.popularity, 0) AS popularity,
+          COUNT(DISTINCT m.movie_id)::int AS credit_count,
           ROUND((
             SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
             / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
@@ -97,7 +82,7 @@ async function fetchRankedPeople(pool, role, limit) {
         JOIN movies m ON m.movie_id = pmc.movie_id
         WHERE ${roleFilter}
         GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity
-        ORDER BY score DESC NULLS LAST, popularity DESC NULLS LAST, p.name ASC
+        ORDER BY score DESC NULLS LAST, credit_count DESC NULLS LAST, popularity DESC NULLS LAST, p.name ASC
         LIMIT $1
       )
       SELECT
@@ -106,6 +91,7 @@ async function fetchRankedPeople(pool, role, limit) {
         r.department,
         r.profile_path,
         r.popularity,
+        r.credit_count,
         r.score,
         COALESCE((
           SELECT ARRAY(
@@ -119,7 +105,7 @@ async function fetchRankedPeople(pool, role, limit) {
           )
         ), ARRAY[]::text[]) AS known_for
       FROM ranked r
-      ORDER BY r.score DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
+      ORDER BY r.score DESC NULLS LAST, r.credit_count DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
     `,
     [limit],
   );
@@ -132,6 +118,7 @@ async function fetchRankedPeople(pool, role, limit) {
       department: row.department || "Person",
       score,
       popularity: Number(row.popularity || 0),
+      creditCount: Number(row.credit_count || 0),
       knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
       profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
       ratingLabel: score ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
@@ -147,6 +134,35 @@ function roleToSqlFilter(role, alias) {
     return `${alias}.credit_type = 'crew' AND ${alias}.job = 'Director'`;
   }
   return `${alias}.credit_type = 'crew' AND ${alias}.job ILIKE '%producer%'`;
+}
+
+function buildSuggestedPool(people, limit, wildcardCount = 2) {
+  const ranked = [...people];
+  const preferred = ranked.filter((person) => {
+    const score = Number(person.score);
+    return Number.isFinite(score) && score >= 7 && score <= 9.5 && Number(person.creditCount || 0) >= 2;
+  });
+  const wildcards = ranked.filter((person) => !preferred.some((candidate) => candidate.id === person.id));
+  const preferredTarget = Math.max(0, limit - Math.min(wildcardCount, limit));
+  const result = [...preferred.slice(0, preferredTarget)];
+
+  for (const person of wildcards) {
+    if (result.length >= limit) {
+      break;
+    }
+    result.push(person);
+  }
+
+  if (result.length < limit) {
+    for (const person of preferred.slice(preferredTarget)) {
+      if (result.length >= limit || result.some((candidate) => candidate.id === person.id)) {
+        continue;
+      }
+      result.push(person);
+    }
+  }
+
+  return result.slice(0, limit);
 }
 
 module.exports = {

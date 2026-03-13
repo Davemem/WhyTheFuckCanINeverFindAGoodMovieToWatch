@@ -52,11 +52,9 @@
                 <strong class="field-helper" data-role-label>Any role</strong>
               </div>
               <input type="hidden" name="role" value="any" data-role-input />
-              <div class="segmented-control" aria-label="Filter by credit type">
+              <div class="segmented-control" aria-label="Filter by credit type" data-role-segments>
                 <button type="button" class="segment is-active" data-role-choice="any">Any</button>
                 <button type="button" class="segment" data-role-choice="cast">Cast</button>
-                <button type="button" class="segment" data-role-choice="director">Director</button>
-                <button type="button" class="segment" data-role-choice="producer">Producer</button>
               </div>
             </div>
 
@@ -110,35 +108,6 @@
         </section>
 
         <section class="catalog-section" aria-labelledby="directory-grid-heading">
-          <div class="results-header directory-header">
-            <div>
-              <p class="section-label">Ranked people directory</p>
-              <h1 id="directory-title" class="directory-page-title">Actors</h1>
-              <p id="directory-copy" class="results-summary directory-copy">
-                Browse the full local ranked directory and jump back into the movie catalog from any person.
-              </p>
-              <p id="directory-status" class="directory-inline-status">Loading local people index.</p>
-            </div>
-            <nav class="people-page-tabs" aria-label="People directories">
-              <a id="tab-actors" href="/people.html?department=actors">Actors</a>
-              <a id="tab-directors" href="/people.html?department=directors">Directors</a>
-              <a id="tab-producers" href="/people.html?department=producers">Producers</a>
-            </nav>
-          </div>
-          <div class="directory-toolbar">
-            <label class="field">
-              <span>Search this list</span>
-              <input id="directory-search" type="search" placeholder="Search people or known-for titles" />
-            </label>
-            <label class="field">
-              <span>Sort this list</span>
-              <select id="directory-sort">
-                <option value="score">Highest rated</option>
-                <option value="name">Alphabetical</option>
-                <option value="popularity">Most popular</option>
-              </select>
-            </label>
-          </div>
           <div class="results-header">
             <div>
               <p class="section-label">Directory</p>
@@ -164,7 +133,7 @@
       </article>
     </template>
 
-    <script src="./people.js?v=20260313f" defer></script>
-    <script src="./catalog-search.js?v=20260313f" defer></script>
+    <script src="./people.js?v=20260313g" defer></script>
+    <script src="./catalog-search.js?v=20260313g" defer></script>
   </body>
 </html>
