@@ -1,5 +1,6 @@
 const watchlistStorageKey = "wtfcineverfind-watchlist";
 const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
+const devStatusFlagKey = "wtfcineverfind-debug";
 const decadeOptions = buildDecadeOptions();
 
 const elements = {
@@ -55,6 +56,7 @@ const liveState = {
   totalMatches: 0,
   refreshTokens: {
     actors: 0,
+    producers: 0,
   },
   renderToken: 0,
 };
@@ -64,6 +66,7 @@ bootstrap().catch((error) => {
 });
 
 async function bootstrap() {
+  applyDevStatusVisibility();
   setStatus("Connecting to TMDb and OMDb...", false);
 
   const payload = await fetchJson("/api/bootstrap?mode=lite");
@@ -99,6 +102,7 @@ async function bootstrap() {
   applyStateFromUrl();
   bindEvents();
   renderActorPreview();
+  renderFeaturedPeople();
   renderWatchlist();
   renderIdleState();
   const startupTasks = [];
@@ -120,8 +124,15 @@ async function loadFeaturedPeople() {
     liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
     liveState.featuredProducers = payload.featuredProducers || [];
 
-    elements.peopleCount.textContent = String(liveState.featuredActors.length);
+    elements.peopleCount.textContent = String(
+      dedupePeopleById([
+        ...liveState.featuredActors,
+        ...liveState.featuredDirectors,
+        ...liveState.featuredProducers,
+      ]).length,
+    );
     renderActorPreview();
+    renderFeaturedPeople();
   } catch {
     // Keep page usable even when featured people cannot be loaded.
   }
@@ -404,7 +415,7 @@ function setCardField(element, value, pending = false) {
 }
 
 function renderFeaturedPeople() {
-  if (!elements.personChips) {
+  if (!elements.personChips || !elements.producersSummary) {
     return;
   }
   elements.personChips.replaceChildren();
@@ -431,6 +442,20 @@ function renderActorPreview() {
   elements.actorsSummary.textContent = preview.length
     ? `${preview.length} top actors shown here.`
     : "Actor preview unavailable right now.";
+}
+
+function applyDevStatusVisibility() {
+  const showDevStatus =
+    new URLSearchParams(window.location.search).get("debug") === "1" ||
+    window.localStorage.getItem(devStatusFlagKey) === "1";
+
+  [elements.apiStatus, elements.indexStatus].forEach((element) => {
+    const strip = element?.closest(".status-strip");
+    if (!strip) {
+      return;
+    }
+    strip.hidden = !showDevStatus;
+  });
 }
 
 function refreshRotatingSection(role) {

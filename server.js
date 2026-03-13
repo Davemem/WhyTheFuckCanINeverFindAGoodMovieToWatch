@@ -469,6 +469,8 @@ async function buildBootstrapPayload(options = {}) {
 
   if (snapshot?.actorsTop5?.length) {
     payload.featuredActors = snapshot.actorsTop5;
+    payload.featuredDirectors = (snapshot.directorsTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
+    payload.featuredProducers = (snapshot.producersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
   } else if (includePeople) {
     const featured = await buildFeaturedPeoplePayload();
     payload.featuredActors = featured.featuredActors;

@@ -149,11 +149,11 @@
       </header>
 
       <main>
-        <section class="status-strip" aria-live="polite">
+        <section class="status-strip" aria-live="polite" hidden>
           <p id="api-status">Waiting for live data.</p>
         </section>
 
-        <section class="status-strip index-status-strip" aria-live="polite">
+        <section class="status-strip index-status-strip" aria-live="polite" hidden>
           <p id="index-status">Local people index not built yet.</p>
         </section>
 
@@ -167,9 +167,30 @@
               <p id="actors-summary" class="results-summary">
                 The top 5 actors from the ranked local index.
               </p>
+              <button id="actors-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
             </div>
           </div>
           <div id="actors-grid" class="rotating-grid compact-grid"></div>
+        </section>
+
+        <section class="catalog-section" id="producers" aria-labelledby="producers-preview-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Producers / Directors</p>
+              <h2 id="producers-preview-heading">Today&apos;s rotating 5</h2>
+            </div>
+            <div class="section-actions">
+              <p id="producers-summary" class="results-summary">
+                5 producer and director picks shown here.
+              </p>
+              <button id="producers-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
+            </div>
+          </div>
+          <div id="person-chips" class="rotating-grid compact-grid"></div>
         </section>
 
         <section class="catalog-section results-section" aria-live="polite" aria-labelledby="results-title">
@@ -285,6 +306,6 @@
       </article>
     </template>
 
-    <script src="./app.js?v=20260312b" defer></script>
+    <script src="./app.js?v=20260313a" defer></script>
   </body>
 </html>
