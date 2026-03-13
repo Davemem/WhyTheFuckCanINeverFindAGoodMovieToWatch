@@ -28,6 +28,7 @@ const DB_BOOTSTRAP_LIMIT = 20;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
+const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
 const demoGenres = [
@@ -245,8 +246,11 @@ async function handleApi(requestUrl, res) {
       return;
     }
 
-    const localPeopleIndex = readPeopleIndex();
-    sendJson(res, 200, buildIndexStatus(localPeopleIndex));
+    sendJson(res, 200, {
+      ready: false,
+      generatedAt: null,
+      counts: { actors: 0, directors: 0, producers: 0 },
+    });
     return;
   }
 
@@ -448,10 +452,8 @@ function buildDemoDiscoverPayload(filters) {
 
 async function buildBootstrapPayload(options = {}) {
   const includePeople = options.includePeople !== false;
-  const localPeopleIndex = includePeople ? await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT) : null;
-  const hasLocalPeopleIndex = includePeople
-    ? Boolean(localPeopleIndex)
-    : await isLocalPeopleIndexAvailableFast();
+  const snapshot = await getSiteSnapshotFromPostgres();
+  const hasLocalPeopleIndex = Boolean(snapshot);
   const resolvedGenres = await getGenresFast();
 
   const payload = {
@@ -459,12 +461,16 @@ async function buildBootstrapPayload(options = {}) {
       hasOmdb: Boolean(omdbApiKey),
       imageBaseUrl: "https://image.tmdb.org/t/p/w500",
       hasLocalPeopleIndex,
+      peopleCounts: snapshot?.counts || { actors: 0, directors: 0, producers: 0 },
+      peopleGeneratedAt: snapshot?.generatedAt || null,
     },
     genres: resolvedGenres,
   };
 
-  if (includePeople) {
-    const featured = await buildFeaturedPeoplePayload(localPeopleIndex);
+  if (snapshot?.actorsTop5?.length) {
+    payload.featuredActors = snapshot.actorsTop5;
+  } else if (includePeople) {
+    const featured = await buildFeaturedPeoplePayload();
     payload.featuredActors = featured.featuredActors;
     payload.featuredDirectors = featured.featuredDirectors;
     payload.featuredProducers = featured.featuredProducers;
@@ -473,15 +479,21 @@ async function buildBootstrapPayload(options = {}) {
   return payload;
 }
 
-async function buildFeaturedPeoplePayload(localPeopleIndex = null) {
-  const localSource = localPeopleIndex || (await getAvailablePeopleDirectory(DB_BOOTSTRAP_LIMIT));
-  const rankedPeople = localSource
-    ? normalizeFeaturedPeopleSource(localSource)
-    : {
-        actors: [],
-        directors: [],
-        producers: [],
-      };
+async function buildFeaturedPeoplePayload() {
+  const snapshot = await getSiteSnapshotFromPostgres();
+  if (snapshot) {
+    return {
+      featuredActors: snapshot.actorsTop5 || [],
+      featuredDirectors: (snapshot.directorsTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT),
+      featuredProducers: (snapshot.producersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT),
+    };
+  }
+
+  const rankedPeople = {
+    actors: [],
+    directors: [],
+    producers: [],
+  };
 
   return {
     featuredActors: rankedPeople.actors,
@@ -911,31 +923,7 @@ function personKnownForScore(person) {
 }
 
 async function getAvailablePeopleDirectory(limit = DB_FEATURED_LIMIT) {
-  return (await getPeopleDirectoryFromPostgres(limit)) || readPeopleIndex() || null;
-}
-
-async function isLocalPeopleIndexAvailable() {
-  const dbStatus = await getIndexStatusFromPostgres();
-  if (dbStatus && dbStatus.ready) {
-    return true;
-  }
-
-  const localIndex = readPeopleIndex();
-  return Boolean(localIndex);
-}
-
-async function isLocalPeopleIndexAvailableFast() {
-  try {
-    const status = await withTimeout(getIndexStatusFromPostgres(), 1500);
-    if (status && status.ready) {
-      return true;
-    }
-  } catch {
-    // Fall through to local file check.
-  }
-
-  const localIndex = readPeopleIndex();
-  return Boolean(localIndex);
+  return await getPeopleDirectoryFromPostgres(limit);
 }
 
 async function getGenresFast() {
@@ -1552,52 +1540,16 @@ function shouldUseDbSsl(connectionString) {
 }
 
 async function getIndexStatusFromPostgres() {
-  if (!dbPools) {
+  const snapshot = await getSiteSnapshotFromPostgres();
+  if (!snapshot) {
     return null;
   }
 
-  const cacheKey = "pg:index-status:v1";
-  const cached = cache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
-
-  const diskCached = readDiskCache(cacheKey);
-  if (diskCached && diskCached.expiresAt > Date.now()) {
-    cache.set(cacheKey, diskCached);
-    return diskCached.value;
-  }
-
-  try {
-    const result = await withTimeout(
-      queryDb(`
-      SELECT
-        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'cast')::int AS actors_count,
-        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job = 'Director')::int AS directors_count,
-        (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%')::int AS producers_count,
-        (SELECT MAX(updated_at) FROM people) AS generated_at
-    `),
-      3000,
-    );
-    const row = result.rows[0];
-    const total = Number(row.actors_count || 0) + Number(row.directors_count || 0) + Number(row.producers_count || 0);
-    const value = {
-      ready: total > 0,
-      generatedAt: row.generated_at || null,
-      counts: {
-        actors: Number(row.actors_count || 0),
-        directors: Number(row.directors_count || 0),
-        producers: Number(row.producers_count || 0),
-      },
-    };
-    const entry = { value, expiresAt: Date.now() + DB_STATUS_CACHE_TTL_MS };
-    cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
-    return value;
-  } catch (error) {
-    logServerError("getIndexStatusFromPostgres", error);
-    return null;
-  }
+  return {
+    ready: true,
+    generatedAt: snapshot.generatedAt || null,
+    counts: snapshot.counts || { actors: 0, directors: 0, producers: 0 },
+  };
 }
 
 async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
@@ -1618,6 +1570,19 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
   }
 
   try {
+    const snapshot = await getSiteSnapshotFromPostgres();
+    if (snapshot && limit <= 10) {
+      const value = {
+        actors: snapshot.actorsTop10 || [],
+        directors: snapshot.directorsTop10 || [],
+        producers: snapshot.producersTop10 || [],
+      };
+      const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
+      cache.set(cacheKey, entry);
+      writeDiskCache(cacheKey, entry);
+      return value;
+    }
+
     const [actors, directors, producers] = await Promise.all([
       fetchRankedPeopleFromPostgres("actors", limit),
       fetchRankedPeopleFromPostgres("directors", limit),
@@ -1633,6 +1598,54 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
     return value;
   } catch (error) {
     logServerError("getPeopleDirectoryFromPostgres", error);
+    return null;
+  }
+}
+
+async function getSiteSnapshotFromPostgres() {
+  if (!dbPools) {
+    return null;
+  }
+
+  const cacheKey = "pg:site-snapshot:home_v1";
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const diskCached = readDiskCache(cacheKey);
+  if (diskCached && diskCached.expiresAt > Date.now()) {
+    cache.set(cacheKey, diskCached);
+    return diskCached.value;
+  }
+
+  try {
+    const result = await withTimeout(
+      queryDb(
+        `
+          SELECT payload, generated_at
+          FROM site_snapshots
+          WHERE snapshot_key = 'home_v1'
+          LIMIT 1
+        `,
+      ),
+      2000,
+    );
+    const row = result.rows[0];
+    if (!row?.payload) {
+      return null;
+    }
+
+    const value = {
+      ...row.payload,
+      generatedAt: row.generated_at || null,
+    };
+    const entry = { value, expiresAt: Date.now() + DB_SNAPSHOT_CACHE_TTL_MS };
+    cache.set(cacheKey, entry);
+    writeDiskCache(cacheKey, entry);
+    return value;
+  } catch (error) {
+    logServerError("getSiteSnapshotFromPostgres", error);
     return null;
   }
 }

@@ -5,6 +5,7 @@ const {
   mapWithConcurrency,
 } = require("./lib/common");
 const { createPool, applySchema } = require("./lib/ingest-db");
+const { publishSiteSnapshot } = require("./lib/site-snapshots");
 
 loadEnv();
 
@@ -100,6 +101,10 @@ async function main() {
         failureCount += 1;
         failures.push(`${result.personId}:${result.error}`);
       }
+    }
+
+    if (successCount > 0) {
+      await publishSiteSnapshot(pool);
     }
 
     const notes = `success=${successCount};failed=${failureCount}${failures.length ? `;errors=${failures.slice(0, 8).join("|")}` : ""}`;

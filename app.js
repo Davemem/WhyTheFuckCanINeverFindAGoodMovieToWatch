@@ -70,7 +70,11 @@ async function bootstrap() {
   liveState.genres = payload.genres || [];
   liveState.imageBaseUrl = payload.config?.imageBaseUrl || "";
   liveState.hasOmdb = Boolean(payload.config?.hasOmdb);
+  liveState.hasLocalPeopleIndex = Boolean(payload.config?.hasLocalPeopleIndex);
+  liveState.featuredActors = payload.featuredActors || [];
   const mode = payload.config?.mode || "live";
+  const peopleCounts = payload.config?.peopleCounts || { actors: 0, directors: 0, producers: 0 };
+  const totalPeopleCount = Number(peopleCounts.actors || 0) + Number(peopleCounts.directors || 0) + Number(peopleCounts.producers || 0);
 
   elements.imdbMin.value = "0";
   elements.rtMin.value = "0";
@@ -88,7 +92,7 @@ async function bootstrap() {
     elements.movieCount.textContent = "Live";
   }
 
-  elements.peopleCount.textContent = "0";
+  elements.peopleCount.textContent = String(totalPeopleCount || liveState.featuredActors.length || 0);
 
   populateGenres();
   populateDecades();
@@ -97,7 +101,11 @@ async function bootstrap() {
   renderActorPreview();
   renderWatchlist();
   renderIdleState();
-  const startupTasks = [loadIndexStatus(), loadFeaturedPeople()];
+  const startupTasks = [];
+  if (!liveState.featuredActors.length) {
+    startupTasks.push(loadFeaturedPeople());
+  }
+  startupTasks.push(loadIndexStatus(payload.config));
   if (shouldFetchOnLoad()) {
     startupTasks.push(refreshMovies());
   }
@@ -143,35 +151,45 @@ function bindEvents() {
   }, 220);
 
   [elements.genreFilter, elements.decadeFilter].forEach((element) => {
-    element.addEventListener("change", refreshMovies);
+    if (element) {
+      element.addEventListener("change", refreshMovies);
+    }
   });
 
   [elements.imdbMin, elements.rtMin].forEach((element) => {
-    element.addEventListener("input", () => {
-      syncRangeLabels();
-      debouncedRefreshMovies();
-    });
-    element.addEventListener("change", refreshMovies);
+    if (element) {
+      element.addEventListener("input", () => {
+        syncRangeLabels();
+        debouncedRefreshMovies();
+      });
+      element.addEventListener("change", refreshMovies);
+    }
   });
-  elements.sortFilter.addEventListener("change", handleSortChange);
+  if (elements.sortFilter) {
+    elements.sortFilter.addEventListener("change", handleSortChange);
+  }
 
   const debouncedPeopleLookup = debounce(async () => {
     await updatePersonSuggestions();
   }, 300);
 
-  elements.personSearch.addEventListener("input", debouncedPeopleLookup);
-  elements.personSearch.addEventListener("change", refreshMovies);
-  elements.personSearch.addEventListener("keydown", handlePersonSearchKeydown);
+  if (elements.personSearch) {
+    elements.personSearch.addEventListener("input", debouncedPeopleLookup);
+    elements.personSearch.addEventListener("change", refreshMovies);
+    elements.personSearch.addEventListener("keydown", handlePersonSearchKeydown);
+  }
 
-  elements.roleFilter.addEventListener("click", async (event) => {
-    const button = event.target.closest(".segment");
-    if (!button) {
-      return;
-    }
+  if (elements.roleFilter) {
+    elements.roleFilter.addEventListener("click", async (event) => {
+      const button = event.target.closest(".segment");
+      if (!button) {
+        return;
+      }
 
-    setActiveRole(button.dataset.role);
-    await refreshMovies();
-  });
+      setActiveRole(button.dataset.role);
+      await refreshMovies();
+    });
+  }
 
   if (elements.actorsGrid) {
     elements.actorsGrid.addEventListener("click", handlePersonSelection);
@@ -185,11 +203,15 @@ function bindEvents() {
   if (elements.producersRefresh) {
     elements.producersRefresh.addEventListener("click", () => refreshRotatingSection("producers"));
   }
-  elements.resultsGrid.addEventListener("click", handleWatchlistAction);
+  if (elements.resultsGrid) {
+    elements.resultsGrid.addEventListener("click", handleWatchlistAction);
+  }
   if (elements.watchlistGrid) {
     elements.watchlistGrid.addEventListener("click", handleWatchlistAction);
   }
-  elements.resetButton.addEventListener("click", resetFilters);
+  if (elements.resetButton) {
+    elements.resetButton.addEventListener("click", resetFilters);
+  }
   window.addEventListener("popstate", handlePopState);
 }
 
@@ -397,6 +419,10 @@ function renderFeaturedPeople() {
 }
 
 function renderActorPreview() {
+  if (!elements.actorsGrid || !elements.actorsSummary) {
+    return;
+  }
+
   const preview = pickTopPeopleForRole("actors", 5);
   elements.actorsGrid.replaceChildren();
   preview.forEach((person, index) => {
@@ -480,29 +506,31 @@ function renderPeopleDirectory(container, people) {
   });
 }
 
-async function loadIndexStatus() {
+async function loadIndexStatus(config = null) {
+  if (!elements.indexStatus) {
+    return;
+  }
+
   if (!liveState.hasOmdb) {
     elements.indexStatus.textContent = "Index status unavailable right now.";
     return;
   }
 
-  if (liveState.hasLocalPeopleIndex) {
-    elements.indexStatus.textContent = "Local ranked people index is connected.";
-  } else {
-    elements.indexStatus.textContent = "People index is syncing.";
+  if (config?.hasLocalPeopleIndex && config?.peopleCounts) {
+    elements.indexStatus.textContent = `${config.peopleCounts.actors} actors, ${config.peopleCounts.directors} directors, and ${config.peopleCounts.producers} producers are available from the local ranked index${config.peopleGeneratedAt ? ` (built ${formatDateTime(config.peopleGeneratedAt)})` : ""}.`;
     return;
   }
 
   try {
     const payload = await fetchJsonWithTimeout("/api/index-status", 2500);
     if (!payload.ready) {
-      elements.indexStatus.textContent = "People index is syncing.";
+      elements.indexStatus.textContent = "People rankings are warming up.";
       return;
     }
 
     elements.indexStatus.textContent = `${payload.counts.actors} actors, ${payload.counts.directors} directors, and ${payload.counts.producers} producers are available from the local ranked index${payload.generatedAt ? ` (built ${formatDateTime(payload.generatedAt)})` : ""}.`;
   } catch {
-    // Keep the optimistic message when status endpoint is slow/unreachable.
+    elements.indexStatus.textContent = "People rankings are warming up.";
   }
 }
 

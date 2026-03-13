@@ -27,6 +27,8 @@ async function main() {
   await applySchema(pool);
   await pool.end();
 
+  await runScript("build-site-snapshots.js");
+
   nextIngestAt = Date.now();
 
   while (true) {

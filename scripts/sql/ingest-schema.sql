@@ -78,3 +78,9 @@ ON person_movie_credits (
 
 CREATE INDEX IF NOT EXISTS idx_person_movie_credits_person ON person_movie_credits(person_id);
 CREATE INDEX IF NOT EXISTS idx_person_movie_credits_movie ON person_movie_credits(movie_id);
+
+CREATE TABLE IF NOT EXISTS site_snapshots (
+  snapshot_key TEXT PRIMARY KEY,
+  payload JSONB NOT NULL,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
