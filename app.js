@@ -1103,16 +1103,18 @@ function discoveryScore(person) {
   const score = Number(person.score ?? 0);
   const popularity = Number(person.popularity ?? 0);
   const creditCount = Number(person.creditCount ?? 0);
-  const inCoreBand = score >= 7.5 && score <= 8.5 && creditCount >= 2;
-  const inPreferredBand = score >= 7 && score <= 9.5 && creditCount >= 2;
+  const totalVotes = Number(person.totalVotes ?? 0);
+  const inCoreBand = score >= 7.4 && score <= 8.8 && creditCount >= 4 && totalVotes >= 5000;
+  const inPreferredBand = score >= 7.0 && score <= 9.2 && creditCount >= 3 && totalVotes >= 1000;
   const bandDistance = Math.abs(score - 8.1);
   return (
-    (inCoreBand ? 140 : 0)
-    + (inPreferredBand ? 60 : 0)
-    - bandDistance * 16
-    + Math.min(creditCount, 12) * 1.5
-    + Math.log10(popularity + 10) * 0.6
-    - Math.max(0, score - 9.0) * 28
+    (inCoreBand ? 220 : 0)
+    + (inPreferredBand ? 100 : 0)
+    + Math.log10(totalVotes + 10) * 18
+    + Math.min(creditCount, 12) * 2
+    + Math.log10(popularity + 10) * 5
+    - bandDistance * 18
+    - Math.max(0, score - 9.0) * 36
   );
 }
 

@@ -7,6 +7,7 @@ const elements = {
   resultsBack: document.querySelector("#people-results-back"),
   directorySection: document.querySelector('[aria-labelledby="directory-grid-heading"]'),
   directoryResultsSummary: document.querySelector("#directory-results-summary"),
+  directoryRefresh: document.querySelector("#directory-refresh"),
   directoryHeading: document.querySelector("#directory-grid-heading"),
   directoryGrid: document.querySelector("#directory-grid"),
   cardTemplate: document.querySelector("#person-card-template"),
@@ -19,6 +20,7 @@ const devStatusFlagKey = "wtfcineverfind-debug";
 const pageState = {
   department: readDepartmentFromUrl(),
   currentPeople: [],
+  visiblePeople: [],
   currentTotal: 0,
   currentMovies: [],
   renderToken: 0,
@@ -42,6 +44,7 @@ async function bootstrap() {
     await refreshResults();
   } else {
     await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
+    chooseVisibleDirectoryPeople();
     renderDirectory();
     setSearchMode(false);
   }
@@ -74,6 +77,7 @@ function bindEvents() {
   elements.directoryGrid.addEventListener("click", handlePersonSelection);
   elements.resultsGrid?.addEventListener("click", handlePersonSelection);
   elements.resultsBack?.addEventListener("click", handleResultsBack);
+  elements.directoryRefresh?.addEventListener("click", refreshDirectorySuggestions);
   window.addEventListener("popstate", handlePopState);
   window.addEventListener("catalog:people-search", handleInlineSearchEvent);
 }
@@ -81,9 +85,9 @@ function bindEvents() {
 function renderDirectory() {
   pageState.renderToken += 1;
   const renderToken = pageState.renderToken;
-  const sorted = pageState.currentPeople || [];
+  const sorted = pageState.visiblePeople || [];
 
-  elements.directoryResultsSummary.textContent = `${pageState.currentTotal || sorted.length} ${departmentLabelPlural(pageState.department)} in this view.`;
+  elements.directoryResultsSummary.textContent = `${sorted.length} ${departmentLabelPlural(pageState.department)} shown here. Refresh to reshuffle this set.`;
   elements.directoryGrid.replaceChildren();
 
   if (!sorted.length) {
@@ -153,11 +157,18 @@ function handlePersonSelection(event) {
   const params = new URLSearchParams();
   params.set("department", pageState.department);
   params.set("person", button.dataset.person);
-  window.location.href = `/people.html?${params.toString()}#people-results-title`;
+  const nextUrl = `/people.html?${params.toString()}#people-results-title`;
+  if (window.location.pathname.endsWith("/people.html")) {
+    window.history.pushState({}, "", nextUrl);
+    window.dispatchEvent(new CustomEvent("catalog:people-search"));
+  } else {
+    window.location.href = nextUrl;
+  }
 }
 
 async function refreshDirectory() {
   await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
+  chooseVisibleDirectoryPeople();
   renderDirectory();
 }
 
@@ -171,6 +182,7 @@ async function handlePopState() {
     return;
   }
   await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
+  chooseVisibleDirectoryPeople();
   renderDirectory();
   setSearchMode(false);
 }
@@ -256,7 +268,7 @@ function readDepartmentFromUrl() {
 async function loadDirectoryForDepartment(department, options = {}) {
   const params = new URLSearchParams();
   params.set("department", department);
-  params.set("limit", String(options.limit || 10));
+  params.set("limit", String(options.limit || 50));
 
   const payload = await fetchJson(`/api/people-directory?${params.toString()}`);
   pageState.currentPeople = payload.people || [];
@@ -265,8 +277,24 @@ async function loadDirectoryForDepartment(department, options = {}) {
 
 function currentDirectoryQuery() {
   return {
-    limit: 50,
+    limit: 250,
   };
+}
+
+function chooseVisibleDirectoryPeople() {
+  const source = [...(pageState.currentPeople || [])];
+  if (!source.length) {
+    pageState.visiblePeople = [];
+    return;
+  }
+
+  const shuffled = shuffleWithDailyBias(source, `${pageState.department}:${Date.now()}:${Math.random()}`);
+  pageState.visiblePeople = shuffled.slice(0, 50);
+}
+
+function refreshDirectorySuggestions() {
+  chooseVisibleDirectoryPeople();
+  renderDirectory();
 }
 
 function getSearchStateFromUrl() {
@@ -444,6 +472,25 @@ function departmentLabelPlural(department) {
     return "producers";
   }
   return "actors and actresses";
+}
+
+function shuffleWithDailyBias(list, seedKey) {
+  return [...list]
+    .map((item, index) => ({
+      item,
+      key: hashString(`${seedKey}:${index}:${item.id || item.name || ""}`),
+    }))
+    .sort((left, right) => left.key - right.key)
+    .map((entry) => entry.item);
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (const char of String(value)) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 async function fetchJson(url, options = {}) {

@@ -12,6 +12,9 @@ async function publishSiteSnapshot(pool) {
   const actorsBrowse = buildSuggestedPool(actorsRanked, 50, 2);
   const directorsBrowse = buildSuggestedPool(directorsRanked, 50, 2);
   const producersBrowse = buildSuggestedPool(producersRanked, 50, 2);
+  const actorsBrowsePool = buildSuggestedPool(actorsRanked, 250, 12);
+  const directorsBrowsePool = buildSuggestedPool(directorsRanked, 250, 12);
+  const producersBrowsePool = buildSuggestedPool(producersRanked, 250, 12);
   const placeholderPools = {
     actors: actorsRanked.map((person) => person.name).filter(Boolean),
     directors: directorsRanked.map((person) => person.name).filter(Boolean),
@@ -27,6 +30,9 @@ async function publishSiteSnapshot(pool) {
     actorsBrowse,
     directorsBrowse,
     producersBrowse,
+    actorsBrowsePool,
+    directorsBrowsePool,
+    producersBrowsePool,
     placeholderPools,
     counts,
   };
@@ -73,6 +79,7 @@ async function fetchRankedPeople(pool, role, limit) {
           p.profile_path,
           COALESCE(p.popularity, 0) AS popularity,
           COUNT(DISTINCT m.movie_id)::int AS credit_count,
+          SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
           ROUND((
             SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
             / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
@@ -88,13 +95,15 @@ async function fetchRankedPeople(pool, role, limit) {
         FROM scored
         ORDER BY
           CASE
-            WHEN score BETWEEN 7.5 AND 8.5 AND credit_count >= 2 THEN 0
-            WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 1
-            ELSE 2
+            WHEN score BETWEEN 7.4 AND 8.8 AND credit_count >= 4 AND total_votes >= 5000 THEN 0
+            WHEN score BETWEEN 7.0 AND 9.2 AND credit_count >= 3 AND total_votes >= 1000 THEN 1
+            WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 2
+            ELSE 3
           END ASC,
+          total_votes DESC NULLS LAST,
+          popularity DESC NULLS LAST,
           ABS(COALESCE(score, 0) - 8.1) ASC,
           credit_count DESC NULLS LAST,
-          popularity DESC NULLS LAST,
           score DESC NULLS LAST,
           name ASC
         LIMIT $1
@@ -106,6 +115,7 @@ async function fetchRankedPeople(pool, role, limit) {
         r.profile_path,
         r.popularity,
         r.credit_count,
+        r.total_votes,
         r.score,
         COALESCE((
           SELECT ARRAY(
@@ -121,13 +131,15 @@ async function fetchRankedPeople(pool, role, limit) {
       FROM ranked r
       ORDER BY
         CASE
-          WHEN r.score BETWEEN 7.5 AND 8.5 AND r.credit_count >= 2 THEN 0
-          WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 1
-          ELSE 2
+          WHEN r.score BETWEEN 7.4 AND 8.8 AND r.credit_count >= 4 AND r.total_votes >= 5000 THEN 0
+          WHEN r.score BETWEEN 7.0 AND 9.2 AND r.credit_count >= 3 AND r.total_votes >= 1000 THEN 1
+          WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 2
+          ELSE 3
         END ASC,
+        r.total_votes DESC NULLS LAST,
+        r.popularity DESC NULLS LAST,
         ABS(COALESCE(r.score, 0) - 8.1) ASC,
         r.credit_count DESC NULLS LAST,
-        r.popularity DESC NULLS LAST,
         r.score DESC NULLS LAST,
         r.name ASC
     `,
@@ -143,6 +155,7 @@ async function fetchRankedPeople(pool, role, limit) {
       score,
       popularity: Number(row.popularity || 0),
       creditCount: Number(row.credit_count || 0),
+      totalVotes: Number(row.total_votes || 0),
       knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
       profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
       ratingLabel: score ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
@@ -164,7 +177,13 @@ function buildSuggestedPool(people, limit, wildcardCount = 2) {
   const ranked = [...people];
   const preferred = ranked.filter((person) => {
     const score = Number(person.score);
-    return Number.isFinite(score) && score >= 7 && score <= 9.5 && Number(person.creditCount || 0) >= 2;
+    return (
+      Number.isFinite(score) &&
+      score >= 7 &&
+      score <= 9.5 &&
+      Number(person.creditCount || 0) >= 2 &&
+      Number(person.totalVotes || 0) >= 500
+    );
   });
   const wildcards = ranked.filter((person) => !preferred.some((candidate) => candidate.id === person.id));
   const preferredTarget = Math.max(0, limit - Math.min(wildcardCount, limit));

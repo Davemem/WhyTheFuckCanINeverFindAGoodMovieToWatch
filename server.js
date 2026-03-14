@@ -23,7 +23,7 @@ const ENRICH_BATCH_LIMIT = 2;
 const PERSON_RESULT_LIMIT = 200;
 const FEATURED_PEOPLE_PAGE_COUNT = 15;
 const FEATURED_PEOPLE_LIMIT = 10;
-const SNAPSHOT_BROWSE_LIMIT = 50;
+const SNAPSHOT_BROWSE_LIMIT = 250;
 const DB_FEATURED_LIMIT = 5000;
 const DB_BOOTSTRAP_LIMIT = 20;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
@@ -487,9 +487,9 @@ async function buildFeaturedPeoplePayload() {
   const snapshot = await getSiteSnapshotFromPostgres();
   if (snapshot) {
     return {
-      featuredActors: snapshot.actorsBrowse || snapshot.actorsTop10 || [],
-      featuredDirectors: snapshot.directorsBrowse || snapshot.directorsTop10 || [],
-      featuredProducers: snapshot.producersBrowse || snapshot.producersTop10 || [],
+      featuredActors: snapshot.actorsBrowsePool || snapshot.actorsBrowse || snapshot.actorsTop10 || [],
+      featuredDirectors: snapshot.directorsBrowsePool || snapshot.directorsBrowse || snapshot.directorsTop10 || [],
+      featuredProducers: snapshot.producersBrowsePool || snapshot.producersBrowse || snapshot.producersTop10 || [],
     };
   }
 
@@ -1579,15 +1579,15 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
   try {
     const snapshot = await getSiteSnapshotFromPostgres();
     const hasSnapshotBrowsePools =
-      Array.isArray(snapshot?.actorsBrowse) &&
-      Array.isArray(snapshot?.directorsBrowse) &&
-      Array.isArray(snapshot?.producersBrowse);
+      (Array.isArray(snapshot?.actorsBrowsePool) || Array.isArray(snapshot?.actorsBrowse)) &&
+      (Array.isArray(snapshot?.directorsBrowsePool) || Array.isArray(snapshot?.directorsBrowse)) &&
+      (Array.isArray(snapshot?.producersBrowsePool) || Array.isArray(snapshot?.producersBrowse));
 
     if (snapshot && hasSnapshotBrowsePools && limit <= SNAPSHOT_BROWSE_LIMIT) {
       const value = {
-        actors: (snapshot.actorsBrowse || snapshot.actorsTop10 || []).slice(0, limit),
-        directors: (snapshot.directorsBrowse || snapshot.directorsTop10 || []).slice(0, limit),
-        producers: (snapshot.producersBrowse || snapshot.producersTop10 || []).slice(0, limit),
+        actors: (snapshot.actorsBrowsePool || snapshot.actorsBrowse || snapshot.actorsTop10 || []).slice(0, limit),
+        directors: (snapshot.directorsBrowsePool || snapshot.directorsBrowse || snapshot.directorsTop10 || []).slice(0, limit),
+        producers: (snapshot.producersBrowsePool || snapshot.producersBrowse || snapshot.producersTop10 || []).slice(0, limit),
       };
       const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
       cache.set(cacheKey, entry);
@@ -1674,6 +1674,7 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
         p.profile_path,
         COALESCE(p.popularity, 0) AS popularity,
         COUNT(DISTINCT m.movie_id)::int AS credit_count,
+        SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
         ROUND(
           (
             SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
@@ -1692,13 +1693,15 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
       FROM scored
       ORDER BY
         CASE
-          WHEN score BETWEEN 7.5 AND 8.5 AND credit_count >= 2 THEN 0
-          WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 1
-          ELSE 2
+          WHEN score BETWEEN 7.4 AND 8.8 AND credit_count >= 4 AND total_votes >= 5000 THEN 0
+          WHEN score BETWEEN 7.0 AND 9.2 AND credit_count >= 3 AND total_votes >= 1000 THEN 1
+          WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 2
+          ELSE 3
         END ASC,
+        total_votes DESC NULLS LAST,
+        popularity DESC NULLS LAST,
         ABS(COALESCE(score, 0) - 8.1) ASC,
         credit_count DESC NULLS LAST,
-        popularity DESC NULLS LAST,
         score DESC NULLS LAST,
         name ASC
       LIMIT $1
@@ -1710,6 +1713,7 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
       r.profile_path,
       r.popularity,
       r.credit_count,
+      r.total_votes,
       r.score,
       COALESCE((
         SELECT ARRAY(
@@ -1725,13 +1729,15 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
     FROM ranked r
     ORDER BY
       CASE
-        WHEN r.score BETWEEN 7.5 AND 8.5 AND r.credit_count >= 2 THEN 0
-        WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 1
-        ELSE 2
+        WHEN r.score BETWEEN 7.4 AND 8.8 AND r.credit_count >= 4 AND r.total_votes >= 5000 THEN 0
+        WHEN r.score BETWEEN 7.0 AND 9.2 AND r.credit_count >= 3 AND r.total_votes >= 1000 THEN 1
+        WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 2
+        ELSE 3
       END ASC,
+      r.total_votes DESC NULLS LAST,
+      r.popularity DESC NULLS LAST,
       ABS(COALESCE(r.score, 0) - 8.1) ASC,
       r.credit_count DESC NULLS LAST,
-      r.popularity DESC NULLS LAST,
       r.score DESC NULLS LAST,
       r.name ASC
   `;
@@ -1863,6 +1869,7 @@ function normalizeDbPersonRow(row) {
     score,
     popularity: Number(row.popularity || 0),
     creditCount: Number(row.credit_count || 0),
+    totalVotes: Number(row.total_votes || 0),
     knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
     profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
     ratingLabel: score !== null ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
