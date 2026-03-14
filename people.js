@@ -1,9 +1,16 @@
 const elements = {
   indexSummary: document.querySelector("#index-summary"),
+  resultsSection: document.querySelector("#people-results-section"),
+  resultsGrid: document.querySelector("#people-results-grid"),
+  resultsSummary: document.querySelector("#people-results-summary"),
+  resultsTitle: document.querySelector("#people-results-title"),
+  resultsBack: document.querySelector("#people-results-back"),
+  directorySection: document.querySelector('[aria-labelledby="directory-grid-heading"]'),
   directoryResultsSummary: document.querySelector("#directory-results-summary"),
   directoryHeading: document.querySelector("#directory-grid-heading"),
   directoryGrid: document.querySelector("#directory-grid"),
   cardTemplate: document.querySelector("#person-card-template"),
+  movieCardTemplate: document.querySelector("#movie-card-template"),
   navActors: document.querySelector("#nav-actors"),
   navProducers: document.querySelector("#nav-producers"),
 };
@@ -13,6 +20,7 @@ const pageState = {
   department: readDepartmentFromUrl(),
   currentPeople: [],
   currentTotal: 0,
+  currentMovies: [],
   renderToken: 0,
 };
 
@@ -30,8 +38,13 @@ async function bootstrap() {
   bindEvents();
 
   const statusPromise = fetchJsonWithTimeout("/api/index-status", 2500);
-  await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
-  renderDirectory();
+  if (shouldFetchResultsOnLoad()) {
+    await refreshResults();
+  } else {
+    await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
+    renderDirectory();
+    setSearchMode(false);
+  }
   elements.indexSummary.textContent = "";
 
   try {
@@ -59,7 +72,10 @@ function applyDevStatusVisibility() {
 
 function bindEvents() {
   elements.directoryGrid.addEventListener("click", handlePersonSelection);
+  elements.resultsGrid?.addEventListener("click", handlePersonSelection);
+  elements.resultsBack?.addEventListener("click", handleResultsBack);
   window.addEventListener("popstate", handlePopState);
+  window.addEventListener("catalog:people-search", handleInlineSearchEvent);
 }
 
 function renderDirectory() {
@@ -135,8 +151,9 @@ function handlePersonSelection(event) {
   }
 
   const params = new URLSearchParams();
+  params.set("department", pageState.department);
   params.set("person", button.dataset.person);
-  window.location.href = `/${params.toString() ? `?${params.toString()}` : ""}`;
+  window.location.href = `/people.html?${params.toString()}#people-results-title`;
 }
 
 async function refreshDirectory() {
@@ -149,8 +166,21 @@ async function handlePopState() {
   updateActiveTab();
   applyDepartmentCopy();
   syncCatalogRoleChoices();
+  if (shouldFetchResultsOnLoad()) {
+    await refreshResults();
+    return;
+  }
   await loadDirectoryForDepartment(pageState.department, currentDirectoryQuery());
   renderDirectory();
+  setSearchMode(false);
+}
+
+async function handleInlineSearchEvent() {
+  pageState.department = readDepartmentFromUrl();
+  updateActiveTab();
+  applyDepartmentCopy();
+  syncCatalogRoleChoices();
+  await refreshResults();
 }
 
 function applyDepartmentCopy() {
@@ -237,6 +267,173 @@ function currentDirectoryQuery() {
   return {
     limit: 50,
   };
+}
+
+function getSearchStateFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    personQuery: params.get("person") || "",
+    role: params.get("role") || "any",
+    genre: params.get("genre") || "all",
+    decade: params.get("decade") || "all",
+    sort: params.get("sort") || "match",
+    imdbMin: Number(params.get("imdbMin") || 0),
+    rtMin: Number(params.get("rtMin") || 0),
+  };
+}
+
+function shouldFetchResultsOnLoad() {
+  const state = getSearchStateFromUrl();
+  return Boolean(
+    state.personQuery ||
+    state.genre !== "all" ||
+    state.decade !== "all" ||
+    state.sort !== "match" ||
+    state.imdbMin > 0 ||
+    state.rtMin > 0 ||
+    state.role !== "any"
+  );
+}
+
+async function refreshResults() {
+  const state = getSearchStateFromUrl();
+  renderLoadingState();
+  const params = new URLSearchParams({
+    personQuery: state.personQuery,
+    role: state.role,
+    genre: state.genre,
+    decade: state.decade,
+    sort: state.sort,
+    imdbMin: String(state.imdbMin),
+    rtMin: String(state.rtMin),
+  });
+
+  try {
+    const payload = await fetchJson(`/api/discover?${params.toString()}`);
+    pageState.currentMovies = payload.movies || [];
+    elements.resultsTitle.textContent = payload.matchedPerson
+      ? `Movies connected to "${payload.matchedPerson.name}"`
+      : "Movies selected by the people behind them";
+    renderMovies(pageState.currentMovies, payload.totalMatches || pageState.currentMovies.length);
+    setSearchMode(true);
+  } catch (error) {
+    renderErrorState(error.message);
+    setSearchMode(true);
+  }
+}
+
+function renderMovies(movies, totalMatches) {
+  if (!elements.resultsGrid || !elements.resultsSummary) {
+    return;
+  }
+
+  elements.resultsGrid.replaceChildren();
+  elements.resultsSummary.textContent = `${totalMatches || movies.length} movie${
+    (totalMatches || movies.length) === 1 ? "" : "s"
+  } match your current filter stack.`;
+
+  if (!movies.length) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML =
+      "<h3>No live matches.</h3><p>Broaden the filters or try a different person.</p>";
+    elements.resultsGrid.append(emptyState);
+    return;
+  }
+
+  movies.forEach((movie) => {
+    elements.resultsGrid.append(buildMovieCard(movie));
+  });
+}
+
+function buildMovieCard(movie) {
+  const fragment = elements.movieCardTemplate.content.cloneNode(true);
+  const poster = fragment.querySelector(".movie-poster");
+  const posterFrame = fragment.querySelector(".movie-poster-frame");
+  fragment.querySelector("h3").textContent = movie.title;
+  fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
+  fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
+  fragment.querySelector(".logline").textContent = movie.logline || "Live discovery result.";
+  fragment.querySelector(".rating-imdb").textContent = formatRating(movie.imdb, 1);
+  fragment.querySelector(".rating-rt").textContent = formatPercent(movie.rt);
+  fragment.querySelector(".rating-meta").textContent = formatInteger(movie.metacritic);
+  fragment.querySelector(".rating-tmdb").textContent = formatRating(movie.tmdb, 1);
+  fragment.querySelector(".cast").textContent = movie.cast?.length ? movie.cast.join(", ") : "Unknown";
+  fragment.querySelector(".director").textContent = movie.director || "Unknown";
+  fragment.querySelector(".producer").textContent = movie.producers?.length ? movie.producers.join(", ") : "Unknown";
+  fragment.querySelector(".match-reason").textContent = movie.matchReason || "Live discovery result.";
+  fragment.querySelector(".genres").textContent = formatGenres(movie);
+
+  if (movie.posterUrl) {
+    poster.src = movie.posterUrl;
+    poster.alt = `${movie.title} poster`;
+  } else {
+    posterFrame.classList.add("is-empty");
+    poster.remove();
+    posterFrame.innerHTML = `<span>${movie.title}</span>`;
+  }
+
+  return fragment;
+}
+
+function renderLoadingState() {
+  if (!elements.resultsGrid || !elements.resultsSummary) {
+    return;
+  }
+  elements.resultsGrid.replaceChildren();
+  elements.resultsSummary.textContent = "Fetching live results.";
+  const loadingState = document.createElement("div");
+  loadingState.className = "empty-state";
+  loadingState.innerHTML = "<h3>Loading live results...</h3><p>Fetching fresh credits and ratings.</p>";
+  elements.resultsGrid.append(loadingState);
+}
+
+function renderErrorState(message) {
+  if (!elements.resultsGrid || !elements.resultsSummary) {
+    return;
+  }
+  elements.resultsGrid.replaceChildren();
+  elements.resultsSummary.textContent = "Search failed.";
+  const errorState = document.createElement("div");
+  errorState.className = "empty-state";
+  errorState.innerHTML = `<h3>Live fetch failed.</h3><p>${message}</p>`;
+  elements.resultsGrid.append(errorState);
+}
+
+function handleResultsBack() {
+  window.location.href = `/people.html?department=${pageState.department}`;
+}
+
+function setSearchMode(isSearchMode) {
+  document.body.classList.toggle("people-has-search-results", Boolean(isSearchMode));
+  if (elements.resultsSection) {
+    elements.resultsSection.hidden = !isSearchMode;
+  }
+  if (elements.directorySection) {
+    elements.directorySection.hidden = isSearchMode;
+  }
+}
+
+function formatRating(value, decimals) {
+  return value === null || value === undefined ? "N/A" : Number(value).toFixed(decimals);
+}
+
+function formatPercent(value) {
+  return value === null || value === undefined ? "N/A" : `${Math.round(value)}%`;
+}
+
+function formatInteger(value) {
+  return value === null || value === undefined ? "N/A" : String(Math.round(value));
+}
+
+function formatGenres(movie) {
+  if (movie.genres && movie.genres.length) {
+    return movie.genres.join(" / ");
+  }
+  if (movie.genreIds && movie.genreIds.length) {
+    return movie.genreIds.join(" / ");
+  }
+  return "Unknown";
 }
 
 function departmentLabelPlural(department) {

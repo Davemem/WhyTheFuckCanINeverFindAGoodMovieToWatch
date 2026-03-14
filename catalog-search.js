@@ -60,6 +60,20 @@ async function setupCatalogSearch(form) {
       params.set("rtMin", String(rtMin));
     }
 
+    if (form.dataset.inlineResults === "people") {
+      const currentParams = new URLSearchParams(window.location.search);
+      const department = currentParams.get("department") || "actors";
+      params.set("department", department);
+      const nextUrl = `/people.html?${params.toString()}#people-results-title`;
+      if (window.location.pathname.endsWith("/people.html")) {
+        window.history.pushState({}, "", nextUrl);
+        window.dispatchEvent(new CustomEvent("catalog:people-search"));
+      } else {
+        window.location.href = nextUrl;
+      }
+      return;
+    }
+
     window.location.href = `/${params.toString() ? `?${params.toString()}` : ""}#results-title`;
   });
 

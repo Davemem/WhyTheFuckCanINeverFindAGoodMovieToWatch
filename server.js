@@ -258,7 +258,7 @@ async function handleApi(requestUrl, res) {
   if (requestUrl.pathname === "/api/people-directory") {
     const department = requestUrl.searchParams.get("department") || "actors";
     const query = requestUrl.searchParams.get("q")?.trim() || "";
-    const sort = requestUrl.searchParams.get("sort") || "score";
+    const sort = requestUrl.searchParams.get("sort") || "suggested";
     const requestedLimit = clampNumber(requestUrl.searchParams.get("limit"), 10, 1, DB_FEATURED_LIMIT);
     const directory = await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
     const source = directory ? peopleDirectorySlice(directory, department) : [];
@@ -1061,6 +1061,9 @@ function filterPeopleDirectory(people, query) {
 }
 
 function sortPeopleDirectory(people, sort) {
+  if (sort === "suggested") {
+    return [...people];
+  }
   const sorted = [...people];
   sorted.sort((left, right) => {
     if (sort === "name") {
@@ -1663,13 +1666,14 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
   const roleFilter = roleToSqlFilter(role, "pmc");
   const knownForRoleFilter = roleToSqlFilter(role, "pmc2");
   const sql = `
-    WITH ranked AS (
+    WITH scored AS (
       SELECT
         p.person_id AS id,
         p.name,
         COALESCE(p.known_for_department, 'Person') AS department,
         p.profile_path,
         COALESCE(p.popularity, 0) AS popularity,
+        COUNT(DISTINCT m.movie_id)::int AS credit_count,
         ROUND(
           (
             SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
@@ -1682,7 +1686,21 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
       JOIN movies m ON m.movie_id = pmc.movie_id
       WHERE ${roleFilter}
       GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity
-      ORDER BY score DESC NULLS LAST, popularity DESC NULLS LAST, p.name ASC
+    ),
+    ranked AS (
+      SELECT *
+      FROM scored
+      ORDER BY
+        CASE
+          WHEN score BETWEEN 7.5 AND 8.5 AND credit_count >= 2 THEN 0
+          WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 1
+          ELSE 2
+        END ASC,
+        ABS(COALESCE(score, 0) - 8.1) ASC,
+        credit_count DESC NULLS LAST,
+        popularity DESC NULLS LAST,
+        score DESC NULLS LAST,
+        name ASC
       LIMIT $1
     )
     SELECT
@@ -1691,6 +1709,7 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
       r.department,
       r.profile_path,
       r.popularity,
+      r.credit_count,
       r.score,
       COALESCE((
         SELECT ARRAY(
@@ -1704,7 +1723,17 @@ async function fetchRankedPeopleFromPostgres(role, limit) {
         )
       ), ARRAY[]::text[]) AS known_for
     FROM ranked r
-    ORDER BY r.score DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
+    ORDER BY
+      CASE
+        WHEN r.score BETWEEN 7.5 AND 8.5 AND r.credit_count >= 2 THEN 0
+        WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 1
+        ELSE 2
+      END ASC,
+      ABS(COALESCE(r.score, 0) - 8.1) ASC,
+      r.credit_count DESC NULLS LAST,
+      r.popularity DESC NULLS LAST,
+      r.score DESC NULLS LAST,
+      r.name ASC
   `;
 
   const result = await queryDb(sql, [limit]);
@@ -1833,6 +1862,7 @@ function normalizeDbPersonRow(row) {
     department: row.department || "Person",
     score,
     popularity: Number(row.popularity || 0),
+    creditCount: Number(row.credit_count || 0),
     knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
     profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
     ratingLabel: score !== null ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
