@@ -9,9 +9,15 @@ async function publishSiteSnapshot(pool) {
   const actorsTop10 = buildSuggestedPool(actorsRanked, 10, 2);
   const directorsTop10 = buildSuggestedPool(directorsRanked, 10, 2);
   const producersTop10 = buildSuggestedPool(producersRanked, 10, 2);
+<<<<<<< HEAD
   const actorsBrowse = buildSuggestedPool(actorsRanked, 50, 10);
   const directorsBrowse = buildSuggestedPool(directorsRanked, 50, 10);
   const producersBrowse = buildSuggestedPool(producersRanked, 50, 10);
+=======
+  const actorsBrowse = buildSuggestedPool(actorsRanked, 50, 2);
+  const directorsBrowse = buildSuggestedPool(directorsRanked, 50, 2);
+  const producersBrowse = buildSuggestedPool(producersRanked, 50, 2);
+>>>>>>> 3b01a46 (Prefer 7-9.5 rated people in snapshot suggestions with 2 wildcard slots)
   const placeholderPools = {
     actors: actorsRanked.map((person) => person.name).filter(Boolean),
     directors: directorsRanked.map((person) => person.name).filter(Boolean),
@@ -65,7 +71,11 @@ async function fetchRankedPeople(pool, role, limit) {
   const knownForRoleFilter = roleToSqlFilter(role, "pmc2");
   const result = await pool.query(
     `
+<<<<<<< HEAD
       WITH ranked AS (
+=======
+      WITH scored AS (
+>>>>>>> 3b01a46 (Prefer 7-9.5 rated people in snapshot suggestions with 2 wildcard slots)
         SELECT
           p.person_id AS id,
           p.name,
@@ -82,7 +92,24 @@ async function fetchRankedPeople(pool, role, limit) {
         JOIN movies m ON m.movie_id = pmc.movie_id
         WHERE ${roleFilter}
         GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity
+<<<<<<< HEAD
         ORDER BY score DESC NULLS LAST, credit_count DESC NULLS LAST, popularity DESC NULLS LAST, p.name ASC
+=======
+      ),
+      ranked AS (
+        SELECT *
+        FROM scored
+        ORDER BY
+          CASE
+            WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 0
+            ELSE 1
+          END ASC,
+          ABS(COALESCE(score, 0) - 8.4) ASC,
+          credit_count DESC NULLS LAST,
+          popularity DESC NULLS LAST,
+          score DESC NULLS LAST,
+          name ASC
+>>>>>>> 3b01a46 (Prefer 7-9.5 rated people in snapshot suggestions with 2 wildcard slots)
         LIMIT $1
       )
       SELECT
@@ -105,7 +132,20 @@ async function fetchRankedPeople(pool, role, limit) {
           )
         ), ARRAY[]::text[]) AS known_for
       FROM ranked r
+<<<<<<< HEAD
       ORDER BY r.score DESC NULLS LAST, r.credit_count DESC NULLS LAST, r.popularity DESC NULLS LAST, r.name ASC
+=======
+      ORDER BY
+        CASE
+          WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 0
+          ELSE 1
+        END ASC,
+        ABS(COALESCE(r.score, 0) - 8.4) ASC,
+        r.credit_count DESC NULLS LAST,
+        r.popularity DESC NULLS LAST,
+        r.score DESC NULLS LAST,
+        r.name ASC
+>>>>>>> 3b01a46 (Prefer 7-9.5 rated people in snapshot suggestions with 2 wildcard slots)
     `,
     [limit],
   );
