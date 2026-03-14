@@ -1102,14 +1102,18 @@ function compareDiscoveryPeople(left, right) {
 function discoveryScore(person) {
   const score = Number(person.score ?? 0);
   const popularity = Number(person.popularity ?? 0);
+  const recognitionScore = Number(person.recognitionScore ?? 0);
   const creditCount = Number(person.creditCount ?? 0);
   const totalVotes = Number(person.totalVotes ?? 0);
-  const inCoreBand = score >= 7.4 && score <= 8.8 && creditCount >= 4 && totalVotes >= 5000;
-  const inPreferredBand = score >= 7.0 && score <= 9.2 && creditCount >= 3 && totalVotes >= 1000;
+  const inCoreBand =
+    score >= 7.4 && score <= 8.8 && creditCount >= 4 && totalVotes >= 5000 && recognitionScore >= 300;
+  const inPreferredBand =
+    score >= 7.0 && score <= 9.2 && creditCount >= 3 && totalVotes >= 1000 && recognitionScore >= 120;
   const bandDistance = Math.abs(score - 8.1);
   return (
     (inCoreBand ? 220 : 0)
     + (inPreferredBand ? 100 : 0)
+    + recognitionScore * 0.6
     + Math.log10(totalVotes + 10) * 18
     + Math.min(creditCount, 12) * 2
     + Math.log10(popularity + 10) * 5

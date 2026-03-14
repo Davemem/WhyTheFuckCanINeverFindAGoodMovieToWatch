@@ -28,6 +28,14 @@ async function main() {
   await pool.end();
 
   try {
+    await runScript("refresh-person-recognition.js");
+  } catch (error) {
+    process.stderr.write(
+      `Initial recognition refresh failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+
+  try {
     await runScript("build-site-snapshots.js");
   } catch (error) {
     process.stderr.write(
@@ -42,6 +50,7 @@ async function main() {
       if (Date.now() >= nextIngestAt) {
         const ingestArgs = [`--max-ids=${ingestMaxIds}`];
         await runScript("ingest-person-ids.js", ingestArgs);
+        await runScript("refresh-person-recognition.js");
         nextIngestAt = Date.now() + ingestEveryHours * 60 * 60 * 1000;
         process.stdout.write(
           `Next ingest scheduled in ${ingestEveryHours} hour(s) at ${new Date(nextIngestAt).toISOString()}\n`,

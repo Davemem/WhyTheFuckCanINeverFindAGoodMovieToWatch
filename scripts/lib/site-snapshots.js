@@ -78,6 +78,7 @@ async function fetchRankedPeople(pool, role, limit) {
           COALESCE(p.known_for_department, 'Person') AS department,
           p.profile_path,
           COALESCE(p.popularity, 0) AS popularity,
+          COALESCE(pr.recognition_score, 0) AS recognition_score,
           COUNT(DISTINCT m.movie_id)::int AS credit_count,
           SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
           ROUND((
@@ -85,21 +86,23 @@ async function fetchRankedPeople(pool, role, limit) {
             / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
           )::numeric, 1) AS score
         FROM people p
+        LEFT JOIN person_recognition pr ON pr.person_id = p.person_id
         JOIN person_movie_credits pmc ON pmc.person_id = p.person_id
         JOIN movies m ON m.movie_id = pmc.movie_id
         WHERE ${roleFilter}
-        GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity
+        GROUP BY p.person_id, p.name, p.known_for_department, p.profile_path, p.popularity, pr.recognition_score
       ),
       ranked AS (
         SELECT *
         FROM scored
         ORDER BY
           CASE
-            WHEN score BETWEEN 7.4 AND 8.8 AND credit_count >= 4 AND total_votes >= 5000 THEN 0
-            WHEN score BETWEEN 7.0 AND 9.2 AND credit_count >= 3 AND total_votes >= 1000 THEN 1
+            WHEN score BETWEEN 7.4 AND 8.8 AND credit_count >= 4 AND total_votes >= 5000 AND recognition_score >= 300 THEN 0
+            WHEN score BETWEEN 7.0 AND 9.2 AND credit_count >= 3 AND total_votes >= 1000 AND recognition_score >= 120 THEN 1
             WHEN score BETWEEN 7 AND 9.5 AND credit_count >= 2 THEN 2
             ELSE 3
           END ASC,
+          recognition_score DESC NULLS LAST,
           total_votes DESC NULLS LAST,
           popularity DESC NULLS LAST,
           ABS(COALESCE(score, 0) - 8.1) ASC,
@@ -114,6 +117,7 @@ async function fetchRankedPeople(pool, role, limit) {
         r.department,
         r.profile_path,
         r.popularity,
+        r.recognition_score,
         r.credit_count,
         r.total_votes,
         r.score,
@@ -131,11 +135,12 @@ async function fetchRankedPeople(pool, role, limit) {
       FROM ranked r
       ORDER BY
         CASE
-          WHEN r.score BETWEEN 7.4 AND 8.8 AND r.credit_count >= 4 AND r.total_votes >= 5000 THEN 0
-          WHEN r.score BETWEEN 7.0 AND 9.2 AND r.credit_count >= 3 AND r.total_votes >= 1000 THEN 1
+          WHEN r.score BETWEEN 7.4 AND 8.8 AND r.credit_count >= 4 AND r.total_votes >= 5000 AND r.recognition_score >= 300 THEN 0
+          WHEN r.score BETWEEN 7.0 AND 9.2 AND r.credit_count >= 3 AND r.total_votes >= 1000 AND r.recognition_score >= 120 THEN 1
           WHEN r.score BETWEEN 7 AND 9.5 AND r.credit_count >= 2 THEN 2
           ELSE 3
         END ASC,
+        r.recognition_score DESC NULLS LAST,
         r.total_votes DESC NULLS LAST,
         r.popularity DESC NULLS LAST,
         ABS(COALESCE(r.score, 0) - 8.1) ASC,
@@ -154,6 +159,7 @@ async function fetchRankedPeople(pool, role, limit) {
       department: row.department || "Person",
       score,
       popularity: Number(row.popularity || 0),
+      recognitionScore: Number(row.recognition_score || 0),
       creditCount: Number(row.credit_count || 0),
       totalVotes: Number(row.total_votes || 0),
       knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
@@ -182,7 +188,8 @@ function buildSuggestedPool(people, limit, wildcardCount = 2) {
       score >= 7 &&
       score <= 9.5 &&
       Number(person.creditCount || 0) >= 2 &&
-      Number(person.totalVotes || 0) >= 500
+      Number(person.totalVotes || 0) >= 500 &&
+      Number(person.recognitionScore || 0) >= 40
     );
   });
   const wildcards = ranked.filter((person) => !preferred.some((candidate) => candidate.id === person.id));

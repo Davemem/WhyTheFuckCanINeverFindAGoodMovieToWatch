@@ -79,6 +79,18 @@ ON person_movie_credits (
 CREATE INDEX IF NOT EXISTS idx_person_movie_credits_person ON person_movie_credits(person_id);
 CREATE INDEX IF NOT EXISTS idx_person_movie_credits_movie ON person_movie_credits(movie_id);
 
+CREATE TABLE IF NOT EXISTS person_recognition (
+  person_id BIGINT PRIMARY KEY REFERENCES people(person_id) ON DELETE CASCADE,
+  popular_rank INTEGER,
+  trending_rank INTEGER,
+  recognition_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+  source_json JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_person_recognition_score
+ON person_recognition(recognition_score DESC, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS site_snapshots (
   snapshot_key TEXT PRIMARY KEY,
   payload JSONB NOT NULL,
