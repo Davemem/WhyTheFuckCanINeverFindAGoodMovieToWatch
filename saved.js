@@ -55,6 +55,14 @@ elements.savedTabButtons.forEach((button) => {
   );
 });
 window.addEventListener("resize", debounce(syncAllRails, 120));
+window.addEventListener(
+  "resize",
+  debounce(() => {
+    if (elements.savedPersonCatalog) {
+      refreshSynopsisToggles(elements.savedPersonCatalog);
+    }
+  }, 120),
+);
 window.addEventListener("scroll", debounce(handleWindowScroll, 80), { passive: true });
 
 renderSavedPage();
@@ -364,6 +372,19 @@ function handleWindowScroll() {
 }
 
 function handleSavedAction(event) {
+  const synopsisButton = event.target.closest("[data-synopsis-toggle]");
+  if (synopsisButton) {
+    const card = synopsisButton.closest(".movie-card");
+    if (!card) {
+      return;
+    }
+    const isExpanded = synopsisButton.dataset.synopsisExpanded === "true";
+    card.classList.toggle("is-synopsis-expanded", !isExpanded);
+    synopsisButton.dataset.synopsisExpanded = !isExpanded ? "true" : "false";
+    synopsisButton.textContent = !isExpanded ? "Show less" : "Show more";
+    return;
+  }
+
   const movieButton = event.target.closest("[data-watchlist-id]");
   if (movieButton) {
     const movieId = Number(movieButton.dataset.watchlistId);
@@ -742,8 +763,32 @@ function renderPersonRail(rail, personId) {
     viewport.scrollLeft = previousScrollLeft;
     uiState.railScrollLeft.set(String(personId), previousScrollLeft);
   }
+  window.requestAnimationFrame(() => refreshSynopsisToggles(rail));
   syncRail(rail);
   scheduleRailEnrichment(rail);
+}
+
+function refreshSynopsisToggles(container) {
+  container?.querySelectorAll(".movie-card").forEach((card) => {
+    const logline = card.querySelector(".logline");
+    const button = card.querySelector(".synopsis-toggle");
+    if (!logline || !button) {
+      return;
+    }
+    const hasOverflow = logline.scrollHeight - logline.clientHeight > 2;
+    if (!hasOverflow) {
+      button.hidden = true;
+      button.removeAttribute("data-synopsis-toggle");
+      button.dataset.synopsisExpanded = "false";
+      card.classList.remove("is-synopsis-expanded");
+      return;
+    }
+    button.hidden = false;
+    button.dataset.synopsisToggle = "true";
+    const isExpanded = card.classList.contains("is-synopsis-expanded");
+    button.dataset.synopsisExpanded = isExpanded ? "true" : "false";
+    button.textContent = isExpanded ? "Show less" : "Show more";
+  });
 }
 
 function resolveSelectedPersonId(tabKey, people) {

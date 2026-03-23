@@ -768,7 +768,7 @@ main {
   flex: 0 0 252px;
   min-width: 252px;
   align-self: start;
-  height: 640px;
+  height: 760px;
   display: flex;
   flex-direction: column;
 }
@@ -820,8 +820,6 @@ main {
   aspect-ratio: 2 / 3;
   display: grid;
   place-items: center;
-  min-height: 260px;
-  max-height: 260px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 239, 227, 0.9));
 }
@@ -839,17 +837,30 @@ main {
 .saved-title-card .card-body {
   display: grid;
   flex: 1;
-  grid-template-rows: minmax(2.2em, 2.2em) minmax(4.9em, 4.9em) auto auto 1fr;
+  grid-template-rows: minmax(2.2em, 2.2em) auto auto auto 1fr;
   gap: 8px;
 }
 
 .saved-person-movie-card .logline,
 .saved-title-card .logline {
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 4.9em;
+  min-height: 7.2em;
+}
+
+.synopsis-toggle {
+  justify-self: start;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.movie-card.is-synopsis-expanded .logline {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 .saved-person-movie-card .credit-list,
@@ -911,7 +922,7 @@ main {
   flex: 0 0 252px;
   min-width: 252px;
   width: 252px;
-  height: 640px;
+  height: 760px;
 }
 .person-save-button.is-saved {
   background: rgba(216, 79, 49, 0.12);
