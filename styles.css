@@ -782,7 +782,11 @@ main {
   margin: 0;
   font-size: 1.16rem;
   line-height: 1;
-  min-height: 0;
+  min-height: 2.2em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .saved-person-movie-card .logline,
@@ -816,6 +820,8 @@ main {
   aspect-ratio: 2 / 3;
   display: grid;
   place-items: center;
+  min-height: 260px;
+  max-height: 260px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 239, 227, 0.9));
 }
@@ -831,9 +837,9 @@ main {
 
 .saved-person-movie-card .card-body,
 .saved-title-card .card-body {
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-direction: column;
+  grid-template-rows: minmax(2.2em, 2.2em) minmax(4.9em, 4.9em) auto auto 1fr;
   gap: 8px;
 }
 
@@ -898,7 +904,6 @@ main {
 
 .saved-person-movie-card .watchlist-button,
 .saved-title-card .watchlist-button {
-  order: 4;
   margin-top: 2px;
 }
 
