@@ -1,0 +1,22 @@
+{
+  "name": "whatthefuckshouldiwatch",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "build:people-index": "node scripts/build-people-index.js",
+    "db:init": "node scripts/init-ingest-db.js",
+    "ingest:person-ids": "node scripts/ingest-person-ids.js",
+    "refresh:recognition": "node scripts/refresh-person-recognition.js",
+    "hydrate:people": "node scripts/hydrate-people.js",
+    "build:site-snapshots": "node scripts/build-site-snapshots.js",
+    "pipeline:people": "npm run db:init && npm run ingest:person-ids && npm run refresh:recognition && npm run hydrate:people",
+    "pipeline:auto": "node scripts/auto-pipeline.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

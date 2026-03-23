@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ranked People Directory</title>
+    <meta
+      name="description"
+      content="Browse the full ranked actor, director, and producer directories."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260314h" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a id="nav-actors" href="/people.html?department=actors">Actors / Actresses</a>
+          <a id="nav-producers" href="/people.html?department=producers">Producers / Directors</a>
+          <a href="/saved.html">Saved</a>
+        </nav>
+      </div>
+
+      <main>
+        <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
+          <div class="filter-panel-header">
+            <h2>Search the movie catalog</h2>
+          </div>
+          <form class="catalog-launch-form" data-catalog-search data-inline-results="people">
+            <label class="field">
+              <span>Actor, actress, director, producer</span>
+              <input
+                data-search-person
+                name="person"
+                type="search"
+                list="catalog-people-suggestions"
+                data-placeholder-profile="producer"
+                placeholder="Try: Kevin Feige, Kathleen Kennedy, Jerry Bruckheimer"
+              />
+            </label>
+            <datalist id="catalog-people-suggestions"></datalist>
+
+            <div class="field">
+              <div class="field-row">
+                <span>Match role</span>
+                <strong class="field-helper" data-role-label>Any role</strong>
+              </div>
+              <input type="hidden" name="role" value="any" data-role-input />
+              <div class="segmented-control" aria-label="Filter by credit type" data-role-segments>
+                <button type="button" class="segment is-active" data-role-choice="any">Any</button>
+                <button type="button" class="segment" data-role-choice="cast">Cast</button>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Minimum IMDb</span>
+                <input data-search-imdb name="imdbMin" type="range" min="0" max="10" step="0.1" value="0" />
+                <strong data-search-imdb-value>0.0+</strong>
+              </label>
+
+              <label class="field">
+                <span>Minimum Rotten Tomatoes</span>
+                <input data-search-rt name="rtMin" type="range" min="0" max="100" step="1" value="0" />
+                <strong data-search-rt-value>0%+</strong>
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>Genre</span>
+                <select name="genre" data-search-genre>
+                  <option value="all">All genres</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Decade</span>
+                <select name="decade" data-search-decade>
+                  <option value="all">All decades</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Sort by</span>
+              <select name="sort" data-search-sort>
+                <option value="match">Best match</option>
+                <option value="imdb">Highest IMDb</option>
+                <option value="rt">Highest Rotten Tomatoes</option>
+                <option value="year-desc">Newest first</option>
+                <option value="year-asc">Oldest first</option>
+              </select>
+            </label>
+
+            <button type="submit" class="ghost-button catalog-launch-button">Search from here</button>
+          </form>
+        </section>
+
+        <section class="status-strip index-status-strip" aria-live="polite" hidden>
+          <p id="index-summary">Waiting for the local ranked directory.</p>
+        </section>
+
+        <section
+          class="catalog-section results-section"
+          id="people-results-section"
+          aria-live="polite"
+          aria-labelledby="people-results-title"
+          hidden
+        >
+          <div class="results-header">
+            <div>
+              <p class="section-label">Results</p>
+              <h2 id="people-results-title">Movies selected by the people behind them</h2>
+            </div>
+            <div class="section-actions">
+              <p id="people-results-summary" class="results-summary"></p>
+              <button id="people-results-back" type="button" class="ghost-button">
+                Back to suggestions
+              </button>
+            </div>
+          </div>
+          <section id="people-results-grid" class="results-grid" aria-live="polite"></section>
+        </section>
+
+        <section id="people-directory-section" class="catalog-section" aria-labelledby="directory-grid-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Directory</p>
+              <h2 id="directory-grid-heading">Suggested 50</h2>
+            </div>
+            <div class="section-actions">
+              <p id="directory-results-summary" class="results-summary"></p>
+              <button id="directory-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
+            </div>
+          </div>
+          <div id="directory-grid" class="people-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="person-card-template">
+      <article class="person-card">
+        <div class="person-card-visual">
+          <img class="person-card-portrait" alt="" loading="lazy" />
+        </div>
+        <p class="person-card-role"></p>
+        <h3></h3>
+        <p class="person-card-count"></p>
+        <p class="person-card-credits"></p>
+        <div class="person-card-actions">
+          <button type="button" class="person-card-button ghost-button" data-open-person>
+            Show matching movies
+          </button>
+          <button type="button" class="person-save-button ghost-button" data-save-person>
+            Save person
+          </button>
+        </div>
+      </article>
+    </template>
+
+    <template id="movie-card-template">
+      <article class="movie-card">
+        <div class="movie-poster-frame">
+          <img class="movie-poster" alt="" loading="lazy" />
+        </div>
+        <div class="card-topline">
+          <span class="pill pill-year"></span>
+          <span class="pill pill-runtime"></span>
+        </div>
+        <div class="card-body">
+          <h3></h3>
+          <p class="logline"></p>
+          <div class="rating-row">
+            <div class="rating-box">
+              <span class="rating-label">IMDb</span>
+              <strong class="rating-imdb"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">RT</span>
+              <strong class="rating-rt"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">Metacritic</span>
+              <strong class="rating-meta"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">TMDb</span>
+              <strong class="rating-tmdb"></strong>
+            </div>
+          </div>
+          <dl class="credit-list">
+            <div>
+              <dt>Starring</dt>
+              <dd class="cast"></dd>
+            </div>
+            <div>
+              <dt>Directed by</dt>
+              <dd class="director"></dd>
+            </div>
+            <div>
+              <dt>Produced by</dt>
+              <dd class="producer"></dd>
+            </div>
+            <div>
+              <dt>Why this matched</dt>
+              <dd class="match-reason"></dd>
+            </div>
+            <div>
+              <dt>Genres</dt>
+              <dd class="genres"></dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </template>
+
+    <script src="./people.js?v=20260315a" defer></script>
+    <script src="./catalog-search.js?v=20260314h" defer></script>
+  </body>
+</html>

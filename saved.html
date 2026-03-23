@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Saved People</title>
+    <meta
+      name="description"
+      content="Browse the actors, actresses, directors, and producers you have saved locally in this browser."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260322b" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=producers">Producers / Directors</a>
+          <a class="is-active" href="/saved.html">Saved People</a>
+          <a href="/saved-titles.html">Saved Titles</a>
+        </nav>
+      </div>
+
+      <header class="hero people-page-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">saved stacks</p>
+          <h1>Saved people</h1>
+          <p class="hero-text">
+            Keep your trusted actors, actresses, directors, and producers in one place, then browse a full live catalog for whichever saved person you want to revisit next.
+          </p>
+          <p id="saved-status" class="hero-subtext">
+            Reading local saved state.
+          </p>
+        </div>
+
+        <section class="filter-panel" aria-label="Saved summary">
+          <div class="filter-panel-header">
+            <h2>People summary</h2>
+          </div>
+          <div class="hero-stats">
+            <div>
+              <span id="saved-actor-count" class="stat-number">0</span>
+              <span class="stat-label">Actors / actresses</span>
+            </div>
+            <div>
+              <span id="saved-filmmaker-count" class="stat-number">0</span>
+              <span class="stat-label">Directors / producers</span>
+            </div>
+          </div>
+        </section>
+      </header>
+
+      <main>
+        <section class="catalog-section" aria-labelledby="saved-people-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">People</p>
+              <h2 id="saved-people-heading">Saved people</h2>
+            </div>
+          </div>
+          <div class="saved-people-tabs" role="tablist" aria-label="Saved people lists">
+            <button
+              id="saved-tab-actors"
+              class="ghost-button saved-tab-button is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="saved-actors-panel"
+              data-saved-tab="actors"
+            >
+              Actors / Actresses
+            </button>
+            <button
+              id="saved-tab-filmmakers"
+              class="ghost-button saved-tab-button"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="saved-filmmakers-panel"
+              data-saved-tab="filmmakers"
+            >
+              Producers / Directors
+            </button>
+          </div>
+          <section id="saved-person-catalog" class="saved-person-rail saved-people-catalog" data-saved-person-rail hidden>
+            <div class="saved-person-rail-header">
+              <div>
+                <p class="saved-person-titles-label">Full catalog</p>
+                <h3 id="saved-person-catalog-name" class="saved-people-catalog-name"></h3>
+              </div>
+              <div class="saved-person-rail-meta">
+                <span class="saved-person-rail-count" data-saved-person-visible-count></span>
+                <div class="saved-person-rail-controls">
+                  <button type="button" class="ghost-button saved-person-rail-button" data-rail-direction="prev" aria-label="Previous titles">
+                    &larr;
+                  </button>
+                  <button type="button" class="ghost-button saved-person-rail-button" data-rail-direction="next" aria-label="Next titles">
+                    &rarr;
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="saved-person-titles-viewport" data-saved-person-titles-viewport>
+              <div class="saved-person-titles-track" data-saved-person-titles></div>
+            </div>
+          </section>
+          <div
+            id="saved-actors-panel"
+            class="saved-people-panel"
+            role="tabpanel"
+            aria-labelledby="saved-tab-actors"
+          >
+            <div id="saved-actors-grid" class="saved-people-list"></div>
+          </div>
+          <div
+            id="saved-filmmakers-panel"
+            class="saved-people-panel"
+            role="tabpanel"
+            aria-labelledby="saved-tab-filmmakers"
+            hidden
+          >
+            <div id="saved-filmmakers-grid" class="saved-people-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="movie-card-template">
+      <article class="movie-card">
+        <div class="movie-poster-frame">
+          <img class="movie-poster" alt="" loading="lazy" />
+        </div>
+        <div class="card-topline">
+          <span class="pill pill-year"></span>
+          <span class="pill pill-runtime"></span>
+        </div>
+        <div class="card-body">
+          <h3></h3>
+          <p class="logline"></p>
+          <div class="rating-row">
+            <div class="rating-box">
+              <span class="rating-label">IMDb</span>
+              <strong class="rating-imdb"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">RT</span>
+              <strong class="rating-rt"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">Metacritic</span>
+              <strong class="rating-meta"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">TMDb</span>
+              <strong class="rating-tmdb"></strong>
+            </div>
+          </div>
+          <button type="button" class="watchlist-button"></button>
+          <dl class="credit-list">
+            <div>
+              <dt>Starring</dt>
+              <dd class="cast"></dd>
+            </div>
+            <div>
+              <dt>Directed by</dt>
+              <dd class="director"></dd>
+            </div>
+            <div>
+              <dt>Produced by</dt>
+              <dd class="producer"></dd>
+            </div>
+            <div>
+              <dt>Why this matched</dt>
+              <dd class="match-reason"></dd>
+            </div>
+            <div>
+              <dt>Genres</dt>
+              <dd class="genres"></dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </template>
+
+    <template id="saved-person-card-template">
+      <article class="saved-person-row" data-select-person-id>
+        <div class="saved-person-profile">
+          <div class="person-card-visual saved-person-visual">
+            <img class="person-card-portrait" alt="" loading="lazy" />
+          </div>
+          <div class="saved-person-copy">
+            <p class="person-card-role"></p>
+            <h3></h3>
+            <p class="person-card-count"></p>
+          </div>
+          <div class="person-card-actions saved-person-actions">
+            <button type="button" class="person-save-button ghost-button is-saved" data-saved-person-id>
+              Remove person
+            </button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./saved.js?v=20260322b" defer></script>
+  </body>
+</html>

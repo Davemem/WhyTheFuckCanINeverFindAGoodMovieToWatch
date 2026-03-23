@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Saved Titles</title>
+    <meta
+      name="description"
+      content="Browse the movie titles you have saved locally in this browser."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260322b" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=producers">Producers / Directors</a>
+          <a href="/saved.html">Saved People</a>
+          <a class="is-active" href="/saved-titles.html">Saved Titles</a>
+        </nav>
+      </div>
+
+      <header class="hero people-page-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">saved stacks</p>
+          <h1>Saved titles</h1>
+          <p class="hero-text">
+            Keep your watchlist in one place, then open it whenever you want a fast shortlist of films already worth revisiting.
+          </p>
+          <p id="saved-titles-status" class="hero-subtext">Reading local saved titles.</p>
+        </div>
+
+        <section class="filter-panel" aria-label="Saved titles summary">
+          <div class="filter-panel-header">
+            <h2>Watchlist summary</h2>
+          </div>
+          <div class="hero-stats">
+            <div>
+              <span id="saved-titles-count" class="stat-number">0</span>
+              <span class="stat-label">Saved titles</span>
+            </div>
+          </div>
+        </section>
+      </header>
+
+      <main>
+        <section class="catalog-section" aria-labelledby="saved-titles-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Titles</p>
+              <h2 id="saved-titles-heading">Your watchlist</h2>
+            </div>
+          </div>
+          <div id="saved-titles-grid" class="saved-title-page-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="movie-card-template">
+      <article class="movie-card">
+        <div class="movie-poster-frame">
+          <img class="movie-poster" alt="" loading="lazy" />
+        </div>
+        <div class="card-topline">
+          <span class="pill pill-year"></span>
+          <span class="pill pill-runtime"></span>
+        </div>
+        <div class="card-body">
+          <h3></h3>
+          <p class="logline"></p>
+          <div class="rating-row">
+            <div class="rating-box">
+              <span class="rating-label">IMDb</span>
+              <strong class="rating-imdb"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">RT</span>
+              <strong class="rating-rt"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">Metacritic</span>
+              <strong class="rating-meta"></strong>
+            </div>
+            <div class="rating-box">
+              <span class="rating-label">TMDb</span>
+              <strong class="rating-tmdb"></strong>
+            </div>
+          </div>
+          <button type="button" class="watchlist-button"></button>
+          <dl class="credit-list">
+            <div>
+              <dt>Starring</dt>
+              <dd class="cast"></dd>
+            </div>
+            <div>
+              <dt>Directed by</dt>
+              <dd class="director"></dd>
+            </div>
+            <div>
+              <dt>Produced by</dt>
+              <dd class="producer"></dd>
+            </div>
+            <div>
+              <dt>Why this matched</dt>
+              <dd class="match-reason"></dd>
+            </div>
+            <div>
+              <dt>Genres</dt>
+              <dd class="genres"></dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </template>
+
+    <script src="./saved-titles.js?v=20260322b" defer></script>
+  </body>
+</html>
