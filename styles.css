@@ -769,8 +769,8 @@ main {
   min-width: 252px;
   align-self: start;
   height: 760px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 378px auto 1fr;
 }
 
 .saved-people-catalog .saved-person-titles-track {
@@ -811,13 +811,14 @@ main {
   min-width: 210px;
   align-self: start;
   height: 400px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 378px auto 1fr;
 }
 
 .saved-person-movie-card .movie-poster-frame,
 .saved-title-card .movie-poster-frame {
-  aspect-ratio: 2 / 3;
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
   background:
@@ -836,9 +837,9 @@ main {
 .saved-person-movie-card .card-body,
 .saved-title-card .card-body {
   display: grid;
-  flex: 1;
   grid-template-rows: minmax(2.2em, 2.2em) auto auto auto 1fr;
   gap: 8px;
+  min-height: 0;
 }
 
 .saved-person-movie-card .logline,
