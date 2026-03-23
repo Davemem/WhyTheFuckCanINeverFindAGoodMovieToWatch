@@ -50,7 +50,9 @@ elements.savedPersonCatalog?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("scroll", handleRailScroll, true);
 elements.savedPersonCatalog?.addEventListener("click", handleRailButtonClick);
 elements.savedTabButtons.forEach((button) => {
-  button.addEventListener("click", () => setActiveTab(button.dataset.savedTab || "actors"));
+  button.addEventListener("click", () =>
+    setActiveTab(button.dataset.savedTab || "actors", { clearSelection: true }),
+  );
 });
 window.addEventListener("resize", debounce(syncAllRails, 120));
 window.addEventListener("scroll", debounce(handleWindowScroll, 80), { passive: true });
@@ -320,9 +322,11 @@ function getVisibleRailCount(viewport) {
   );
 }
 
-function setActiveTab(tab) {
+function setActiveTab(tab, options = {}) {
   uiState.activeTab = tab === "filmmakers" ? "filmmakers" : "actors";
-  uiState.selectedPeople[uiState.activeTab] = "";
+  if (options.clearSelection) {
+    uiState.selectedPeople[uiState.activeTab] = "";
+  }
   const actorsActive = uiState.activeTab === "actors";
 
   elements.savedActorsPanel.hidden = !actorsActive;
