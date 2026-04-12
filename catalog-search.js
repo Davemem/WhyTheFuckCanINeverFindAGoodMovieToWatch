@@ -1,5 +1,12 @@
 const decadeOptions = buildDecadeOptions();
 const bootstrapLiteCacheKey = "wtfcineverfind-bootstrap-lite-v1";
+const studioPlaceholderPool = [
+  "A24",
+  "Warner Bros.",
+  "Searchlight Pictures",
+  "Blumhouse Productions",
+  "Paramount Pictures",
+];
 
 document.querySelectorAll("[data-catalog-search]").forEach((form) => {
   setupCatalogSearch(form).catch(() => {
@@ -9,12 +16,16 @@ document.querySelectorAll("[data-catalog-search]").forEach((form) => {
 
 async function setupCatalogSearch(form) {
   const personInput = form.querySelector("[data-search-person]");
+  const searchTypeSelect = form.querySelector("[data-search-type]");
+  const searchLabel = form.querySelector("[data-search-label]");
+  const awardSelect = form.querySelector("[data-search-award]");
   const imdbInput = form.querySelector("[data-search-imdb]");
   const rtInput = form.querySelector("[data-search-rt]");
   const imdbValue = form.querySelector("[data-search-imdb-value]");
   const rtValue = form.querySelector("[data-search-rt-value]");
   const genreSelect = form.querySelector("[data-search-genre]");
   const decadeSelect = form.querySelector("[data-search-decade]");
+  const roleField = form.querySelector("[data-role-field]");
   const roleInput = form.querySelector("[data-role-input]");
   const roleLabel = form.querySelector("[data-role-label]");
   const suggestionListId = personInput?.getAttribute("list");
@@ -30,19 +41,27 @@ async function setupCatalogSearch(form) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const params = new URLSearchParams();
-    const person = personInput?.value.trim();
+    const query = personInput?.value.trim();
+    const searchType = searchTypeSelect?.value || "person";
     const role = roleInput?.value || "any";
+    const award = awardSelect?.value || "all";
     const imdbMin = Number(imdbInput?.value || 0);
     const rtMin = Number(rtInput?.value || 0);
     const genre = genreSelect?.value || "all";
     const decade = decadeSelect?.value || "all";
     const sort = form.querySelector("[data-search-sort]")?.value || "match";
 
-    if (person) {
-      params.set("person", person);
+    if (query) {
+      params.set("query", query);
     }
-    if (role !== "any") {
+    if (searchType !== "person") {
+      params.set("searchType", searchType);
+    }
+    if (searchType === "person" && role !== "any") {
       params.set("role", role);
+    }
+    if (award !== "all") {
+      params.set("award", award);
     }
     if (genre !== "all") {
       params.set("genre", genre);
@@ -83,12 +102,7 @@ async function setupCatalogSearch(form) {
       return;
     }
 
-    roleInput.value = button.dataset.roleChoice;
-    roleLabel.textContent =
-      button.dataset.roleChoice === "any" ? "Any role" : `Only ${button.dataset.roleChoice} matches`;
-    form.querySelectorAll("[data-role-choice]").forEach((choice) => {
-      choice.classList.toggle("is-active", choice === button);
-    });
+    applyRoleChoice(form, button.dataset.roleChoice || "any");
   });
 
   personInput?.addEventListener("input", debounce(async () => {
@@ -101,11 +115,12 @@ async function setupCatalogSearch(form) {
     }
 
     try {
-      const payload = await fetchJson(`/api/people?query=${encodeURIComponent(query)}`);
+      const endpoint = (searchTypeSelect?.value || "person") === "studio" ? "/api/studios" : "/api/people";
+      const payload = await fetchJson(`${endpoint}?query=${encodeURIComponent(query)}`);
       suggestions.replaceChildren();
-      (payload.results || []).forEach((person) => {
+      (payload.results || []).forEach((result) => {
         const option = document.createElement("option");
-        option.value = person.name;
+        option.value = result.name;
         suggestions.append(option);
       });
     } catch {
@@ -113,9 +128,152 @@ async function setupCatalogSearch(form) {
     }
   }, 250));
 
+  searchTypeSelect?.addEventListener("change", () => {
+    if (suggestions) {
+      suggestions.replaceChildren();
+    }
+    syncSearchTypeUi({
+      searchTypeSelect,
+      searchLabel,
+      roleField,
+      roleInput,
+      roleLabel,
+      personInput,
+      placeholderPools: form._placeholderPools || null,
+      form,
+    });
+  });
+
   const bootstrap = await fetchBootstrapLite();
+  form._placeholderPools = bootstrap.config?.placeholderPools || null;
   populateGenres(genreSelect, bootstrap.genres || []);
-  applyRandomPlaceholder(personInput, bootstrap.config?.placeholderPools || null);
+  hydrateFormFromUrl({
+    form,
+    personInput,
+    searchTypeSelect,
+    awardSelect,
+    roleInput,
+    genreSelect,
+    decadeSelect,
+    imdbInput,
+    rtInput,
+  });
+  syncSearchTypeUi({
+    searchTypeSelect,
+    searchLabel,
+    roleField,
+    roleInput,
+    roleLabel,
+    personInput,
+    placeholderPools: form._placeholderPools || null,
+    form,
+  });
+  syncRangeLabels(imdbInput, rtInput, imdbValue, rtValue);
+}
+
+function hydrateFormFromUrl({
+  form,
+  personInput,
+  searchTypeSelect,
+  awardSelect,
+  roleInput,
+  genreSelect,
+  decadeSelect,
+  imdbInput,
+  rtInput,
+}) {
+  const params = new URLSearchParams(window.location.search);
+  const query = params.get("query") || params.get("person") || "";
+  const searchType = params.get("searchType") || "person";
+  const role = params.get("role") || "any";
+  const award = params.get("award") || "all";
+  const genre = params.get("genre") || "all";
+  const decade = params.get("decade") || "all";
+  const sort = params.get("sort") || "match";
+  const imdbMin = params.get("imdbMin");
+  const rtMin = params.get("rtMin");
+
+  if (personInput) {
+    personInput.value = query;
+  }
+  if (searchTypeSelect) {
+    searchTypeSelect.value = searchType;
+  }
+  if (awardSelect) {
+    awardSelect.value = award;
+  }
+  if (roleInput) {
+    roleInput.value = role;
+  }
+  if (genreSelect) {
+    genreSelect.value = genre;
+  }
+  if (decadeSelect) {
+    decadeSelect.value = decade;
+  }
+  if (imdbInput && imdbMin !== null) {
+    imdbInput.value = imdbMin;
+  }
+  if (rtInput && rtMin !== null) {
+    rtInput.value = rtMin;
+  }
+
+  const sortSelect = form.querySelector("[data-search-sort]");
+  if (sortSelect) {
+    sortSelect.value = sort;
+  }
+  applyRoleChoice(form, role);
+}
+
+function syncSearchTypeUi({
+  searchTypeSelect,
+  searchLabel,
+  roleField,
+  roleInput,
+  roleLabel,
+  personInput,
+  placeholderPools,
+  form,
+}) {
+  const searchType = searchTypeSelect?.value || "person";
+  const isStudio = searchType === "studio";
+
+  if (searchLabel) {
+    searchLabel.textContent = isStudio ? "Studio" : "Person";
+  }
+  if (roleField) {
+    roleField.hidden = isStudio;
+  }
+  if (isStudio) {
+    if (roleInput) {
+      roleInput.value = "any";
+    }
+    if (roleLabel) {
+      roleLabel.textContent = "Studios ignore role matching";
+    }
+    form.querySelectorAll("[data-role-choice]").forEach((choice) => {
+      choice.classList.toggle("is-active", choice.dataset.roleChoice === "any");
+    });
+    applyStudioPlaceholder(personInput);
+    return;
+  }
+
+  applyRoleChoice(form, roleInput?.value || "any");
+  applyRandomPlaceholder(personInput, placeholderPools);
+}
+
+function applyRoleChoice(form, value) {
+  const roleInput = form.querySelector("[data-role-input]");
+  const roleLabel = form.querySelector("[data-role-label]");
+  if (roleInput) {
+    roleInput.value = value;
+  }
+  if (roleLabel) {
+    roleLabel.textContent = value === "any" ? "Any role" : `Only ${value} matches`;
+  }
+  form.querySelectorAll("[data-role-choice]").forEach((choice) => {
+    choice.classList.toggle("is-active", choice.dataset.roleChoice === value);
+  });
 }
 
 function populateGenres(select, genres) {
@@ -161,11 +319,12 @@ function applyRandomPlaceholder(input, pools) {
     profile === "producer"
       ? [
           pickRandomName(pools.producers, `producer-a:${window.location.pathname}`),
-          pickRandomName(pools.producers, `producer-b:${window.location.pathname}`, 1),
+          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
           pickRandomName(pools.directors, `director:${window.location.pathname}`),
         ]
       : [
           pickRandomName(pools.actors, `actor:${window.location.pathname}`),
+          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
           pickRandomName(pools.producers, `producer:${window.location.pathname}`),
           pickRandomName(pools.directors, `director:${window.location.pathname}`),
         ];
@@ -173,6 +332,22 @@ function applyRandomPlaceholder(input, pools) {
   const names = parts.filter(Boolean);
   if (names.length) {
     input.placeholder = `Try: ${names.join(", ")}`;
+  }
+}
+
+function applyStudioPlaceholder(input) {
+  if (!input) {
+    return;
+  }
+
+  const picks = [
+    pickRandomName(studioPlaceholderPool, `studio-a:${window.location.pathname}`),
+    pickRandomName(studioPlaceholderPool, `studio-b:${window.location.pathname}`, 1),
+    pickRandomName(studioPlaceholderPool, `studio-c:${window.location.pathname}`, 2),
+  ].filter(Boolean);
+
+  if (picks.length) {
+    input.placeholder = `Try: ${picks.join(", ")}`;
   }
 }
 

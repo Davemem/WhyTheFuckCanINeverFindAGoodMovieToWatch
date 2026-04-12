@@ -18,6 +18,15 @@ const producerJobs = new Set([
   "Associate Producer",
   "Line Producer",
 ]);
+const writerJobs = new Set([
+  "Writer",
+  "Screenplay",
+  "Story",
+  "Teleplay",
+  "Adaptation",
+  "Novel",
+  "Characters",
+]);
 
 loadEnv(path.join(projectRoot, ".env"));
 
@@ -63,6 +72,10 @@ async function main() {
     .filter((entry) => entry.bucket === "producers")
     .map((entry) => entry.person)
     .sort(compareIndexedPeople);
+  const writers = entries
+    .filter((entry) => entry.bucket === "writers")
+    .map((entry) => entry.person)
+    .sort(compareIndexedPeople);
 
   const payload = {
     generatedAt: new Date().toISOString(),
@@ -72,15 +85,17 @@ async function main() {
       actorCount: actors.length,
       directorCount: directors.length,
       producerCount: producers.length,
+      writerCount: writers.length,
     },
     actors,
     directors,
     producers,
+    writers,
   };
 
   fs.writeFileSync(outputPath, JSON.stringify(payload));
   process.stdout.write(
-    `Wrote ${actors.length} actors, ${directors.length} directors, and ${producers.length} producers to ${outputPath}\n`,
+    `Wrote ${actors.length} actors, ${directors.length} directors, ${producers.length} producers, and ${writers.length} writers to ${outputPath}\n`,
   );
 }
 
@@ -119,7 +134,7 @@ function buildIndexEntries(details, credits, fallbackPopularity) {
       bucket: "actors",
       person: {
         ...base,
-        department: buildDepartmentLabel(details.known_for_department, false, actorCredits.length > 0),
+        department: buildDepartmentLabel(details.known_for_department, false, actorCredits.length > 0, false, false),
         score: actorScore,
         ratingLabel: `Career score ${actorScore.toFixed(1)}`,
         knownFor: topCreditTitles(actorCredits),
@@ -138,7 +153,7 @@ function buildIndexEntries(details, credits, fallbackPopularity) {
       bucket: "directors",
       person: {
         ...base,
-        department: buildDepartmentLabel(details.known_for_department, true, false, false),
+        department: buildDepartmentLabel(details.known_for_department, true, false, false, false),
         score: directorScore,
         ratingLabel: `Career score ${directorScore.toFixed(1)}`,
         knownFor: topCreditTitles(directorCredits),
@@ -157,7 +172,7 @@ function buildIndexEntries(details, credits, fallbackPopularity) {
       bucket: "producers",
       person: {
         ...base,
-        department: buildDepartmentLabel(details.known_for_department, false, false, true),
+        department: buildDepartmentLabel(details.known_for_department, false, false, true, false),
         score: producerScore,
         ratingLabel: `Career score ${producerScore.toFixed(1)}`,
         knownFor: topCreditTitles(producerCredits),
@@ -165,10 +180,29 @@ function buildIndexEntries(details, credits, fallbackPopularity) {
     });
   }
 
+  const writerCredits = dedupeCredits(
+    (credits.crew || []).filter(
+      (credit) => isScoredMovieCredit(credit) && writerJobs.has(credit.job),
+    ),
+  );
+  if (writerCredits.length) {
+    const writerScore = scoreCredits(writerCredits);
+    entries.push({
+      bucket: "writers",
+      person: {
+        ...base,
+        department: buildDepartmentLabel(details.known_for_department, false, false, false, true),
+        score: writerScore,
+        ratingLabel: `Career score ${writerScore.toFixed(1)}`,
+        knownFor: topCreditTitles(writerCredits),
+      },
+    });
+  }
+
   return entries;
 }
 
-function buildDepartmentLabel(knownForDepartment, hasDirector, hasActing, hasProducer) {
+function buildDepartmentLabel(knownForDepartment, hasDirector, hasActing, hasProducer, hasWriter) {
   const parts = [];
   if (hasActing || String(knownForDepartment || "").toLowerCase().includes("acting")) {
     parts.push("Acting");
@@ -178,6 +212,9 @@ function buildDepartmentLabel(knownForDepartment, hasDirector, hasActing, hasPro
   }
   if (hasProducer || String(knownForDepartment || "").toLowerCase().includes("produc")) {
     parts.push("Producer");
+  }
+  if (hasWriter || String(knownForDepartment || "").toLowerCase().includes("writ")) {
+    parts.push("Writing");
   }
   if (!parts.length && knownForDepartment) {
     parts.push(knownForDepartment);

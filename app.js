@@ -4,12 +4,23 @@ const savedPeopleStorageKey = "wtfcineverfind-saved-people";
 const devStatusFlagKey = "wtfcineverfind-debug";
 const refreshHistoryStorageKey = "wtfcineverfind-refresh-history";
 const decadeOptions = buildDecadeOptions();
+const studioPlaceholderPool = [
+  "A24",
+  "Warner Bros.",
+  "Searchlight Pictures",
+  "Blumhouse Productions",
+  "Paramount Pictures",
+];
 
 const elements = {
   apiStatus: document.querySelector("#api-status"),
   dataSource: document.querySelector("#data-source"),
   personSearch: document.querySelector("#person-search"),
+  searchLabel: document.querySelector("#search-label"),
+  searchType: document.querySelector("#search-type"),
+  awardFilter: document.querySelector("#award-filter"),
   peopleSuggestions: document.querySelector("#people-suggestions"),
+  roleField: document.querySelector("#role-field"),
   roleFilter: document.querySelector("#role-filter"),
   roleDescription: document.querySelector("#role-description"),
   imdbMin: document.querySelector("#imdb-min"),
@@ -60,6 +71,7 @@ const liveState = {
   enrichRequestId: 0,
   enrichAttempts: new Map(),
   totalMatches: 0,
+  placeholderPools: null,
   refreshTokens: {
     actors: 0,
     producers: 0,
@@ -80,12 +92,16 @@ async function bootstrap() {
   liveState.imageBaseUrl = payload.config?.imageBaseUrl || "";
   liveState.hasOmdb = Boolean(payload.config?.hasOmdb);
   liveState.hasLocalPeopleIndex = Boolean(payload.config?.hasLocalPeopleIndex);
+  liveState.placeholderPools = payload.config?.placeholderPools || null;
   liveState.featuredActors = payload.featuredActors || [];
   const mode = payload.config?.mode || "live";
-  const peopleCounts = payload.config?.peopleCounts || { actors: 0, directors: 0, producers: 0 };
-  const totalPeopleCount = Number(peopleCounts.actors || 0) + Number(peopleCounts.directors || 0) + Number(peopleCounts.producers || 0);
+  const peopleCounts = payload.config?.peopleCounts || { actors: 0, directors: 0, producers: 0, writers: 0 };
+  const totalPeopleCount =
+    Number(peopleCounts.actors || 0)
+    + Number(peopleCounts.directors || 0)
+    + Number(peopleCounts.producers || 0)
+    + Number(peopleCounts.writers || 0);
 
-  applyRandomPlaceholder(elements.personSearch, payload.config?.placeholderPools || null);
   elements.imdbMin.value = "0";
   elements.rtMin.value = "0";
 
@@ -99,7 +115,7 @@ async function bootstrap() {
         'Movies are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a> with <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a>.';
     } else {
       elements.dataSource.innerHTML =
-        'Movies are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a>. Add <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a> to unlock IMDb and Rotten Tomatoes filters.';
+        'Movies are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a>. Add <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a> to unlock IMDb, Rotten Tomatoes, and award filters.';
     }
     elements.movieCount.textContent = "Live";
   }
@@ -109,6 +125,7 @@ async function bootstrap() {
   populateGenres();
   populateDecades();
   applyStateFromUrl();
+  syncSearchModeUi();
   bindEvents();
   renderActorPreview();
   renderFeaturedPeople();
@@ -190,6 +207,16 @@ function bindEvents() {
   if (elements.sortFilter) {
     elements.sortFilter.addEventListener("change", handleSortChange);
   }
+  if (elements.searchType) {
+    elements.searchType.addEventListener("change", () => {
+      syncSearchModeUi();
+      elements.peopleSuggestions.replaceChildren();
+      refreshMovies();
+    });
+  }
+  if (elements.awardFilter) {
+    elements.awardFilter.addEventListener("change", refreshMovies);
+  }
 
   const debouncedPeopleLookup = debounce(async () => {
     await updatePersonSuggestions();
@@ -248,7 +275,8 @@ async function updatePersonSuggestions() {
   }
 
   try {
-    const payload = await fetchJson(`/api/people?query=${encodeURIComponent(query)}`);
+    const endpoint = currentSearchType() === "studio" ? "/api/studios" : "/api/people";
+    const payload = await fetchJson(`${endpoint}?query=${encodeURIComponent(query)}`);
     elements.peopleSuggestions.replaceChildren();
     (payload.results || []).forEach((person) => {
       const option = document.createElement("option");
@@ -273,19 +301,25 @@ async function refreshMovies() {
   liveState.lastQueryKey = queryKey;
   syncRangeLabels();
   elements.roleDescription.textContent =
-    state.role === "any" ? "Any role" : `Only ${state.role} matches`;
+    state.searchType === "studio"
+      ? "Studios ignore role matching"
+      : state.role === "any"
+        ? "Any role"
+        : `Only ${state.role} matches`;
 
   renderLoadingState();
 
   try {
     const params = new URLSearchParams({
-      personQuery: state.personQuery,
+      query: state.personQuery,
+      searchType: state.searchType,
       role: state.role,
       genre: state.genre,
       decade: state.decade,
       sort: state.sort,
       imdbMin: String(state.imdbMin),
       rtMin: String(state.rtMin),
+      award: state.award,
     });
 
     const payload = await fetchJson(`/api/discover?${params.toString()}`);
@@ -296,9 +330,7 @@ async function refreshMovies() {
     liveState.movies = sortMoviesClient(payload.movies || [], state.sort);
     liveState.totalMatches = payload.totalMatches || liveState.movies.length;
     liveState.enrichAttempts = new Map();
-    elements.resultsTitle.textContent = payload.matchedPerson
-      ? `Movies connected to "${payload.matchedPerson.name}"`
-      : "Movies selected by the people behind them";
+    elements.resultsTitle.textContent = buildResultsTitle(payload);
     renderMovies(liveState.movies);
     renderWatchlist();
     enrichVisibleMovies(requestId);
@@ -332,7 +364,7 @@ function renderMovies(movies) {
     const emptyState = document.createElement("div");
     emptyState.className = "empty-state";
     emptyState.innerHTML =
-      "<h3>No live matches.</h3><p>Broaden the rating threshold or switch to a different person search.</p>";
+      "<h3>No live matches.</h3><p>Broaden the filters or switch to a different person, studio, or award search.</p>";
     elements.resultsGrid.append(emptyState);
     return;
   }
@@ -366,7 +398,7 @@ function renderIdleState() {
   setSearchMode(false);
   elements.resultsGrid.replaceChildren();
   elements.resultsTitle.textContent = "Movies selected by the people behind them";
-  elements.resultsSummary.textContent = "Start with a person, genre, decade, or rating filter.";
+  elements.resultsSummary.textContent = "Start with a person, studio, award, genre, decade, or rating filter.";
 }
 
 function buildMovieCard(movie) {
@@ -479,11 +511,12 @@ function applyRandomPlaceholder(input, pools) {
     profile === "producer"
       ? [
           pickRandomName(pools.producers, `producer-a:${window.location.pathname}`),
-          pickRandomName(pools.producers, `producer-b:${window.location.pathname}`, 1),
+          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
           pickRandomName(pools.directors, `director:${window.location.pathname}`),
         ]
       : [
           pickRandomName(pools.actors, `actor:${window.location.pathname}`),
+          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
           pickRandomName(pools.producers, `producer:${window.location.pathname}`),
           pickRandomName(pools.directors, `director:${window.location.pathname}`),
         ];
@@ -491,6 +524,22 @@ function applyRandomPlaceholder(input, pools) {
   const names = parts.filter(Boolean);
   if (names.length) {
     input.placeholder = `Try: ${names.join(", ")}`;
+  }
+}
+
+function applyStudioPlaceholder(input) {
+  if (!input) {
+    return;
+  }
+
+  const picks = [
+    pickRandomName(studioPlaceholderPool, `studio-a:${window.location.pathname}`),
+    pickRandomName(studioPlaceholderPool, `studio-b:${window.location.pathname}`, 1),
+    pickRandomName(studioPlaceholderPool, `studio-c:${window.location.pathname}`, 2),
+  ].filter(Boolean);
+
+  if (picks.length) {
+    input.placeholder = `Try: ${picks.join(", ")}`;
   }
 }
 
@@ -583,7 +632,7 @@ async function loadIndexStatus(config = null) {
   }
 
   if (config?.hasLocalPeopleIndex && config?.peopleCounts) {
-    elements.indexStatus.textContent = `${config.peopleCounts.actors} actors, ${config.peopleCounts.directors} directors, and ${config.peopleCounts.producers} producers are available from the local ranked index${config.peopleGeneratedAt ? ` (built ${formatDateTime(config.peopleGeneratedAt)})` : ""}.`;
+    elements.indexStatus.textContent = `${config.peopleCounts.actors} actors, ${config.peopleCounts.directors} directors, ${config.peopleCounts.producers} producers, and ${config.peopleCounts.writers || 0} writers are available from the local ranked index${config.peopleGeneratedAt ? ` (built ${formatDateTime(config.peopleGeneratedAt)})` : ""}.`;
     return;
   }
 
@@ -594,7 +643,7 @@ async function loadIndexStatus(config = null) {
       return;
     }
 
-    elements.indexStatus.textContent = `${payload.counts.actors} actors, ${payload.counts.directors} directors, and ${payload.counts.producers} producers are available from the local ranked index${payload.generatedAt ? ` (built ${formatDateTime(payload.generatedAt)})` : ""}.`;
+    elements.indexStatus.textContent = `${payload.counts.actors} actors, ${payload.counts.directors} directors, ${payload.counts.producers} producers, and ${payload.counts.writers || 0} writers are available from the local ranked index${payload.generatedAt ? ` (built ${formatDateTime(payload.generatedAt)})` : ""}.`;
   } catch {
     elements.indexStatus.textContent = "People rankings are warming up.";
   }
@@ -799,12 +848,19 @@ function handleWatchlistAction(event) {
 function resetFilters() {
   elements.personSearch.value = "";
   elements.peopleSuggestions.replaceChildren();
+  if (elements.searchType) {
+    elements.searchType.value = "person";
+  }
+  if (elements.awardFilter) {
+    elements.awardFilter.value = "all";
+  }
   elements.imdbMin.value = "0";
   elements.rtMin.value = "0";
   elements.genreFilter.value = "all";
   elements.decadeFilter.value = "all";
   elements.sortFilter.value = "match";
   setActiveRole("any");
+  syncSearchModeUi();
   liveState.totalMatches = 0;
   liveState.lastQueryKey = "";
   updateUrlFromState(getFilterState());
@@ -821,37 +877,49 @@ function setActiveRole(role) {
 function getFilterState() {
   return {
     personQuery: elements.personSearch.value.trim(),
+    searchType: currentSearchType(),
     role: liveState.activeRole,
     imdbMin: Number(elements.imdbMin.value),
     rtMin: Number(elements.rtMin.value),
     genre: elements.genreFilter.value,
     decade: elements.decadeFilter.value,
     sort: elements.sortFilter.value,
+    award: elements.awardFilter?.value || "all",
   };
 }
 
 function buildFetchKey(state) {
   return JSON.stringify({
     personQuery: state.personQuery,
+    searchType: state.searchType,
     role: state.role,
     imdbMin: state.imdbMin,
     rtMin: state.rtMin,
     genre: state.genre,
     decade: state.decade,
+    award: state.award,
   });
 }
 
 function applyStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const personQuery = params.get("person") || "";
+  const personQuery = params.get("query") || params.get("person") || "";
+  const searchType = params.get("searchType") || "person";
   const role = params.get("role") || "any";
   const genre = params.get("genre") || "all";
   const decade = params.get("decade") || "all";
   const sort = params.get("sort") || "match";
+  const award = params.get("award") || "all";
   const imdbMin = params.get("imdbMin");
   const rtMin = params.get("rtMin");
 
   elements.personSearch.value = personQuery;
+  if (elements.searchType) {
+    elements.searchType.value = searchType;
+  }
+  if (elements.awardFilter) {
+    elements.awardFilter.value = award;
+  }
   elements.genreFilter.value = genre;
   elements.decadeFilter.value = decade;
   elements.sortFilter.value = sort;
@@ -870,9 +938,12 @@ function updateUrlFromState(state) {
   const params = new URLSearchParams();
 
   if (state.personQuery) {
-    params.set("person", state.personQuery);
+    params.set("query", state.personQuery);
   }
-  if (state.role !== "any") {
+  if (state.searchType !== "person") {
+    params.set("searchType", state.searchType);
+  }
+  if (state.searchType === "person" && state.role !== "any") {
     params.set("role", state.role);
   }
   if (state.genre !== "all") {
@@ -890,6 +961,9 @@ function updateUrlFromState(state) {
   if (state.rtMin > 0) {
     params.set("rtMin", String(state.rtMin));
   }
+  if (state.award !== "all") {
+    params.set("award", state.award);
+  }
 
   const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
   const currentUrl = `${window.location.pathname}${window.location.search}`;
@@ -905,6 +979,7 @@ function shouldFetchOnLoad() {
 function handlePopState() {
   liveState.lastQueryKey = "";
   applyStateFromUrl();
+  syncSearchModeUi();
   if (liveState.movies.length) {
     liveState.movies = sortMoviesClient(liveState.movies, elements.sortFilter.value);
   }
@@ -924,6 +999,43 @@ function setSearchMode(isSearchMode) {
   if (elements.suggestedPanels) {
     elements.suggestedPanels.hidden = isSearchMode;
   }
+}
+
+function currentSearchType() {
+  return elements.searchType?.value || "person";
+}
+
+function syncSearchModeUi() {
+  const searchType = currentSearchType();
+  const isStudio = searchType === "studio";
+
+  if (elements.searchLabel) {
+    elements.searchLabel.textContent = isStudio ? "Studio" : "Person";
+  }
+  if (elements.roleField) {
+    elements.roleField.hidden = isStudio;
+  }
+  if (elements.roleFilter) {
+    elements.roleFilter.style.gridTemplateColumns = "repeat(5, minmax(0, 1fr))";
+  }
+  if (isStudio) {
+    setActiveRole("any");
+    applyStudioPlaceholder(elements.personSearch);
+    return;
+  }
+
+  applyRandomPlaceholder(elements.personSearch, liveState.placeholderPools);
+}
+
+function buildResultsTitle(payload) {
+  const matchedEntity = payload.matchedEntity || payload.matchedPerson || null;
+  if (!matchedEntity) {
+    return "Movies selected by the people behind them";
+  }
+  if (matchedEntity.type === "studio") {
+    return `Movies from "${matchedEntity.name}"`;
+  }
+  return `Movies connected to "${matchedEntity.name}"`;
 }
 
 async function fetchJson(url, options = {}) {

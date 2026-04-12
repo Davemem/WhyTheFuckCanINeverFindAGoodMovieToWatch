@@ -101,7 +101,7 @@ function renderSavedPage() {
     elements.savedFilmmakersGrid,
     savedFilmmakers,
     "filmmakers",
-    "Save producers and directors from the home page or the people directory and they will show up here.",
+    "Save writers, producers, and directors from the home page or the people directory and they will show up here.",
   );
 
   const preferredTab =

@@ -13,6 +13,7 @@ const elements = {
   cardTemplate: document.querySelector("#person-card-template"),
   movieCardTemplate: document.querySelector("#movie-card-template"),
   navActors: document.querySelector("#nav-actors"),
+  navWriters: document.querySelector("#nav-writers"),
   navProducers: document.querySelector("#nav-producers"),
 };
 const devStatusFlagKey = "wtfcineverfind-debug";
@@ -58,7 +59,7 @@ async function bootstrap() {
   try {
     const statusPayload = await statusPromise;
     if (statusPayload.ready) {
-      elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, and ${statusPayload.counts.producers} producers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
+      elements.indexSummary.textContent = `${statusPayload.counts.actors} actors, ${statusPayload.counts.directors} directors, ${statusPayload.counts.producers} producers, and ${statusPayload.counts.writers || 0} writers are loaded from the local ranked index${statusPayload.generatedAt ? ` (built ${formatDateTime(statusPayload.generatedAt)})` : ""}.`;
     } else {
       elements.indexSummary.textContent = "People index is syncing.";
     }
@@ -175,7 +176,8 @@ function handlePersonSelection(event) {
   const currentState = getSearchStateFromUrl();
   const params = new URLSearchParams();
   params.set("department", pageState.department);
-  params.set("person", button.dataset.person);
+  params.set("query", button.dataset.person);
+  params.set("searchType", "person");
   params.set("exactPerson", "1");
   if (currentState.role && currentState.role !== "any") {
     params.set("role", currentState.role);
@@ -194,6 +196,9 @@ function handlePersonSelection(event) {
   }
   if (currentState.rtMin > 0) {
     params.set("rtMin", String(currentState.rtMin));
+  }
+  if (currentState.award && currentState.award !== "all") {
+    params.set("award", currentState.award);
   }
   const nextUrl = `/people.html?${params.toString()}#people-results-title`;
   if (window.location.pathname.endsWith("/people.html")) {
@@ -244,6 +249,9 @@ function applyDepartmentCopy() {
     producers: {
       title: "Suggested 50 producers",
     },
+    writers: {
+      title: "Suggested 50 writers",
+    },
   };
 
   const current = labels[pageState.department];
@@ -260,35 +268,38 @@ function syncCatalogRoleChoices() {
     return;
   }
 
-  const choices =
-    pageState.department === "actors"
-      ? [
-          ["any", "Any"],
-          ["cast", "Cast"],
-        ]
-      : [
-          ["any", "Any"],
-          ["director", "Director"],
-          ["producer", "Producer"],
-        ];
+  const currentState = getSearchStateFromUrl();
+  const choices = [
+    ["any", "Any"],
+    ["cast", "Cast"],
+    ["director", "Director"],
+    ["producer", "Producer"],
+    ["writer", "Writer"],
+  ];
 
   roleSegments.replaceChildren();
   choices.forEach(([value, label], index) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `segment${index === 0 ? " is-active" : ""}`;
+    button.className = `segment${currentState.role === value || (!currentState.role && index === 0) ? " is-active" : ""}`;
     button.dataset.roleChoice = value;
     button.textContent = label;
     roleSegments.append(button);
   });
 
-  roleInput.value = "any";
-  roleLabel.textContent = "Any role";
+  roleInput.value = currentState.role || "any";
+  roleLabel.textContent =
+    currentState.searchType === "studio"
+      ? "Studios ignore role matching"
+      : roleInput.value === "any"
+        ? "Any role"
+        : `Only ${roleInput.value} matches`;
   roleSegments.style.gridTemplateColumns = `repeat(${choices.length}, minmax(0, 1fr))`;
 }
 
 function updateActiveTab() {
   elements.navActors.classList.toggle("is-active", pageState.department === "actors");
+  elements.navWriters.classList.toggle("is-active", pageState.department === "writers");
   elements.navProducers.classList.toggle(
     "is-active",
     pageState.department === "directors" || pageState.department === "producers",
@@ -297,7 +308,7 @@ function updateActiveTab() {
 
 function readDepartmentFromUrl() {
   const department = new URLSearchParams(window.location.search).get("department");
-  if (department === "directors" || department === "producers") {
+  if (department === "directors" || department === "producers" || department === "writers") {
     return department;
   }
   return "actors";
@@ -343,7 +354,8 @@ function refreshDirectorySuggestions() {
 function getSearchStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return {
-    personQuery: params.get("person") || "",
+    personQuery: params.get("query") || params.get("person") || "",
+    searchType: params.get("searchType") || "person",
     exactPerson: params.get("exactPerson") === "1",
     role: params.get("role") || "any",
     genre: params.get("genre") || "all",
@@ -351,6 +363,7 @@ function getSearchStateFromUrl() {
     sort: params.get("sort") || "match",
     imdbMin: Number(params.get("imdbMin") || 0),
     rtMin: Number(params.get("rtMin") || 0),
+    award: params.get("award") || "all",
   };
 }
 
@@ -364,13 +377,15 @@ function shouldFetchResultsOnLoad() {
     state.sort !== "match" ||
     state.imdbMin > 0 ||
     state.rtMin > 0 ||
-    state.role !== "any"
+    state.role !== "any" ||
+    state.award !== "all" ||
+    state.searchType !== "person"
   );
 }
 
 async function refreshResults() {
   const state = getSearchStateFromUrl();
-  if (state.personQuery && !state.exactPerson) {
+  if (state.personQuery && !state.exactPerson && state.searchType === "person") {
     renderPeopleLoadingState();
     try {
       const peoplePayload = await fetchJson(`/api/people?query=${encodeURIComponent(state.personQuery)}`);
@@ -390,22 +405,22 @@ async function refreshResults() {
 
   renderLoadingState();
   const params = new URLSearchParams({
-    personQuery: state.personQuery,
+    query: state.personQuery,
+    searchType: state.searchType,
     role: state.role,
     genre: state.genre,
     decade: state.decade,
     sort: state.sort,
     imdbMin: String(state.imdbMin),
     rtMin: String(state.rtMin),
+    award: state.award,
   });
 
   try {
     const payload = await fetchJson(`/api/discover?${params.toString()}`);
     pageState.currentSearchPeople = [];
     pageState.currentMovies = payload.movies || [];
-    elements.resultsTitle.textContent = payload.matchedPerson
-      ? `Movies connected to "${payload.matchedPerson.name}"`
-      : "Movies selected by the people behind them";
+    elements.resultsTitle.textContent = buildResultsTitle(payload);
     renderMovies(pageState.currentMovies, payload.totalMatches || pageState.currentMovies.length);
     setSearchMode(true);
   } catch (error) {
@@ -513,7 +528,7 @@ function renderPeopleLoadingState() {
   elements.resultsSummary.textContent = "Searching people.";
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
-  loadingState.innerHTML = "<h3>Finding people...</h3><p>Looking up matching actors, directors, and producers.</p>";
+  loadingState.innerHTML = "<h3>Finding people...</h3><p>Looking up matching actors, writers, directors, and producers.</p>";
   elements.resultsGrid.append(loadingState);
 }
 
@@ -574,6 +589,9 @@ function departmentLabelPlural(department) {
   }
   if (department === "producers") {
     return "producers";
+  }
+  if (department === "writers") {
+    return "writers";
   }
   return "actors and actresses";
 }
@@ -684,7 +702,21 @@ function matchesDepartment(person, department) {
   if (department === "producers") {
     return label.includes("produc");
   }
+  if (department === "writers") {
+    return label.includes("writ") || label.includes("screenplay") || label.includes("story");
+  }
   return true;
+}
+
+function buildResultsTitle(payload) {
+  const matchedEntity = payload.matchedEntity || payload.matchedPerson || null;
+  if (!matchedEntity) {
+    return "Movies selected by the people behind them";
+  }
+  if (matchedEntity.type === "studio") {
+    return `Movies from "${matchedEntity.name}"`;
+  }
+  return `Movies connected to "${matchedEntity.name}"`;
 }
 
 function pickDistinctWindow(source, limit, department, refreshCount) {

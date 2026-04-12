@@ -6,7 +6,7 @@
     <title>Movie Selector</title>
     <meta
       name="description"
-      content="Discover movies by the people behind them, with ratings-first filters and secondary genre and year controls."
+      content="Discover movies by the people, writers, studios, and award pedigree behind them, with ratings-first filters and secondary genre and year controls."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,6 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a class="is-active" href="/">Home</a>
           <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=writers">Writers</a>
           <a href="/people.html?department=producers">Producers / Directors</a>
           <a href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
@@ -36,8 +37,9 @@
           <p class="hero-text">
             Can't find a movie after endlessy browsing? Find new (and old)
             movies by searching the filmographies of actors, actresses,
-            directors, and producers you already know and love, then tighten
-            the list by ratings, genre, and release year. Save your favourite
+            directors, producers, and writers you already know and love, or
+            switch over to studio and award-winning searches, then tighten the
+            list by ratings, genre, and release year. Save your favourite
             people and save titles to make your future movie selection stress
             free
           </p>
@@ -70,7 +72,7 @@
 
           <form id="filters-form">
             <label class="field">
-              <span>Actor, actress, director, producer</span>
+              <span id="search-label">Person</span>
               <input
                 id="person-search"
                 name="person-search"
@@ -82,7 +84,34 @@
             </label>
             <datalist id="people-suggestions"></datalist>
 
-            <div class="field">
+            <div class="field-grid">
+              <label class="field">
+                <span>Search by</span>
+                <select id="search-type" name="search-type">
+                  <option value="person">Person</option>
+                  <option value="studio">Studio</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Award recognition</span>
+                <select id="award-filter" name="award-filter">
+                  <option value="all">Any awards</option>
+                  <option value="winner:any">Any award winner</option>
+                  <option value="nominee:any">Any award nominee</option>
+                  <option value="winner:oscar">Oscar winner</option>
+                  <option value="nominee:oscar">Oscar nominee</option>
+                  <option value="winner:emmy">Emmy winner</option>
+                  <option value="nominee:emmy">Emmy nominee</option>
+                  <option value="winner:golden-globe">Golden Globe winner</option>
+                  <option value="nominee:golden-globe">Golden Globe nominee</option>
+                  <option value="winner:bafta">BAFTA winner</option>
+                  <option value="nominee:bafta">BAFTA nominee</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field" id="role-field">
               <div class="field-row">
                 <span>Match role</span>
                 <strong id="role-description" class="field-helper">Any role</strong>
@@ -92,6 +121,7 @@
                 <button type="button" class="segment" data-role="cast">Cast</button>
                 <button type="button" class="segment" data-role="director">Director</button>
                 <button type="button" class="segment" data-role="producer">Producer</button>
+                <button type="button" class="segment" data-role="writer">Writer</button>
               </div>
             </div>
 

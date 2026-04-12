@@ -6,7 +6,7 @@
     <title>Saved People</title>
     <meta
       name="description"
-      content="Browse the actors, actresses, directors, and producers you have saved locally in this browser."
+      content="Browse the actors, actresses, writers, directors, and producers you have saved locally in this browser."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,6 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a href="/">Home</a>
           <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=writers">Writers</a>
           <a href="/people.html?department=producers">Producers / Directors</a>
           <a class="is-active" href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
@@ -33,7 +34,7 @@
           <p class="eyebrow">saved stacks</p>
           <h1>Saved people</h1>
           <p class="hero-text">
-            Keep your trusted actors, actresses, directors, and producers in one place, then browse a full live catalog for whichever saved person you want to revisit next.
+            Keep your trusted actors, actresses, writers, directors, and producers in one place, then browse a full live catalog for whichever saved person you want to revisit next.
           </p>
           <p id="saved-status" class="hero-subtext">
             Reading local saved state.
@@ -51,7 +52,7 @@
             </div>
             <div>
               <span id="saved-filmmaker-count" class="stat-number">0</span>
-              <span class="stat-label">Directors / producers</span>
+              <span class="stat-label">Writers / directors / producers</span>
             </div>
           </div>
         </section>
@@ -86,7 +87,7 @@
               aria-controls="saved-filmmakers-panel"
               data-saved-tab="filmmakers"
             >
-              Producers / Directors
+              Writers / Directors / Producers
             </button>
           </div>
           <section id="saved-person-catalog" class="saved-person-rail saved-people-catalog" data-saved-person-rail hidden>

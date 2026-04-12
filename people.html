@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ranked People Directory</title>
+    <title>Ranked Movie Directory</title>
     <meta
       name="description"
-      content="Browse the full ranked actor, director, and producer directories."
+      content="Browse the full ranked actor, writer, director, and producer directories, then search movies by people, studios, and award recognition."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,6 +22,7 @@
         <nav class="title-bar-nav" aria-label="Primary">
           <a href="/">Home</a>
           <a id="nav-actors" href="/people.html?department=actors">Actors / Actresses</a>
+          <a id="nav-writers" href="/people.html?department=writers">Writers</a>
           <a id="nav-producers" href="/people.html?department=producers">Producers / Directors</a>
           <a href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
@@ -35,7 +36,7 @@
           </div>
           <form class="catalog-launch-form" data-catalog-search data-inline-results="people">
             <label class="field">
-              <span>Actor, actress, director, producer</span>
+              <span data-search-label>Person</span>
               <input
                 data-search-person
                 name="person"
@@ -47,7 +48,34 @@
             </label>
             <datalist id="catalog-people-suggestions"></datalist>
 
-            <div class="field">
+            <div class="field-grid">
+              <label class="field">
+                <span>Search by</span>
+                <select name="searchType" data-search-type>
+                  <option value="person">Person</option>
+                  <option value="studio">Studio</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Award recognition</span>
+                <select name="award" data-search-award>
+                  <option value="all">Any awards</option>
+                  <option value="winner:any">Any award winner</option>
+                  <option value="nominee:any">Any award nominee</option>
+                  <option value="winner:oscar">Oscar winner</option>
+                  <option value="nominee:oscar">Oscar nominee</option>
+                  <option value="winner:emmy">Emmy winner</option>
+                  <option value="nominee:emmy">Emmy nominee</option>
+                  <option value="winner:golden-globe">Golden Globe winner</option>
+                  <option value="nominee:golden-globe">Golden Globe nominee</option>
+                  <option value="winner:bafta">BAFTA winner</option>
+                  <option value="nominee:bafta">BAFTA nominee</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field" data-role-field>
               <div class="field-row">
                 <span>Match role</span>
                 <strong class="field-helper" data-role-label>Any role</strong>

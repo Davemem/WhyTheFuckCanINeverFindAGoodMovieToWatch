@@ -1,24 +1,29 @@
 async function publishSiteSnapshot(pool) {
-  const [actorsRanked, directorsRanked, producersRanked, counts] = await Promise.all([
+  const [actorsRanked, directorsRanked, producersRanked, writersRanked, counts] = await Promise.all([
     fetchRankedPeople(pool, "actors", 500),
     fetchRankedPeople(pool, "directors", 500),
     fetchRankedPeople(pool, "producers", 500),
+    fetchRankedPeople(pool, "writers", 500),
     fetchCounts(pool),
   ]);
 
   const actorsTop10 = buildSuggestedPool(actorsRanked, 10, 2);
   const directorsTop10 = buildSuggestedPool(directorsRanked, 10, 2);
   const producersTop10 = buildSuggestedPool(producersRanked, 10, 2);
+  const writersTop10 = buildSuggestedPool(writersRanked, 10, 2);
   const actorsBrowse = buildSuggestedPool(actorsRanked, 50, 2);
   const directorsBrowse = buildSuggestedPool(directorsRanked, 50, 2);
   const producersBrowse = buildSuggestedPool(producersRanked, 50, 2);
+  const writersBrowse = buildSuggestedPool(writersRanked, 50, 2);
   const actorsBrowsePool = buildSuggestedPool(actorsRanked, 250, 12);
   const directorsBrowsePool = buildSuggestedPool(directorsRanked, 250, 12);
   const producersBrowsePool = buildSuggestedPool(producersRanked, 250, 12);
+  const writersBrowsePool = buildSuggestedPool(writersRanked, 250, 12);
   const placeholderPools = {
     actors: actorsRanked.map((person) => person.name).filter(Boolean),
     directors: directorsRanked.map((person) => person.name).filter(Boolean),
     producers: producersRanked.map((person) => person.name).filter(Boolean),
+    writers: writersRanked.map((person) => person.name).filter(Boolean),
   };
   const actorsTop5 = actorsTop10.slice(0, 5);
 
@@ -27,12 +32,15 @@ async function publishSiteSnapshot(pool) {
     actorsTop10,
     directorsTop10,
     producersTop10,
+    writersTop10,
     actorsBrowse,
     directorsBrowse,
     producersBrowse,
+    writersBrowse,
     actorsBrowsePool,
     directorsBrowsePool,
     producersBrowsePool,
+    writersBrowsePool,
     placeholderPools,
     counts,
   };
@@ -56,13 +64,15 @@ async function fetchCounts(pool) {
     SELECT
       (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'cast')::int AS actors_count,
       (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job = 'Director')::int AS directors_count,
-      (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%')::int AS producers_count
+      (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE pmc.credit_type = 'crew' AND pmc.job ILIKE '%producer%')::int AS producers_count,
+      (SELECT COUNT(DISTINCT pmc.person_id) FROM person_movie_credits pmc WHERE ${writerRoleSqlFilter("pmc")})::int AS writers_count
   `);
 
   return {
     actors: Number(result.rows[0]?.actors_count || 0),
     directors: Number(result.rows[0]?.directors_count || 0),
     producers: Number(result.rows[0]?.producers_count || 0),
+    writers: Number(result.rows[0]?.writers_count || 0),
   };
 }
 
@@ -176,7 +186,25 @@ function roleToSqlFilter(role, alias) {
   if (role === "directors") {
     return `${alias}.credit_type = 'crew' AND ${alias}.job = 'Director'`;
   }
+  if (role === "writers") {
+    return writerRoleSqlFilter(alias);
+  }
   return `${alias}.credit_type = 'crew' AND ${alias}.job ILIKE '%producer%'`;
+}
+
+function writerRoleSqlFilter(alias) {
+  return `(
+    ${alias}.credit_type = 'crew'
+    AND (
+      ${alias}.job ILIKE '%writer%'
+      OR ${alias}.job ILIKE '%screenplay%'
+      OR ${alias}.job ILIKE '%story%'
+      OR ${alias}.job ILIKE '%teleplay%'
+      OR ${alias}.job ILIKE '%adaptation%'
+      OR ${alias}.job ILIKE '%novel%'
+      OR ${alias}.job ILIKE '%characters%'
+    )
+  )`;
 }
 
 function buildSuggestedPool(people, limit, wildcardCount = 2) {
