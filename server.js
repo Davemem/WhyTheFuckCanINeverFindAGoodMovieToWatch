@@ -33,6 +33,9 @@ const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
 const PEOPLE_SEARCH_KNOWN_FOR_LIMIT = 3;
+const PEOPLE_SEARCH_SCORE_SAMPLE_MULTIPLIER = 4;
+const PEOPLE_SEARCH_SCORE_SAMPLE_MIN = 120;
+const PEOPLE_SEARCH_SCORE_SAMPLE_MAX = 240;
 const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -1378,6 +1381,15 @@ function clampNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+function peopleSearchScoreSampleLimit(page, limit) {
+  return clampNumber(
+    page * limit * PEOPLE_SEARCH_SCORE_SAMPLE_MULTIPLIER,
+    PEOPLE_SEARCH_SCORE_SAMPLE_MIN,
+    PEOPLE_SEARCH_SCORE_SAMPLE_MIN,
+    PEOPLE_SEARCH_SCORE_SAMPLE_MAX,
+  );
+}
+
 function searchLocalPeopleIndex(index, query, options = {}) {
   const normalizedQuery = normalizeName(query);
   const page = clampNumber(options.page, 1, 1, 200);
@@ -1397,12 +1409,7 @@ function searchLocalPeopleIndex(index, query, options = {}) {
       return haystack.includes(normalizedQuery);
     })
     .sort((left, right) => {
-      const leftStarts = normalizeName(left.name).startsWith(normalizedQuery) ? 1 : 0;
-      const rightStarts = normalizeName(right.name).startsWith(normalizedQuery) ? 1 : 0;
-      if (leftStarts !== rightStarts) {
-        return rightStarts - leftStarts;
-      }
-      return compareFeaturedPeople(left, right);
+      return comparePeopleSearchResults(left, right, normalizedQuery);
     });
   const startIndex = (page - 1) * limit;
   const results = ranked.slice(startIndex, startIndex + limit);
@@ -1413,6 +1420,42 @@ function searchLocalPeopleIndex(index, query, options = {}) {
     limit,
     hasMore: startIndex + results.length < ranked.length,
   };
+}
+
+function comparePeopleSearchResults(left, right, normalizedQuery) {
+  const leftName = normalizeName(left.name);
+  const rightName = normalizeName(right.name);
+  const leftExact = leftName === normalizedQuery ? 1 : 0;
+  const rightExact = rightName === normalizedQuery ? 1 : 0;
+  if (leftExact !== rightExact) {
+    return rightExact - leftExact;
+  }
+
+  const leftStarts = leftName.startsWith(normalizedQuery) ? 1 : 0;
+  const rightStarts = rightName.startsWith(normalizedQuery) ? 1 : 0;
+  if (leftStarts !== rightStarts) {
+    return rightStarts - leftStarts;
+  }
+
+  const leftScore = Number.isFinite(Number(left.score)) ? Number(left.score) : -1;
+  const rightScore = Number.isFinite(Number(right.score)) ? Number(right.score) : -1;
+  if (leftScore !== rightScore) {
+    return rightScore - leftScore;
+  }
+
+  const leftRecognition = Number(left.recognitionScore || left.recognition_score || 0);
+  const rightRecognition = Number(right.recognitionScore || right.recognition_score || 0);
+  if (leftRecognition !== rightRecognition) {
+    return rightRecognition - leftRecognition;
+  }
+
+  const leftPopularity = Number(left.popularity || 0);
+  const rightPopularity = Number(right.popularity || 0);
+  if (leftPopularity !== rightPopularity) {
+    return rightPopularity - leftPopularity;
+  }
+
+  return String(left.name || "").localeCompare(String(right.name || ""));
 }
 
 function selectBestPersonMatch(results, query) {
@@ -2258,6 +2301,7 @@ async function searchPeopleFromPostgres(query, options = {}) {
   const page = clampNumber(options.page, 1, 1, 200);
   const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
   const offset = (page - 1) * limit;
+  const sampleLimit = peopleSearchScoreSampleLimit(page, limit);
   if (!normalizedQuery) {
     return { results: [], total: 0, page, limit, hasMore: false };
   }
@@ -2293,7 +2337,7 @@ async function searchPeopleFromPostgres(query, options = {}) {
           SELECT COUNT(*)::int AS total
           FROM matched_people
         ),
-        paged_people AS (
+        candidate_people AS (
           SELECT
             mp.person_id,
             mp.name,
@@ -2310,7 +2354,47 @@ async function searchPeopleFromPostgres(query, options = {}) {
             CASE WHEN LOWER(mp.department) = 'acting' THEN 0 ELSE 1 END,
             mp.name ASC
           LIMIT $4
-          OFFSET $5
+        ),
+        scored_candidates AS (
+          SELECT
+            cp.person_id,
+            COUNT(DISTINCT m.movie_id)::int AS credit_count,
+            SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
+            ROUND(
+              (
+                SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
+                / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
+              )::numeric,
+              1
+            ) AS score
+          FROM candidate_people cp
+          LEFT JOIN person_movie_credits pmc ON pmc.person_id = cp.person_id
+          LEFT JOIN movies m ON m.movie_id = pmc.movie_id
+          GROUP BY cp.person_id
+        ),
+        paged_people AS (
+          SELECT
+            cp.person_id,
+            cp.name,
+            cp.department,
+            cp.profile_path,
+            cp.popularity,
+            cp.recognition_score,
+            COALESCE(sc.credit_count, 0) AS credit_count,
+            COALESCE(sc.total_votes, 0) AS total_votes,
+            sc.score
+          FROM candidate_people cp
+          LEFT JOIN scored_candidates sc ON sc.person_id = cp.person_id
+          ORDER BY
+            CASE WHEN LOWER(cp.name) = LOWER($2) THEN 0 ELSE 1 END,
+            CASE WHEN LOWER(cp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+            sc.score DESC NULLS LAST,
+            cp.recognition_score DESC NULLS LAST,
+            cp.popularity DESC NULLS LAST,
+            COALESCE(sc.credit_count, 0) DESC NULLS LAST,
+            cp.name ASC
+          LIMIT $5
+          OFFSET $6
         )
         SELECT
           pp.person_id AS id,
@@ -2319,9 +2403,9 @@ async function searchPeopleFromPostgres(query, options = {}) {
           pp.profile_path,
           pp.popularity,
           pp.recognition_score,
-          0::int AS credit_count,
-          0::bigint AS total_votes,
-          NULL::numeric AS score,
+          pp.credit_count,
+          pp.total_votes,
+          pp.score,
           ARRAY[]::text[] AS known_for,
           cp.total
         FROM paged_people pp
@@ -2329,12 +2413,13 @@ async function searchPeopleFromPostgres(query, options = {}) {
         ORDER BY
           CASE WHEN LOWER(pp.name) = LOWER($2) THEN 0 ELSE 1 END,
           CASE WHEN LOWER(pp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+          pp.score DESC NULLS LAST,
           pp.recognition_score DESC NULLS LAST,
           pp.popularity DESC NULLS LAST,
-          CASE WHEN LOWER(pp.department) = 'acting' THEN 0 ELSE 1 END,
+          pp.credit_count DESC NULLS LAST,
           pp.name ASC
       `,
-      [`%${query}%`, query, `${query}%`, limit, offset],
+      [`%${query}%`, query, `${query}%`, sampleLimit, limit, offset],
     );
     const total = Number(result.rows[0]?.total || 0);
     const value = {
