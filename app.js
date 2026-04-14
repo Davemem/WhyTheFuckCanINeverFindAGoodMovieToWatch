@@ -72,6 +72,7 @@ const watchlist = loadWatchlist();
 const watchlistMovies = loadWatchlistMovies();
 const savedPeople = loadSavedPeople();
 let debouncedMovieRefresh = null;
+const entityPageCache = new Map();
 const liveState = {
   genres: [],
   featuredActors: [],
@@ -421,6 +422,7 @@ async function refreshMovies() {
           ? `Studios matching "${state.personQuery}"`
           : `People matching "${state.personQuery}"`;
       renderEntityResults(liveState.entities, state.searchType);
+      prefetchNextEntityPage();
       renderWatchlist();
       return;
     }
@@ -504,6 +506,7 @@ async function loadMoreEntityResults() {
     };
     renderEntityResults(liveState.entities, state.searchType);
     syncRenderedSavedPeopleButtons();
+    prefetchNextEntityPage();
   } catch (error) {
     liveState.entitySearch = {
       ...liveState.entitySearch,
@@ -515,6 +518,10 @@ async function loadMoreEntityResults() {
 }
 
 async function fetchEntityPage({ query, searchType, page, limit = liveState.entitySearch.limit || 25 }) {
+  const cacheKey = `${searchType}:${query.toLowerCase()}:${page}:${limit}`;
+  if (entityPageCache.has(cacheKey)) {
+    return entityPageCache.get(cacheKey);
+  }
   const endpoint = searchType === "studio" ? "/api/studios" : "/api/people";
   const params = new URLSearchParams({
     query,
@@ -524,13 +531,39 @@ async function fetchEntityPage({ query, searchType, page, limit = liveState.enti
     params.set("limit", String(limit));
   }
   const payload = await fetchJson(`${endpoint}?${params.toString()}`);
-  return {
+  const result = {
     results: payload.results || [],
     total: payload.total || (payload.results || []).length,
     page: payload.page || page,
     limit: payload.limit || limit,
     hasMore: Boolean(payload.hasMore),
   };
+  entityPageCache.set(cacheKey, result);
+  return result;
+}
+
+async function prefetchNextEntityPage() {
+  const entityState = liveState.entitySearch;
+  if (entityState.searchType !== "person" || !entityState.hasMore || entityState.isLoadingMore) {
+    return;
+  }
+
+  const nextPage = entityState.page + 1;
+  const cacheKey = `${entityState.searchType}:${entityState.query.toLowerCase()}:${nextPage}:${entityState.limit}`;
+  if (entityPageCache.has(cacheKey)) {
+    return;
+  }
+
+  try {
+    await fetchEntityPage({
+      query: entityState.query,
+      searchType: entityState.searchType,
+      page: nextPage,
+      limit: entityState.limit,
+    });
+  } catch {
+    // Keep prefetch failures silent.
+  }
 }
 
 function syncRangeLabels() {
