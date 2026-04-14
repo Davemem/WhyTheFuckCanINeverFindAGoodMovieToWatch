@@ -216,6 +216,28 @@ const demoMovieAwards = {
   1005: "Won 3 Oscars. 171 wins & 186 nominations total.",
   1006: "Won 3 Oscars. 98 wins & 145 nominations total.",
 };
+const featuredStudios = [
+  { id: "studio:a24", name: "A24", department: "Studio", knownFor: ["Moonlight", "Past Lives", "Everything Everywhere All at Once"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:warner-bros", name: "Warner Bros.", department: "Studio", knownFor: ["Dune: Part Two", "The Dark Knight", "Mad Max: Fury Road"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:paramount", name: "Paramount Pictures", department: "Studio", knownFor: ["The Godfather", "Arrival", "Top Gun: Maverick"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:universal", name: "Universal Pictures", department: "Studio", knownFor: ["Oppenheimer", "Get Out", "Jurassic Park"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:searchlight", name: "Searchlight Pictures", department: "Studio", knownFor: ["Poor Things", "Nomadland", "Birdman"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:focus-features", name: "Focus Features", department: "Studio", knownFor: ["TAR", "Brokeback Mountain", "Phantom Thread"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:sony-pictures-classics", name: "Sony Pictures Classics", department: "Studio", knownFor: ["Whiplash", "Call Me by Your Name", "The Father"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:neon", name: "NEON", department: "Studio", knownFor: ["Parasite", "Anora", "Anatomy of a Fall"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:miramax", name: "Miramax", department: "Studio", knownFor: ["Pulp Fiction", "No Country for Old Men", "Shakespeare in Love"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:pixar", name: "Pixar", department: "Studio", knownFor: ["Toy Story", "Inside Out", "WALL-E"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:marvel", name: "Marvel Studios", department: "Studio", knownFor: ["Iron Man", "Black Panther", "Avengers: Endgame"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:lucasfilm", name: "Lucasfilm", department: "Studio", knownFor: ["Star Wars", "Indiana Jones", "Rogue One"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:blumhouse", name: "Blumhouse Productions", department: "Studio", knownFor: ["Get Out", "Whiplash", "The Invisible Man"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:legendary", name: "Legendary Pictures", department: "Studio", knownFor: ["Dune", "Godzilla", "The Dark Knight"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:film4", name: "Film4", department: "Studio", knownFor: ["Poor Things", "The Favourite", "Room"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:plan-b", name: "Plan B Entertainment", department: "Studio", knownFor: ["Moonlight", "12 Years a Slave", "The Big Short"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:working-title", name: "Working Title Films", department: "Studio", knownFor: ["Darkest Hour", "Fargo", "Atonement"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:lionsgate", name: "Lionsgate", department: "Studio", knownFor: ["La La Land", "Sicario", "John Wick"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:columbia", name: "Columbia Pictures", department: "Studio", knownFor: ["The Social Network", "Spider-Man", "Moneyball"], ratingLabel: "Curated studio pick", profileUrl: "" },
+  { id: "studio:new-line", name: "New Line Cinema", department: "Studio", knownFor: ["The Lord of the Rings", "Se7en", "The Notebook"], ratingLabel: "Curated studio pick", profileUrl: "" },
+];
 
 ensureCacheDir();
 let preferredDbPool = null;
@@ -285,7 +307,9 @@ async function handleApi(requestUrl, res) {
     const query = requestUrl.searchParams.get("q")?.trim() || "";
     const sort = requestUrl.searchParams.get("sort") || "suggested";
     const requestedLimit = clampNumber(requestUrl.searchParams.get("limit"), 10, 1, DB_FEATURED_LIMIT);
-    const directory = await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
+    const directory = department === "studios"
+      ? { studios: getFeaturedStudiosDirectory() }
+      : await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
     const source = directory ? peopleDirectorySlice(directory, department) : [];
     const filtered = filterPeopleDirectory(source, query);
     const sorted = sortPeopleDirectory(filtered, sort);
@@ -403,6 +427,7 @@ function handleDemoApi(requestUrl, res) {
       payload.featuredDirectors = demoPeople.filter((person) => isDirectorDepartment(person.department));
       payload.featuredProducers = demoPeople.filter((person) => isProducerDepartment(person.department));
       payload.featuredWriters = demoPeople.filter((person) => isWriterDepartment(person.department));
+      payload.featuredStudios = getFeaturedStudiosDirectory().slice(0, FEATURED_PEOPLE_LIMIT);
     }
     sendJson(res, 200, payload);
     return;
@@ -414,6 +439,7 @@ function handleDemoApi(requestUrl, res) {
       featuredDirectors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
       featuredProducers: demoPeople.filter((person) => isProducerDepartment(person.department)),
       featuredWriters: demoPeople.filter((person) => isWriterDepartment(person.department)),
+      featuredStudios: getFeaturedStudiosDirectory().slice(0, FEATURED_PEOPLE_LIMIT),
     });
     return;
   }
@@ -444,7 +470,9 @@ function handleDemoApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people-directory") {
     const department = requestUrl.searchParams.get("department") || "actors";
-    const people = department === "directors"
+    const people = department === "studios"
+      ? getFeaturedStudiosDirectory()
+      : department === "directors"
       ? demoPeople.filter((person) => isDirectorDepartment(person.department))
       : department === "producers"
         ? demoPeople.filter((person) => isProducerDepartment(person.department))
@@ -569,12 +597,14 @@ async function buildBootstrapPayload(options = {}) {
     payload.featuredDirectors = (snapshot.directorsTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
     payload.featuredProducers = (snapshot.producersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
     payload.featuredWriters = (snapshot.writersTop10 || []).slice(0, FEATURED_PEOPLE_LIMIT);
+    payload.featuredStudios = getFeaturedStudiosDirectory().slice(0, FEATURED_PEOPLE_LIMIT);
   } else if (includePeople) {
     const featured = await buildFeaturedPeoplePayload();
     payload.featuredActors = featured.featuredActors;
     payload.featuredDirectors = featured.featuredDirectors;
     payload.featuredProducers = featured.featuredProducers;
     payload.featuredWriters = featured.featuredWriters;
+    payload.featuredStudios = featured.featuredStudios;
   }
 
   return payload;
@@ -588,6 +618,7 @@ async function buildFeaturedPeoplePayload() {
       featuredDirectors: snapshot.directorsBrowsePool || snapshot.directorsBrowse || snapshot.directorsTop10 || [],
       featuredProducers: snapshot.producersBrowsePool || snapshot.producersBrowse || snapshot.producersTop10 || [],
       featuredWriters: snapshot.writersBrowsePool || snapshot.writersBrowse || snapshot.writersTop10 || [],
+      featuredStudios: getFeaturedStudiosDirectory(),
     };
   }
 
@@ -596,6 +627,7 @@ async function buildFeaturedPeoplePayload() {
     directors: [],
     producers: [],
     writers: [],
+    studios: getFeaturedStudiosDirectory(),
   };
 
   return {
@@ -603,6 +635,7 @@ async function buildFeaturedPeoplePayload() {
     featuredDirectors: rankedPeople.directors,
     featuredProducers: rankedPeople.producers,
     featuredWriters: rankedPeople.writers,
+    featuredStudios: rankedPeople.studios,
   };
 }
 
@@ -1248,6 +1281,10 @@ function buildIndexStatus(index) {
 }
 
 function peopleDirectorySlice(directory, department) {
+  if (department === "studios") {
+    return directory.studios || [];
+  }
+
   if (department === "directors") {
     return directory.directors || [];
   }
@@ -1269,6 +1306,10 @@ function peopleDirectorySlice(directory, department) {
   }
 
   return directory.actors || [];
+}
+
+function getFeaturedStudiosDirectory() {
+  return featuredStudios.slice();
 }
 
 function filterPeopleDirectory(people, query) {

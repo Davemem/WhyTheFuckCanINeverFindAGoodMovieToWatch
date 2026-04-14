@@ -6,7 +6,7 @@
     <title>Saved People</title>
     <meta
       name="description"
-      content="Browse the actors, actresses, writers, directors, and producers you have saved locally in this browser."
+      content="Browse the actors, writers, directors, and producers you have saved locally in this browser."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -21,9 +21,11 @@
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
           <a href="/">Home</a>
-          <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=actors">Actors</a>
           <a href="/people.html?department=writers">Writers</a>
-          <a href="/people.html?department=producers">Producers / Directors</a>
+          <a href="/people.html?department=directors">Directors</a>
+          <a href="/people.html?department=producers">Producers</a>
+          <a href="/people.html?department=studios">Studios</a>
           <a class="is-active" href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
         </nav>
@@ -34,7 +36,7 @@
           <p class="eyebrow">saved stacks</p>
           <h1>Saved people</h1>
           <p class="hero-text">
-            Keep your trusted actors, actresses, writers, directors, and producers in one place, then browse a full live catalog for whichever saved person you want to revisit next.
+            Keep your trusted actors, writers, directors, and producers in one place, then browse a full live catalog for whichever saved person you want to revisit next.
           </p>
           <p id="saved-status" class="hero-subtext">
             Reading local saved state.
@@ -48,11 +50,15 @@
           <div class="hero-stats">
             <div>
               <span id="saved-actor-count" class="stat-number">0</span>
-              <span class="stat-label">Actors / actresses</span>
+              <span class="stat-label">Actors</span>
+            </div>
+            <div>
+              <span id="saved-writer-count" class="stat-number">0</span>
+              <span class="stat-label">Writers</span>
             </div>
             <div>
               <span id="saved-filmmaker-count" class="stat-number">0</span>
-              <span class="stat-label">Writers / directors / producers</span>
+              <span class="stat-label">Directors / producers</span>
             </div>
           </div>
         </section>
@@ -76,7 +82,18 @@
               aria-controls="saved-actors-panel"
               data-saved-tab="actors"
             >
-              Actors / Actresses
+              Actors
+            </button>
+            <button
+              id="saved-tab-writers"
+              class="ghost-button saved-tab-button"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="saved-writers-panel"
+              data-saved-tab="writers"
+            >
+              Writers
             </button>
             <button
               id="saved-tab-filmmakers"
@@ -87,7 +104,7 @@
               aria-controls="saved-filmmakers-panel"
               data-saved-tab="filmmakers"
             >
-              Writers / Directors / Producers
+              Directors / Producers
             </button>
           </div>
           <section id="saved-person-catalog" class="saved-person-rail saved-people-catalog" data-saved-person-rail hidden>
@@ -119,6 +136,15 @@
             aria-labelledby="saved-tab-actors"
           >
             <div id="saved-actors-grid" class="saved-people-list"></div>
+          </div>
+          <div
+            id="saved-writers-panel"
+            class="saved-people-panel"
+            role="tabpanel"
+            aria-labelledby="saved-tab-writers"
+            hidden
+          >
+            <div id="saved-writers-grid" class="saved-people-list"></div>
           </div>
           <div
             id="saved-filmmakers-panel"

@@ -147,6 +147,7 @@ async function setupCatalogSearch(form) {
   const bootstrap = await fetchBootstrapLite();
   form._placeholderPools = bootstrap.config?.placeholderPools || null;
   populateGenres(genreSelect, bootstrap.genres || []);
+  applyDepartmentDefaults({ form, searchTypeSelect });
   hydrateFormFromUrl({
     form,
     personInput,
@@ -169,6 +170,22 @@ async function setupCatalogSearch(form) {
     form,
   });
   syncRangeLabels(imdbInput, rtInput, imdbValue, rtValue);
+}
+
+function applyDepartmentDefaults({ form, searchTypeSelect }) {
+  if (form.dataset.inlineResults !== "people" || !searchTypeSelect) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("searchType")) {
+    return;
+  }
+
+  const department = params.get("department") || "actors";
+  if (department === "studios") {
+    searchTypeSelect.value = "studio";
+  }
 }
 
 function hydrateFormFromUrl({

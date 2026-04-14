@@ -14,7 +14,9 @@ const elements = {
   movieCardTemplate: document.querySelector("#movie-card-template"),
   navActors: document.querySelector("#nav-actors"),
   navWriters: document.querySelector("#nav-writers"),
+  navDirectors: document.querySelector("#nav-directors"),
   navProducers: document.querySelector("#nav-producers"),
+  navStudios: document.querySelector("#nav-studios"),
 };
 const devStatusFlagKey = "wtfcineverfind-debug";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
@@ -177,8 +179,10 @@ function handlePersonSelection(event) {
   const params = new URLSearchParams();
   params.set("department", pageState.department);
   params.set("query", button.dataset.person);
-  params.set("searchType", "person");
-  params.set("exactPerson", "1");
+  params.set("searchType", pageState.department === "studios" ? "studio" : "person");
+  if (pageState.department !== "studios") {
+    params.set("exactPerson", "1");
+  }
   if (currentState.role && currentState.role !== "any") {
     params.set("role", currentState.role);
   }
@@ -252,6 +256,9 @@ function applyDepartmentCopy() {
     writers: {
       title: "Suggested 50 writers",
     },
+    studios: {
+      title: "Suggested studios",
+    },
   };
 
   const current = labels[pageState.department];
@@ -300,15 +307,14 @@ function syncCatalogRoleChoices() {
 function updateActiveTab() {
   elements.navActors.classList.toggle("is-active", pageState.department === "actors");
   elements.navWriters.classList.toggle("is-active", pageState.department === "writers");
-  elements.navProducers.classList.toggle(
-    "is-active",
-    pageState.department === "directors" || pageState.department === "producers",
-  );
+  elements.navDirectors.classList.toggle("is-active", pageState.department === "directors");
+  elements.navProducers.classList.toggle("is-active", pageState.department === "producers");
+  elements.navStudios.classList.toggle("is-active", pageState.department === "studios");
 }
 
 function readDepartmentFromUrl() {
   const department = new URLSearchParams(window.location.search).get("department");
-  if (department === "directors" || department === "producers" || department === "writers") {
+  if (department === "directors" || department === "producers" || department === "writers" || department === "studios") {
     return department;
   }
   return "actors";
@@ -593,7 +599,10 @@ function departmentLabelPlural(department) {
   if (department === "writers") {
     return "writers";
   }
-  return "actors and actresses";
+  if (department === "studios") {
+    return "studios";
+  }
+  return "actors";
 }
 
 function applyPersonActionButtons(fragment, person) {
@@ -639,7 +648,6 @@ function classifySavedPersonBucket(department) {
   if (
     label.includes("acting") ||
     label.includes("actor") ||
-    label.includes("actress") ||
     label.includes("perform")
   ) {
     return "actors";
@@ -694,7 +702,7 @@ function toggleSavedPerson(rawRecord) {
 function matchesDepartment(person, department) {
   const label = String(person.department || "").toLowerCase();
   if (department === "actors") {
-    return label.includes("acting") || label.includes("actor") || label.includes("actress") || label.includes("perform");
+    return label.includes("acting") || label.includes("actor") || label.includes("perform");
   }
   if (department === "directors") {
     return label.includes("direct");
@@ -704,6 +712,9 @@ function matchesDepartment(person, department) {
   }
   if (department === "writers") {
     return label.includes("writ") || label.includes("screenplay") || label.includes("story");
+  }
+  if (department === "studios") {
+    return String(person.department || "").toLowerCase().includes("studio");
   }
   return true;
 }

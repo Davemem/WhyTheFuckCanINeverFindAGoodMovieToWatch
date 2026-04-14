@@ -9,10 +9,13 @@ const savedPeopleRenderBatch = 4;
 const elements = {
   savedStatus: document.querySelector("#saved-status"),
   savedActorCount: document.querySelector("#saved-actor-count"),
+  savedWriterCount: document.querySelector("#saved-writer-count"),
   savedFilmmakerCount: document.querySelector("#saved-filmmaker-count"),
   savedActorsGrid: document.querySelector("#saved-actors-grid"),
+  savedWritersGrid: document.querySelector("#saved-writers-grid"),
   savedFilmmakersGrid: document.querySelector("#saved-filmmakers-grid"),
   savedActorsPanel: document.querySelector("#saved-actors-panel"),
+  savedWritersPanel: document.querySelector("#saved-writers-panel"),
   savedFilmmakersPanel: document.querySelector("#saved-filmmakers-panel"),
   savedPersonCatalog: document.querySelector("#saved-person-catalog"),
   savedPersonCatalogName: document.querySelector("#saved-person-catalog-name"),
@@ -30,14 +33,17 @@ const uiState = {
   activeTab: "actors",
   visiblePeopleCounts: {
     actors: initialSavedPeopleRenderCount,
+    writers: initialSavedPeopleRenderCount,
     filmmakers: initialSavedPeopleRenderCount,
   },
   peopleByTab: {
     actors: [],
+    writers: [],
     filmmakers: [],
   },
   selectedPeople: {
     actors: "",
+    writers: "",
     filmmakers: "",
   },
   railScrollLeft: new Map(),
@@ -45,6 +51,7 @@ const uiState = {
 };
 
 elements.savedActorsGrid?.addEventListener("click", handleSavedAction);
+elements.savedWritersGrid?.addEventListener("click", handleSavedAction);
 elements.savedFilmmakersGrid?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("scroll", handleRailScroll, true);
@@ -70,22 +77,32 @@ renderSavedPage();
 function renderSavedPage() {
   captureScrollState();
   const savedActors = [...savedPeople.values()].filter((person) => person.bucket === "actors");
-  const savedFilmmakers = [...savedPeople.values()].filter((person) => person.bucket === "filmmakers");
+  const savedWriters = [...savedPeople.values()].filter((person) => isWriterPerson(person));
+  const savedFilmmakers = [...savedPeople.values()].filter((person) => person.bucket === "filmmakers" && !isWriterPerson(person));
   uiState.peopleByTab.actors = savedActors;
+  uiState.peopleByTab.writers = savedWriters;
   uiState.peopleByTab.filmmakers = savedFilmmakers;
   uiState.visiblePeopleCounts.actors = Math.min(
     Math.max(uiState.visiblePeopleCounts.actors, initialSavedPeopleRenderCount),
     savedActors.length || initialSavedPeopleRenderCount,
+  );
+  uiState.visiblePeopleCounts.writers = Math.min(
+    Math.max(uiState.visiblePeopleCounts.writers, initialSavedPeopleRenderCount),
+    savedWriters.length || initialSavedPeopleRenderCount,
   );
   uiState.visiblePeopleCounts.filmmakers = Math.min(
     Math.max(uiState.visiblePeopleCounts.filmmakers, initialSavedPeopleRenderCount),
     savedFilmmakers.length || initialSavedPeopleRenderCount,
   );
   uiState.selectedPeople.actors = resolveSelectedPersonId("actors", savedActors);
+  uiState.selectedPeople.writers = resolveSelectedPersonId("writers", savedWriters);
   uiState.selectedPeople.filmmakers = resolveSelectedPersonId("filmmakers", savedFilmmakers);
 
   if (elements.savedActorCount) {
     elements.savedActorCount.textContent = String(savedActors.length);
+  }
+  if (elements.savedWriterCount) {
+    elements.savedWriterCount.textContent = String(savedWriters.length);
   }
   if (elements.savedFilmmakerCount) {
     elements.savedFilmmakerCount.textContent = String(savedFilmmakers.length);
@@ -95,28 +112,38 @@ function renderSavedPage() {
     elements.savedActorsGrid,
     savedActors,
     "actors",
-    "Save actors and actresses from the home page or the people directory and they will show up here.",
+    "Save actors from the home page or the people directory and they will show up here.",
+  );
+  renderSavedPeopleGrid(
+    elements.savedWritersGrid,
+    savedWriters,
+    "writers",
+    "Save writers from the home page or the people directory and they will show up here.",
   );
   renderSavedPeopleGrid(
     elements.savedFilmmakersGrid,
     savedFilmmakers,
     "filmmakers",
-    "Save writers, producers, and directors from the home page or the people directory and they will show up here.",
+    "Save producers and directors from the home page or the people directory and they will show up here.",
   );
 
   const preferredTab =
     uiState.activeTab === "filmmakers" && savedFilmmakers.length
       ? "filmmakers"
-      : savedActors.length || !savedFilmmakers.length
+      : uiState.activeTab === "writers" && savedWriters.length
+        ? "writers"
+      : savedActors.length
         ? "actors"
-        : "filmmakers";
+      : savedWriters.length
+        ? "writers"
+      : "filmmakers";
   setActiveTab(preferredTab);
   window.requestAnimationFrame(() => {
     restoreScrollState();
     syncAllRails();
   });
 
-  if (!savedActors.length && !savedFilmmakers.length) {
+  if (!savedActors.length && !savedWriters.length && !savedFilmmakers.length) {
     elements.savedStatus.textContent = "No saved people in this browser yet.";
     return;
   }
@@ -331,14 +358,16 @@ function getVisibleRailCount(viewport) {
 }
 
 function setActiveTab(tab, options = {}) {
-  uiState.activeTab = tab === "filmmakers" ? "filmmakers" : "actors";
+  uiState.activeTab = tab === "filmmakers" || tab === "writers" ? tab : "actors";
   if (options.clearSelection) {
     uiState.selectedPeople[uiState.activeTab] = "";
   }
   const actorsActive = uiState.activeTab === "actors";
+  const writersActive = uiState.activeTab === "writers";
 
   elements.savedActorsPanel.hidden = !actorsActive;
-  elements.savedFilmmakersPanel.hidden = actorsActive;
+  elements.savedWritersPanel.hidden = !writersActive;
+  elements.savedFilmmakersPanel.hidden = actorsActive || writersActive;
 
   elements.savedTabButtons.forEach((button) => {
     const isActive = button.dataset.savedTab === uiState.activeTab;
@@ -359,7 +388,12 @@ function handleWindowScroll() {
     return;
   }
 
-  const activePanel = activeTab === "actors" ? elements.savedActorsPanel : elements.savedFilmmakersPanel;
+  const activePanel =
+    activeTab === "actors"
+      ? elements.savedActorsPanel
+      : activeTab === "writers"
+        ? elements.savedWritersPanel
+        : elements.savedFilmmakersPanel;
   if (!activePanel || activePanel.hidden) {
     return;
   }
@@ -600,7 +634,6 @@ function inferCatalogRole(person) {
   if (
     label.includes("acting") ||
     label.includes("actor") ||
-    label.includes("actress") ||
     label.includes("perform")
   ) {
     return "cast";
@@ -610,6 +643,9 @@ function inferCatalogRole(person) {
   }
   if (label.includes("produc") && !label.includes("direct")) {
     return "producer";
+  }
+  if (label.includes("writ") || label.includes("screenplay") || label.includes("story")) {
+    return "writer";
   }
   return "any";
 }
@@ -802,9 +838,18 @@ function resolveSelectedPersonId(tabKey, people) {
 function updateSelectedPersonCards() {
   document.querySelectorAll("[data-select-person-id]").forEach((card) => {
     const personId = String(card.dataset.selectPersonId || "");
-    const tabKey = elements.savedActorsGrid?.contains(card) ? "actors" : "filmmakers";
+    const tabKey = elements.savedActorsGrid?.contains(card)
+      ? "actors"
+      : elements.savedWritersGrid?.contains(card)
+        ? "writers"
+        : "filmmakers";
     card.classList.toggle("is-selected", uiState.selectedPeople[tabKey] === personId);
   });
+}
+
+function isWriterPerson(person) {
+  const label = String(person?.department || "").toLowerCase();
+  return label.includes("writ") || label.includes("screenplay") || label.includes("story");
 }
 async function fetchJson(url) {
   const response = await window.fetch(url);

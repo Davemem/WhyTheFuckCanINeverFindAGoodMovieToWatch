@@ -21,9 +21,11 @@
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
           <a class="is-active" href="/">Home</a>
-          <a href="/people.html?department=actors">Actors / Actresses</a>
+          <a href="/people.html?department=actors">Actors</a>
           <a href="/people.html?department=writers">Writers</a>
-          <a href="/people.html?department=producers">Producers / Directors</a>
+          <a href="/people.html?department=directors">Directors</a>
+          <a href="/people.html?department=producers">Producers</a>
+          <a href="/people.html?department=studios">Studios</a>
           <a href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
         </nav>
@@ -36,7 +38,7 @@
           </h1>
           <p class="hero-text">
             Can't find a movie after endlessy browsing? Find new (and old)
-            movies by searching the filmographies of actors, actresses,
+            movies by searching the filmographies of actors,
             directors, producers, and writers you already know and love, or
             switch over to studio and award-winning searches, then tighten the
             list by ratings, genre, and release year. Save your favourite
@@ -220,7 +222,7 @@
         <section class="catalog-section" id="actors" aria-labelledby="actors-preview-heading">
           <div class="results-header">
             <div>
-              <p class="section-label">Actors / Actresses</p>
+              <p class="section-label">Actors</p>
               <h2 id="actors-preview-heading">Suggested 10 actors</h2>
             </div>
             <div class="section-actions">
@@ -235,22 +237,76 @@
           <div id="actors-grid" class="rotating-grid compact-grid"></div>
         </section>
 
+        <section class="catalog-section" id="writers" aria-labelledby="writers-preview-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Writers</p>
+              <h2 id="writers-preview-heading">Suggested 10 writers</h2>
+            </div>
+            <div class="section-actions">
+              <p id="writers-summary" class="results-summary">
+                Suggested writers from the ranked local index.
+              </p>
+              <button id="writers-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
+            </div>
+          </div>
+          <div id="writers-grid" class="rotating-grid compact-grid"></div>
+        </section>
+
+        <section class="catalog-section" id="directors" aria-labelledby="directors-preview-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Directors</p>
+              <h2 id="directors-preview-heading">Suggested 10 directors</h2>
+            </div>
+            <div class="section-actions">
+              <p id="directors-summary" class="results-summary">
+                Suggested directors from the ranked local index.
+              </p>
+              <button id="directors-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
+            </div>
+          </div>
+          <div id="directors-grid" class="rotating-grid compact-grid"></div>
+        </section>
+
         <section class="catalog-section" id="producers" aria-labelledby="producers-preview-heading">
           <div class="results-header">
             <div>
-              <p class="section-label">Producers / Directors</p>
-              <h2 id="producers-preview-heading">Suggested 10 producers / directors</h2>
+              <p class="section-label">Producers</p>
+              <h2 id="producers-preview-heading">Suggested 10 producers</h2>
             </div>
             <div class="section-actions">
               <p id="producers-summary" class="results-summary">
-                Suggested producer and director picks.
+                Suggested producers from the ranked local index.
               </p>
               <button id="producers-refresh" type="button" class="ghost-button">
                 Refresh picks
               </button>
             </div>
           </div>
-          <div id="person-chips" class="rotating-grid compact-grid"></div>
+          <div id="producers-grid" class="rotating-grid compact-grid"></div>
+        </section>
+
+        <section class="catalog-section" id="studios" aria-labelledby="studios-preview-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Studios</p>
+              <h2 id="studios-preview-heading">Suggested 10 studios</h2>
+            </div>
+            <div class="section-actions">
+              <p id="studios-summary" class="results-summary">
+                Suggested studios to explore.
+              </p>
+              <button id="studios-refresh" type="button" class="ghost-button">
+                Refresh picks
+              </button>
+            </div>
+          </div>
+          <div id="studios-grid" class="rotating-grid compact-grid"></div>
         </section>
         </div>
       </main>
