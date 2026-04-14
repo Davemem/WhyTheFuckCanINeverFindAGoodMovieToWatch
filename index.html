@@ -73,20 +73,25 @@
           </div>
 
           <form id="filters-form">
-            <label class="field">
-              <span id="search-label">Person</span>
-              <input
-                id="person-search"
-                name="person-search"
-                type="search"
-                list="people-suggestions"
-                data-placeholder-profile="mixed"
-                placeholder="Try: Kevin Feige, Kathleen Kennedy, Denis Villeneuve"
-              />
-            </label>
-            <datalist id="people-suggestions"></datalist>
+            <section class="filter-group" aria-labelledby="discovery-filters-heading">
+              <div class="field-row">
+                <span class="filter-group-title" id="discovery-filters-heading">Discovery search</span>
+                <strong class="field-helper">Find the person or studio first</strong>
+              </div>
 
-            <div class="field-grid">
+              <label class="field">
+                <span id="search-label">Person</span>
+                <input
+                  id="person-search"
+                  name="person-search"
+                  type="search"
+                  list="people-suggestions"
+                  data-placeholder-profile="mixed"
+                  placeholder="Try: Kevin Feige, Kathleen Kennedy, Denis Villeneuve"
+                />
+              </label>
+              <datalist id="people-suggestions"></datalist>
+
               <label class="field">
                 <span>Search by</span>
                 <select id="search-type" name="search-type">
@@ -94,6 +99,13 @@
                   <option value="studio">Studio</option>
                 </select>
               </label>
+            </section>
+
+            <section class="filter-group movie-filter-group" id="movie-filter-group" aria-labelledby="movie-filters-heading">
+              <div class="field-row">
+                <span class="filter-group-title" id="movie-filters-heading">Movie filters</span>
+                <strong id="movie-filter-helper" class="field-helper">These apply once you pick a specific person or studio.</strong>
+              </div>
 
               <label class="field">
                 <span>Award recognition</span>
@@ -111,78 +123,78 @@
                   <option value="nominee:bafta">BAFTA nominee</option>
                 </select>
               </label>
-            </div>
 
-            <div class="field" id="role-field">
-              <div class="field-row">
-                <span>Match role</span>
-                <strong id="role-description" class="field-helper">Any role</strong>
+              <div class="field" id="role-field">
+                <div class="field-row">
+                  <span>Match role</span>
+                  <strong id="role-description" class="field-helper">Any role</strong>
+                </div>
+                <div class="segmented-control" id="role-filter" aria-label="Filter by credit type">
+                  <button type="button" class="segment is-active" data-role="any">Any</button>
+                  <button type="button" class="segment" data-role="cast">Cast</button>
+                  <button type="button" class="segment" data-role="director">Director</button>
+                  <button type="button" class="segment" data-role="producer">Producer</button>
+                  <button type="button" class="segment" data-role="writer">Writer</button>
+                </div>
               </div>
-              <div class="segmented-control" id="role-filter" aria-label="Filter by credit type">
-                <button type="button" class="segment is-active" data-role="any">Any</button>
-                <button type="button" class="segment" data-role="cast">Cast</button>
-                <button type="button" class="segment" data-role="director">Director</button>
-                <button type="button" class="segment" data-role="producer">Producer</button>
-                <button type="button" class="segment" data-role="writer">Writer</button>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Minimum IMDb</span>
+                  <input
+                    id="imdb-min"
+                    name="imdb-min"
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.1"
+                    value="0"
+                  />
+                  <strong id="imdb-value">0.0+</strong>
+                </label>
+
+                <label class="field">
+                  <span>Minimum Rotten Tomatoes</span>
+                  <input
+                    id="rt-min"
+                    name="rt-min"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="0"
+                  />
+                  <strong id="rt-value">0%+</strong>
+                </label>
               </div>
-            </div>
 
-            <div class="field-grid">
-              <label class="field">
-                <span>Minimum IMDb</span>
-                <input
-                  id="imdb-min"
-                  name="imdb-min"
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  value="0"
-                />
-                <strong id="imdb-value">0.0+</strong>
-              </label>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Genre</span>
+                  <select id="genre-filter" name="genre-filter">
+                    <option value="all">All genres</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Decade</span>
+                  <select id="decade-filter" name="decade-filter">
+                    <option value="all">All decades</option>
+                  </select>
+                </label>
+              </div>
 
               <label class="field">
-                <span>Minimum Rotten Tomatoes</span>
-                <input
-                  id="rt-min"
-                  name="rt-min"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="0"
-                />
-                <strong id="rt-value">0%+</strong>
-              </label>
-            </div>
-
-            <div class="field-grid">
-              <label class="field">
-                <span>Genre</span>
-                <select id="genre-filter" name="genre-filter">
-                  <option value="all">All genres</option>
+                <span>Sort by</span>
+                <select id="sort-filter" name="sort-filter">
+                  <option value="match">Best match</option>
+                  <option value="imdb">Highest IMDb</option>
+                  <option value="rt">Highest Rotten Tomatoes</option>
+                  <option value="year-desc">Newest first</option>
+                  <option value="year-asc">Oldest first</option>
                 </select>
               </label>
-
-              <label class="field">
-                <span>Decade</span>
-                <select id="decade-filter" name="decade-filter">
-                  <option value="all">All decades</option>
-                </select>
-              </label>
-            </div>
-
-            <label class="field">
-              <span>Sort by</span>
-              <select id="sort-filter" name="sort-filter">
-                <option value="match">Best match</option>
-                <option value="imdb">Highest IMDb</option>
-                <option value="rt">Highest Rotten Tomatoes</option>
-                <option value="year-desc">Newest first</option>
-                <option value="year-asc">Oldest first</option>
-              </select>
-            </label>
+            </section>
           </form>
         </section>
       </header>
@@ -216,6 +228,12 @@
             </div>
           </div>
           <section id="results-grid" class="results-grid" aria-live="polite"></section>
+          <div id="results-pagination" class="results-pagination" hidden>
+            <p id="results-pagination-summary" class="results-summary"></p>
+            <button id="results-load-more" type="button" class="ghost-button">
+              Load more
+            </button>
+          </div>
         </section>
 
         <div id="suggested-panels" class="suggested-panels">

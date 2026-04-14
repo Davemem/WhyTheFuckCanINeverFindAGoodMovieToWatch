@@ -285,6 +285,28 @@ input[type="search"] {
   gap: 12px;
 }
 
+.filter-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(25, 21, 19, 0.08);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.filter-group-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-deep);
+}
+
+.movie-filter-group.is-pending {
+  background: rgba(255, 255, 255, 0.3);
+  border-style: dashed;
+}
+
 .field-row {
   align-items: baseline;
 }
@@ -515,6 +537,14 @@ main {
   gap: 12px;
   margin-top: 10px;
   align-items: start;
+}
+
+.results-pagination {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .movie-card {

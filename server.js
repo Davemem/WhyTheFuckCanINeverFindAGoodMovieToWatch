@@ -21,6 +21,8 @@ const DISCOVER_RESULT_LIMIT = 60;
 const DISCOVER_HYDRATE_LIMIT = 6;
 const ENRICH_BATCH_LIMIT = 2;
 const PERSON_RESULT_LIMIT = 200;
+const PEOPLE_SEARCH_DEFAULT_LIMIT = 25;
+const PEOPLE_SEARCH_MAX_LIMIT = 50;
 const FEATURED_PEOPLE_PAGE_COUNT = 15;
 const FEATURED_PEOPLE_LIMIT = 10;
 const SNAPSHOT_BROWSE_LIMIT = 250;
@@ -324,13 +326,20 @@ async function handleApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people") {
     const query = requestUrl.searchParams.get("query")?.trim();
+    const page = clampNumber(requestUrl.searchParams.get("page"), 1, 1, 200);
+    const limit = clampNumber(
+      requestUrl.searchParams.get("limit"),
+      PEOPLE_SEARCH_DEFAULT_LIMIT,
+      1,
+      PEOPLE_SEARCH_MAX_LIMIT,
+    );
     if (!query) {
-      sendJson(res, 200, { results: [] });
+      sendJson(res, 200, { results: [], total: 0, page, limit, hasMore: false });
       return;
     }
 
-    const dbResults = await searchPeopleFromPostgres(query);
-    sendJson(res, 200, { results: dbResults });
+    const dbResults = await searchPeopleFromPostgres(query, { page, limit });
+    sendJson(res, 200, dbResults);
     return;
   }
 
@@ -451,10 +460,25 @@ function handleDemoApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people") {
     const query = requestUrl.searchParams.get("query")?.trim().toLowerCase() || "";
+    const page = clampNumber(requestUrl.searchParams.get("page"), 1, 1, 200);
+    const limit = clampNumber(
+      requestUrl.searchParams.get("limit"),
+      PEOPLE_SEARCH_DEFAULT_LIMIT,
+      1,
+      PEOPLE_SEARCH_MAX_LIMIT,
+    );
     const results = query
       ? demoPeople.filter((person) => person.name.toLowerCase().includes(query))
       : [];
-    sendJson(res, 200, { results });
+    const startIndex = (page - 1) * limit;
+    const pagedResults = results.slice(startIndex, startIndex + limit);
+    sendJson(res, 200, {
+      results: pagedResults,
+      total: results.length,
+      page,
+      limit,
+      hasMore: startIndex + pagedResults.length < results.length,
+    });
     return;
   }
 
@@ -738,7 +762,7 @@ async function discoverBroad(filters) {
 async function discoverByPerson(filters) {
   const person = Number.isFinite(filters.personId) && filters.personId > 0
     ? await getPersonFromPostgresById(filters.personId)
-    : (await searchPeopleFromPostgres(filters.personQuery))[0];
+    : (await searchPeopleFromPostgres(filters.personQuery, { page: 1, limit: 1 })).results[0];
   if (!person) {
     return { matchedPerson: null, totalMatches: 0, movies: [] };
   }
@@ -1353,8 +1377,10 @@ function clampNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
-function searchLocalPeopleIndex(index, query) {
+function searchLocalPeopleIndex(index, query, options = {}) {
   const normalizedQuery = normalizeName(query);
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
   const combined = dedupePeople([
     ...(index.actors || []),
     ...(index.directors || []),
@@ -1362,7 +1388,7 @@ function searchLocalPeopleIndex(index, query) {
     ...(index.writers || []),
   ]);
 
-  return combined
+  const ranked = combined
     .filter((person) => {
       const haystack = [person.name, person.department, ...(person.knownFor || [])]
         .join(" ")
@@ -1376,8 +1402,16 @@ function searchLocalPeopleIndex(index, query) {
         return rightStarts - leftStarts;
       }
       return compareFeaturedPeople(left, right);
-    })
-    .slice(0, 8);
+    });
+  const startIndex = (page - 1) * limit;
+  const results = ranked.slice(startIndex, startIndex + limit);
+  return {
+    results,
+    total: ranked.length,
+    page,
+    limit,
+    hasMore: startIndex + results.length < ranked.length,
+  };
 }
 
 function selectBestPersonMatch(results, query) {
@@ -2214,17 +2248,20 @@ function writerRoleSqlFilter(alias) {
   )`;
 }
 
-async function searchPeopleFromPostgres(query) {
+async function searchPeopleFromPostgres(query, options = {}) {
   if (!dbPools) {
-    return [];
+    return { results: [], total: 0, page: 1, limit: PEOPLE_SEARCH_DEFAULT_LIMIT, hasMore: false };
   }
 
   const normalizedQuery = String(query || "").trim().toLowerCase();
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  const offset = (page - 1) * limit;
   if (!normalizedQuery) {
-    return [];
+    return { results: [], total: 0, page, limit, hasMore: false };
   }
 
-  const cacheKey = `pg:people-search:v1:${normalizedQuery}`;
+  const cacheKey = `pg:people-search:v2:${normalizedQuery}:${page}:${limit}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -2239,50 +2276,116 @@ async function searchPeopleFromPostgres(query) {
   try {
     const result = await queryDb(
       `
+        WITH matched_people AS (
+          SELECT
+            p.person_id,
+            p.name,
+            COALESCE(p.known_for_department, 'Person') AS department,
+            p.profile_path,
+            COALESCE(p.popularity, 0) AS popularity
+          FROM people p
+          WHERE p.name ILIKE $1
+        ),
+        scored_people AS (
+          SELECT
+            mp.person_id,
+            mp.name,
+            mp.department,
+            mp.profile_path,
+            mp.popularity,
+            COALESCE(pr.recognition_score, 0) AS recognition_score,
+            COUNT(DISTINCT m.movie_id)::int AS credit_count,
+            SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
+            ROUND(
+              (
+                SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
+                / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
+              )::numeric,
+              1
+            ) AS score
+          FROM matched_people mp
+          LEFT JOIN person_recognition pr ON pr.person_id = mp.person_id
+          LEFT JOIN person_movie_credits pmc ON pmc.person_id = mp.person_id
+          LEFT JOIN movies m ON m.movie_id = pmc.movie_id
+          GROUP BY
+            mp.person_id,
+            mp.name,
+            mp.department,
+            mp.profile_path,
+            mp.popularity,
+            pr.recognition_score
+        ),
+        counted_people AS (
+          SELECT COUNT(*)::int AS total
+          FROM matched_people
+        )
         SELECT
-          p.person_id AS id,
-          p.name,
-          COALESCE(p.known_for_department, 'Person') AS department,
-          p.profile_path,
-          COALESCE(p.popularity, 0) AS popularity,
+          sp.person_id AS id,
+          sp.name,
+          sp.department,
+          sp.profile_path,
+          sp.popularity,
+          sp.recognition_score,
+          sp.credit_count,
+          sp.total_votes,
           ROUND((
             SELECT
               SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
               / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
             FROM person_movie_credits pmc
             JOIN movies m ON m.movie_id = pmc.movie_id
-            WHERE pmc.person_id = p.person_id
+            WHERE pmc.person_id = sp.person_id
           )::numeric, 1) AS score,
           COALESCE((
             SELECT ARRAY(
               SELECT m2.title
               FROM person_movie_credits pmc2
               JOIN movies m2 ON m2.movie_id = pmc2.movie_id
-              WHERE pmc2.person_id = p.person_id
+              WHERE pmc2.person_id = sp.person_id
               GROUP BY m2.movie_id, m2.title, m2.vote_average, m2.vote_count
               ORDER BY m2.vote_average DESC NULLS LAST, m2.vote_count DESC NULLS LAST
               LIMIT 3
             )
-          ), ARRAY[]::text[]) AS known_for
-        FROM people p
-        WHERE p.name ILIKE $1
+          ), ARRAY[]::text[]) AS known_for,
+          cp.total
+        FROM scored_people sp
+        CROSS JOIN counted_people cp
         ORDER BY
-          CASE WHEN LOWER(p.name) = LOWER($2) THEN 0 ELSE 1 END,
-          CASE WHEN LOWER(p.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
-          p.popularity DESC NULLS LAST,
-          p.name ASC
-        LIMIT 8
+          CASE WHEN LOWER(sp.name) = LOWER($2) THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(sp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+          CASE
+            WHEN sp.score BETWEEN 7.4 AND 8.8 AND sp.credit_count >= 4 AND sp.total_votes >= 5000 AND sp.recognition_score >= 300 THEN 0
+            WHEN sp.score BETWEEN 7.0 AND 9.2 AND sp.credit_count >= 3 AND sp.total_votes >= 1000 AND sp.recognition_score >= 120 THEN 1
+            WHEN sp.score BETWEEN 7.0 AND 9.5 AND sp.credit_count >= 2 THEN 2
+            ELSE 3
+          END ASC,
+          sp.recognition_score DESC NULLS LAST,
+          sp.total_votes DESC NULLS LAST,
+          sp.popularity DESC NULLS LAST,
+          ABS(COALESCE(sp.score, 0) - 8.1) ASC,
+          sp.credit_count DESC NULLS LAST,
+          sp.score DESC NULLS LAST,
+          sp.name ASC
+        LIMIT $4
+        OFFSET $5
       `,
-      [`%${query}%`, query, `${query}%`],
+      [`%${query}%`, query, `${query}%`, limit, offset],
     );
-    const value = result.rows.map(normalizeDbPersonRow);
+    const total = Number(result.rows[0]?.total || 0);
+    const value = {
+      results: result.rows.map((row) => normalizeDbPersonRow(row)),
+      total,
+      page,
+      limit,
+      hasMore: offset + result.rows.length < total,
+    };
     const entry = { value, expiresAt: Date.now() + DB_PEOPLE_SEARCH_CACHE_TTL_MS };
     cache.set(cacheKey, entry);
     writeDiskCache(cacheKey, entry);
     return value;
   } catch (error) {
     logServerError("searchPeopleFromPostgres", error);
-    return [];
+    return { results: [], total: 0, page, limit, hasMore: false };
   }
 }
 

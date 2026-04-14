@@ -20,6 +20,8 @@ const elements = {
   searchType: document.querySelector("#search-type"),
   awardFilter: document.querySelector("#award-filter"),
   peopleSuggestions: document.querySelector("#people-suggestions"),
+  movieFilterGroup: document.querySelector("#movie-filter-group"),
+  movieFilterHelper: document.querySelector("#movie-filter-helper"),
   roleField: document.querySelector("#role-field"),
   roleFilter: document.querySelector("#role-filter"),
   roleDescription: document.querySelector("#role-description"),
@@ -35,6 +37,9 @@ const elements = {
   resultsSection: document.querySelector("#results-section"),
   resultsBack: document.querySelector("#results-back"),
   resultsSummary: document.querySelector("#results-summary"),
+  resultsPagination: document.querySelector("#results-pagination"),
+  resultsPaginationSummary: document.querySelector("#results-pagination-summary"),
+  resultsLoadMore: document.querySelector("#results-load-more"),
   movieCount: document.querySelector("#movie-count"),
   peopleCount: document.querySelector("#people-count"),
   watchlistCount: document.querySelector("#watchlist-count"),
@@ -66,6 +71,7 @@ const elements = {
 const watchlist = loadWatchlist();
 const watchlistMovies = loadWatchlistMovies();
 const savedPeople = loadSavedPeople();
+let debouncedMovieRefresh = null;
 const liveState = {
   genres: [],
   featuredActors: [],
@@ -75,6 +81,15 @@ const liveState = {
   featuredStudios: [],
   movies: [],
   entities: [],
+  entitySearch: {
+    query: "",
+    searchType: "person",
+    page: 1,
+    limit: 25,
+    total: 0,
+    hasMore: false,
+    isLoadingMore: false,
+  },
   activeRole: "any",
   exactMatch: false,
   imageBaseUrl: "",
@@ -146,6 +161,7 @@ async function bootstrap() {
   populateDecades();
   applyStateFromUrl();
   syncSearchModeUi();
+  syncMovieFilterState();
   bindEvents();
   renderActorPreview();
   renderRolePreview("writers");
@@ -215,7 +231,7 @@ function populateDecades() {
 }
 
 function bindEvents() {
-  const debouncedRefreshMovies = debounce(() => {
+  debouncedMovieRefresh = debounce(() => {
     refreshMovies();
   }, 220);
 
@@ -229,13 +245,13 @@ function bindEvents() {
     if (element) {
       element.addEventListener("input", () => {
         syncRangeLabels();
-        debouncedRefreshMovies();
+        handleMovieFilterIntent({ debounced: true });
       });
-      element.addEventListener("change", refreshMovies);
+      element.addEventListener("change", () => handleMovieFilterIntent());
     }
   });
   if (elements.sortFilter) {
-    elements.sortFilter.addEventListener("change", handleSortChange);
+    elements.sortFilter.addEventListener("change", () => handleMovieFilterIntent({ sortOnly: true }));
   }
   if (elements.searchType) {
     elements.searchType.addEventListener("change", () => {
@@ -245,7 +261,7 @@ function bindEvents() {
     });
   }
   if (elements.awardFilter) {
-    elements.awardFilter.addEventListener("change", refreshMovies);
+    elements.awardFilter.addEventListener("change", () => handleMovieFilterIntent());
   }
 
   const debouncedPeopleLookup = debounce(async () => {
@@ -256,6 +272,7 @@ function bindEvents() {
     elements.personSearch.addEventListener("input", debouncedPeopleLookup);
     elements.personSearch.addEventListener("input", () => {
       liveState.exactMatch = false;
+      syncMovieFilterState();
     });
     elements.personSearch.addEventListener("change", refreshMovies);
     elements.personSearch.addEventListener("keydown", handlePersonSearchKeydown);
@@ -269,7 +286,7 @@ function bindEvents() {
       }
 
       setActiveRole(button.dataset.role);
-      await refreshMovies();
+      await handleMovieFilterIntent();
     });
   }
 
@@ -307,7 +324,30 @@ function bindEvents() {
   if (elements.resultsBack) {
     elements.resultsBack.addEventListener("click", resetFilters);
   }
+  if (elements.resultsLoadMore) {
+    elements.resultsLoadMore.addEventListener("click", loadMoreEntityResults);
+  }
   window.addEventListener("popstate", handlePopState);
+}
+
+async function handleMovieFilterIntent(options = {}) {
+  syncMovieFilterState();
+  if (isEntitySelectionMode()) {
+    updateUrlFromState(getFilterState());
+    return;
+  }
+
+  if (options.sortOnly) {
+    handleSortChange();
+    return;
+  }
+
+  if (options.debounced) {
+    debouncedMovieRefresh?.();
+    return;
+  }
+
+  await refreshMovies();
 }
 
 async function updatePersonSuggestions() {
@@ -343,6 +383,7 @@ async function refreshMovies() {
 
   liveState.lastQueryKey = queryKey;
   syncRangeLabels();
+  syncMovieFilterState(state);
   elements.roleDescription.textContent =
     state.searchType === "studio"
       ? "Studios ignore role matching"
@@ -354,15 +395,27 @@ async function refreshMovies() {
 
   try {
     if (state.personQuery && !state.exactMatch) {
-      const endpoint = state.searchType === "studio" ? "/api/studios" : "/api/people";
-      const payload = await fetchJson(`${endpoint}?query=${encodeURIComponent(state.personQuery)}`);
+      const payload = await fetchEntityPage({
+        query: state.personQuery,
+        searchType: state.searchType,
+        page: 1,
+      });
       if (requestId !== liveState.requestId) {
         return;
       }
 
       liveState.entities = payload.results || [];
       liveState.movies = [];
-      liveState.totalMatches = liveState.entities.length;
+      liveState.totalMatches = payload.total || liveState.entities.length;
+      liveState.entitySearch = {
+        query: state.personQuery,
+        searchType: state.searchType,
+        page: payload.page || 1,
+        limit: payload.limit || liveState.entitySearch.limit,
+        total: payload.total || liveState.entities.length,
+        hasMore: Boolean(payload.hasMore),
+        isLoadingMore: false,
+      };
       elements.resultsTitle.textContent =
         state.searchType === "studio"
           ? `Studios matching "${state.personQuery}"`
@@ -392,6 +445,7 @@ async function refreshMovies() {
 
     liveState.movies = sortMoviesClient(payload.movies || [], state.sort);
     liveState.entities = [];
+    resetEntityPagination();
     liveState.totalMatches = payload.totalMatches || liveState.movies.length;
     liveState.enrichAttempts = new Map();
     elements.resultsTitle.textContent = buildResultsTitle(payload);
@@ -405,9 +459,78 @@ async function refreshMovies() {
 
     liveState.movies = [];
     liveState.lastQueryKey = "";
+    resetEntityPagination();
     renderErrorState(error.message);
     setStatus(error.message, true);
   }
+}
+
+async function loadMoreEntityResults() {
+  const state = getFilterState();
+  const entityState = liveState.entitySearch;
+  if (!state.personQuery || state.exactMatch || !entityState.hasMore || entityState.isLoadingMore) {
+    return;
+  }
+
+  liveState.entitySearch = {
+    ...entityState,
+    isLoadingMore: true,
+  };
+  syncResultsPagination();
+
+  try {
+    const payload = await fetchEntityPage({
+      query: state.personQuery,
+      searchType: state.searchType,
+      page: entityState.page + 1,
+      limit: entityState.limit,
+    });
+    if (state.personQuery !== getFilterState().personQuery || state.searchType !== getFilterState().searchType || liveState.exactMatch) {
+      return;
+    }
+
+    liveState.entities = dedupePeopleById([
+      ...liveState.entities,
+      ...(payload.results || []),
+    ]);
+    liveState.totalMatches = payload.total || liveState.entities.length;
+    liveState.entitySearch = {
+      ...liveState.entitySearch,
+      page: payload.page || entityState.page + 1,
+      limit: payload.limit || entityState.limit,
+      total: payload.total || liveState.entities.length,
+      hasMore: Boolean(payload.hasMore),
+      isLoadingMore: false,
+    };
+    renderEntityResults(liveState.entities, state.searchType);
+    syncRenderedSavedPeopleButtons();
+  } catch (error) {
+    liveState.entitySearch = {
+      ...liveState.entitySearch,
+      isLoadingMore: false,
+    };
+    syncResultsPagination();
+    setStatus(error.message, true);
+  }
+}
+
+async function fetchEntityPage({ query, searchType, page, limit = liveState.entitySearch.limit || 25 }) {
+  const endpoint = searchType === "studio" ? "/api/studios" : "/api/people";
+  const params = new URLSearchParams({
+    query,
+  });
+  if (searchType !== "studio") {
+    params.set("page", String(page));
+    params.set("limit", String(limit));
+  }
+  const payload = await fetchJson(`${endpoint}?${params.toString()}`);
+  return {
+    results: payload.results || [],
+    total: payload.total || (payload.results || []).length,
+    page: payload.page || page,
+    limit: payload.limit || limit,
+    hasMore: Boolean(payload.hasMore),
+  };
 }
 
 function syncRangeLabels() {
@@ -419,6 +542,7 @@ function renderMovies(movies) {
   liveState.renderToken += 1;
   const renderToken = liveState.renderToken;
   setSearchMode(true);
+  resetEntityPagination();
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = `${liveState.totalMatches || movies.length} live movie${
     (liveState.totalMatches || movies.length) === 1 ? "" : "s"
@@ -461,7 +585,13 @@ function renderEntityResults(entities, searchType) {
   liveState.renderToken += 1;
   setSearchMode(true);
   elements.resultsGrid.replaceChildren();
-  elements.resultsSummary.textContent = `${entities.length} ${searchType === "studio" ? "studio" : "person"}${entities.length === 1 ? "" : "s"} matched your search.`;
+  const total = liveState.entitySearch.total || entities.length;
+  const selectionPrompt = searchType === "studio"
+    ? "Choose a studio to apply the movie filters below."
+    : "Choose a person to apply the movie filters below.";
+  elements.resultsSummary.textContent = searchType === "studio"
+    ? `${entities.length} of ${total} studios matched your search. ${selectionPrompt}`
+    : `${entities.length} of ${total} people matched your search. ${selectionPrompt}`;
 
   if (!entities.length) {
     const emptyState = document.createElement("div");
@@ -478,14 +608,48 @@ function renderEntityResults(entities, searchType) {
     grid.append(buildDirectoryPersonCard(entity, searchType === "studio" ? "Show studio movies" : "Show matching movies"));
   });
   elements.resultsGrid.append(grid);
+  syncResultsPagination();
 }
 
 function renderIdleState() {
   liveState.renderToken += 1;
   setSearchMode(false);
+  resetEntityPagination();
   elements.resultsGrid.replaceChildren();
   elements.resultsTitle.textContent = "Movies selected by the people behind them";
   elements.resultsSummary.textContent = "Start with a person, studio, award, genre, decade, or rating filter.";
+  syncMovieFilterState();
+}
+
+function resetEntityPagination() {
+  liveState.entitySearch = {
+    ...liveState.entitySearch,
+    query: "",
+    searchType: "person",
+    page: 1,
+    total: 0,
+    hasMore: false,
+    isLoadingMore: false,
+  };
+  syncResultsPagination();
+}
+
+function syncResultsPagination() {
+  if (!elements.resultsPagination || !elements.resultsPaginationSummary || !elements.resultsLoadMore) {
+    return;
+  }
+
+  const entityState = liveState.entitySearch;
+  const shouldShow = Boolean(entityState.query) && entityState.searchType === "person" && (entityState.hasMore || entityState.total > 0);
+  elements.resultsPagination.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  elements.resultsPaginationSummary.textContent = `${liveState.entities.length} of ${entityState.total} people shown.`;
+  elements.resultsLoadMore.hidden = !entityState.hasMore;
+  elements.resultsLoadMore.disabled = entityState.isLoadingMore;
+  elements.resultsLoadMore.textContent = entityState.isLoadingMore ? "Loading more..." : "Load more people";
 }
 
 function buildMovieCard(movie) {
@@ -875,6 +1039,7 @@ function syncWatchlistMovieDetails(enrichedById) {
 function renderLoadingState() {
   liveState.renderToken += 1;
   setSearchMode(false);
+  syncResultsPagination();
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
@@ -885,6 +1050,7 @@ function renderLoadingState() {
 function renderErrorState(message) {
   liveState.renderToken += 1;
   setSearchMode(false);
+  syncResultsPagination();
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");
   errorState.className = "empty-state";
@@ -897,6 +1063,7 @@ function handlePersonSelection(event) {
   if (saveButton) {
     const currentScrollY = window.scrollY;
     toggleSavedPerson(saveButton.dataset.savedPerson || "");
+    syncRenderedSavedPeopleButtons();
     renderActorPreview();
     renderRolePreview("writers");
     renderRolePreview("directors");
@@ -1015,16 +1182,17 @@ function getFilterState() {
 }
 
 function buildFetchKey(state) {
+  const entitySelectionMode = isEntitySelectionMode(state);
   return JSON.stringify({
     personQuery: state.personQuery,
     searchType: state.searchType,
     exactMatch: state.exactMatch,
-    role: state.role,
-    imdbMin: state.imdbMin,
-    rtMin: state.rtMin,
-    genre: state.genre,
-    decade: state.decade,
-    award: state.award,
+    role: entitySelectionMode ? "pending" : state.role,
+    imdbMin: entitySelectionMode ? 0 : state.imdbMin,
+    rtMin: entitySelectionMode ? 0 : state.rtMin,
+    genre: entitySelectionMode ? "all" : state.genre,
+    decade: entitySelectionMode ? "all" : state.decade,
+    award: entitySelectionMode ? "all" : state.award,
   });
 }
 
@@ -1137,6 +1305,10 @@ function currentSearchType() {
   return elements.searchType?.value || "person";
 }
 
+function isEntitySelectionMode(state = getFilterState()) {
+  return Boolean(state.personQuery) && !state.exactMatch;
+}
+
 function syncSearchModeUi() {
   const searchType = currentSearchType();
   const isStudio = searchType === "studio";
@@ -1153,10 +1325,24 @@ function syncSearchModeUi() {
   if (isStudio) {
     setActiveRole("any");
     applyStudioPlaceholder(elements.personSearch);
+    syncMovieFilterState();
     return;
   }
 
   applyRandomPlaceholder(elements.personSearch, liveState.placeholderPools);
+  syncMovieFilterState();
+}
+
+function syncMovieFilterState(state = getFilterState()) {
+  const pendingSelection = isEntitySelectionMode(state);
+  if (elements.movieFilterGroup) {
+    elements.movieFilterGroup.classList.toggle("is-pending", pendingSelection);
+  }
+  if (elements.movieFilterHelper) {
+    elements.movieFilterHelper.textContent = pendingSelection
+      ? `These settings are queued and will apply after you choose a specific ${state.searchType === "studio" ? "studio" : "person"}.`
+      : "These filters are applied to the movie results below.";
+  }
 }
 
 function buildResultsTitle(payload) {
@@ -1576,6 +1762,21 @@ function toggleSavedPerson(rawRecord) {
     savedPeople.set(key, record);
   }
   persistSavedPeople();
+}
+
+function syncRenderedSavedPeopleButtons() {
+  document.querySelectorAll("[data-save-person][data-saved-person]").forEach((button) => {
+    let record;
+    try {
+      record = JSON.parse(button.dataset.savedPerson || "");
+    } catch {
+      return;
+    }
+
+    const isSaved = savedPeople.has(String(record.id));
+    button.textContent = isSaved ? "Saved person" : "Save person";
+    button.classList.toggle("is-saved", isSaved);
+  });
 }
 
 function debounce(callback, delayMs) {
