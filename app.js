@@ -1038,7 +1038,7 @@ function syncWatchlistMovieDetails(enrichedById) {
 
 function renderLoadingState() {
   liveState.renderToken += 1;
-  setSearchMode(false);
+  setSearchMode(true);
   syncResultsPagination();
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
@@ -1049,7 +1049,7 @@ function renderLoadingState() {
 
 function renderErrorState(message) {
   liveState.renderToken += 1;
-  setSearchMode(false);
+  setSearchMode(true);
   syncResultsPagination();
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");

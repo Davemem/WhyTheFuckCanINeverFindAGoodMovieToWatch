@@ -2282,18 +2282,51 @@ async function searchPeopleFromPostgres(query, options = {}) {
             p.name,
             COALESCE(p.known_for_department, 'Person') AS department,
             p.profile_path,
-            COALESCE(p.popularity, 0) AS popularity
+            COALESCE(p.popularity, 0) AS popularity,
+            COALESCE(pr.recognition_score, 0) AS recognition_score
           FROM people p
+          LEFT JOIN person_recognition pr ON pr.person_id = p.person_id
           WHERE p.name ILIKE $1
         ),
-        scored_people AS (
+        counted_people AS (
+          SELECT COUNT(*)::int AS total
+          FROM matched_people
+        ),
+        paged_people AS (
           SELECT
             mp.person_id,
             mp.name,
             mp.department,
             mp.profile_path,
             mp.popularity,
-            COALESCE(pr.recognition_score, 0) AS recognition_score,
+            mp.recognition_score
+          FROM matched_people mp
+          ORDER BY
+            CASE WHEN LOWER(mp.name) = LOWER($2) THEN 0 ELSE 1 END,
+            CASE WHEN LOWER(mp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+            mp.recognition_score DESC NULLS LAST,
+            mp.popularity DESC NULLS LAST,
+            CASE WHEN LOWER(mp.department) = 'acting' THEN 0 ELSE 1 END,
+            mp.name ASC
+          LIMIT $4
+          OFFSET $5
+        )
+        SELECT
+          pp.person_id AS id,
+          pp.name,
+          pp.department,
+          pp.profile_path,
+          pp.popularity,
+          pp.recognition_score,
+          COALESCE(metrics.credit_count, 0) AS credit_count,
+          COALESCE(metrics.total_votes, 0) AS total_votes,
+          metrics.score,
+          COALESCE(metrics.known_for, ARRAY[]::text[]) AS known_for,
+          cp.total
+        FROM paged_people pp
+        CROSS JOIN counted_people cp
+        LEFT JOIN LATERAL (
+          SELECT
             COUNT(DISTINCT m.movie_id)::int AS credit_count,
             SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
             ROUND(
@@ -2302,72 +2335,27 @@ async function searchPeopleFromPostgres(query, options = {}) {
                 / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
               )::numeric,
               1
-            ) AS score
-          FROM matched_people mp
-          LEFT JOIN person_recognition pr ON pr.person_id = mp.person_id
-          LEFT JOIN person_movie_credits pmc ON pmc.person_id = mp.person_id
-          LEFT JOIN movies m ON m.movie_id = pmc.movie_id
-          GROUP BY
-            mp.person_id,
-            mp.name,
-            mp.department,
-            mp.profile_path,
-            mp.popularity,
-            pr.recognition_score
-        ),
-        counted_people AS (
-          SELECT COUNT(*)::int AS total
-          FROM matched_people
-        )
-        SELECT
-          sp.person_id AS id,
-          sp.name,
-          sp.department,
-          sp.profile_path,
-          sp.popularity,
-          sp.recognition_score,
-          sp.credit_count,
-          sp.total_votes,
-          ROUND((
-            SELECT
-              SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
-              / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
-            FROM person_movie_credits pmc
-            JOIN movies m ON m.movie_id = pmc.movie_id
-            WHERE pmc.person_id = sp.person_id
-          )::numeric, 1) AS score,
-          COALESCE((
-            SELECT ARRAY(
+            ) AS score,
+            ARRAY(
               SELECT m2.title
               FROM person_movie_credits pmc2
               JOIN movies m2 ON m2.movie_id = pmc2.movie_id
-              WHERE pmc2.person_id = sp.person_id
+              WHERE pmc2.person_id = pp.person_id
               GROUP BY m2.movie_id, m2.title, m2.vote_average, m2.vote_count
               ORDER BY m2.vote_average DESC NULLS LAST, m2.vote_count DESC NULLS LAST
               LIMIT 3
-            )
-          ), ARRAY[]::text[]) AS known_for,
-          cp.total
-        FROM scored_people sp
-        CROSS JOIN counted_people cp
+            ) AS known_for
+          FROM person_movie_credits pmc
+          JOIN movies m ON m.movie_id = pmc.movie_id
+          WHERE pmc.person_id = pp.person_id
+        ) metrics ON true
         ORDER BY
-          CASE WHEN LOWER(sp.name) = LOWER($2) THEN 0 ELSE 1 END,
-          CASE WHEN LOWER(sp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
-          CASE
-            WHEN sp.score BETWEEN 7.4 AND 8.8 AND sp.credit_count >= 4 AND sp.total_votes >= 5000 AND sp.recognition_score >= 300 THEN 0
-            WHEN sp.score BETWEEN 7.0 AND 9.2 AND sp.credit_count >= 3 AND sp.total_votes >= 1000 AND sp.recognition_score >= 120 THEN 1
-            WHEN sp.score BETWEEN 7.0 AND 9.5 AND sp.credit_count >= 2 THEN 2
-            ELSE 3
-          END ASC,
-          sp.recognition_score DESC NULLS LAST,
-          sp.total_votes DESC NULLS LAST,
-          sp.popularity DESC NULLS LAST,
-          ABS(COALESCE(sp.score, 0) - 8.1) ASC,
-          sp.credit_count DESC NULLS LAST,
-          sp.score DESC NULLS LAST,
-          sp.name ASC
-        LIMIT $4
-        OFFSET $5
+          CASE WHEN LOWER(pp.name) = LOWER($2) THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(pp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
+          pp.recognition_score DESC NULLS LAST,
+          pp.popularity DESC NULLS LAST,
+          CASE WHEN LOWER(pp.department) = 'acting' THEN 0 ELSE 1 END,
+          pp.name ASC
       `,
       [`%${query}%`, query, `${query}%`, limit, offset],
     );
