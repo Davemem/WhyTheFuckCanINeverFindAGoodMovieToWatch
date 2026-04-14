@@ -33,6 +33,7 @@ const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
 const PEOPLE_SEARCH_KNOWN_FOR_LIMIT = 3;
+const PEOPLE_SEARCH_MIN_FILL_RESULTS = 15;
 const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -349,7 +350,14 @@ async function handleApi(requestUrl, res) {
     }
 
     const dbResults = await searchPeopleFromPostgres(query, { page, limit });
-    sendJson(res, 200, dbResults);
+    if ((dbResults.results || []).length >= Math.min(limit, PEOPLE_SEARCH_MIN_FILL_RESULTS) || !tmdbApiKey && !tmdbToken) {
+      sendJson(res, 200, dbResults);
+      return;
+    }
+
+    const tmdbResults = await searchPeopleFromTmdb(query, { page, limit });
+    const mergedResults = mergePeopleSearchResults(dbResults, tmdbResults, { page, limit });
+    sendJson(res, 200, mergedResults);
     return;
   }
 
@@ -1539,6 +1547,48 @@ async function searchStudios(query) {
     .map(normalizeStudio)
     .filter((studio) => studio && studio.name)
     .slice(0, 8);
+}
+
+async function searchPeopleFromTmdb(query, options = {}) {
+  const normalizedQuery = String(query || "").trim();
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  if (!normalizedQuery) {
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+
+  const response = await tmdb("/search/person", {
+    query: normalizedQuery,
+    page: String(page),
+    include_adult: "false",
+  });
+
+  const results = dedupePeople((response.results || []).map(normalizePerson))
+    .filter((person) => person && person.name);
+  const total = Number(response.total_results || results.length);
+  return {
+    results: results.slice(0, limit),
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total,
+  };
+}
+
+function mergePeopleSearchResults(primary, secondary, options = {}) {
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  const merged = dedupePeople([
+    ...(primary?.results || []),
+    ...(secondary?.results || []),
+  ]);
+  return {
+    results: merged.slice(0, limit),
+    total: Math.max(Number(primary?.total || 0), Number(secondary?.total || 0), merged.length),
+    page,
+    limit,
+    hasMore: Boolean(primary?.hasMore) || Boolean(secondary?.hasMore) || merged.length > limit,
+  };
 }
 
 function normalizeStudio(company) {
