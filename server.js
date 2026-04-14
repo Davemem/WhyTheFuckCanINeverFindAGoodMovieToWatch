@@ -348,13 +348,6 @@ async function handleApi(requestUrl, res) {
       return;
     }
 
-    const snapshot = await getSiteSnapshotFromPostgres();
-    const snapshotResults = searchPeopleFromSnapshot(snapshot, query, { page, limit });
-    if (snapshotResults) {
-      sendJson(res, 200, snapshotResults);
-      return;
-    }
-
     const dbResults = await searchPeopleFromPostgres(query, { page, limit });
     sendJson(res, 200, dbResults);
     return;
