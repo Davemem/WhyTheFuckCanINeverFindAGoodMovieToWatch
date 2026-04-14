@@ -2330,7 +2330,7 @@ async function searchPeopleFromPostgres(query, options = {}) {
     return { results: [], total: 0, page, limit, hasMore: false };
   }
 
-  const cacheKey = `pg:people-search:v2:${normalizedQuery}:${page}:${limit}`;
+  const cacheKey = `pg:people-search:v3:${normalizedQuery}:${page}:${limit}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
