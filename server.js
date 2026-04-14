@@ -339,6 +339,15 @@ async function handleApi(requestUrl, res) {
       return;
     }
 
+    const localPeopleIndex = readPeopleIndex();
+    const localIndexResults = localPeopleIndex
+      ? searchLocalPeopleIndex(localPeopleIndex, query, { page, limit })
+      : null;
+    if (localIndexResults) {
+      sendJson(res, 200, localIndexResults);
+      return;
+    }
+
     const snapshot = await getSiteSnapshotFromPostgres();
     const snapshotResults = searchPeopleFromSnapshot(snapshot, query, { page, limit });
     if (snapshotResults) {
