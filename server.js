@@ -32,6 +32,7 @@ const DISCOVER_AWARD_HYDRATE_LIMIT = 24;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
+const PEOPLE_SEARCH_KNOWN_FOR_LIMIT = 3;
 const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -2318,37 +2319,13 @@ async function searchPeopleFromPostgres(query, options = {}) {
           pp.profile_path,
           pp.popularity,
           pp.recognition_score,
-          COALESCE(metrics.credit_count, 0) AS credit_count,
-          COALESCE(metrics.total_votes, 0) AS total_votes,
-          metrics.score,
-          COALESCE(metrics.known_for, ARRAY[]::text[]) AS known_for,
+          0::int AS credit_count,
+          0::bigint AS total_votes,
+          NULL::numeric AS score,
+          ARRAY[]::text[] AS known_for,
           cp.total
         FROM paged_people pp
         CROSS JOIN counted_people cp
-        LEFT JOIN LATERAL (
-          SELECT
-            COUNT(DISTINCT m.movie_id)::int AS credit_count,
-            SUM(GREATEST(COALESCE(m.vote_count, 0), 1))::bigint AS total_votes,
-            ROUND(
-              (
-                SUM(COALESCE(m.vote_average, 0) * GREATEST(COALESCE(m.vote_count, 0), 1))
-                / NULLIF(SUM(GREATEST(COALESCE(m.vote_count, 0), 1)), 0)
-              )::numeric,
-              1
-            ) AS score,
-            ARRAY(
-              SELECT m2.title
-              FROM person_movie_credits pmc2
-              JOIN movies m2 ON m2.movie_id = pmc2.movie_id
-              WHERE pmc2.person_id = pp.person_id
-              GROUP BY m2.movie_id, m2.title, m2.vote_average, m2.vote_count
-              ORDER BY m2.vote_average DESC NULLS LAST, m2.vote_count DESC NULLS LAST
-              LIMIT 3
-            ) AS known_for
-          FROM person_movie_credits pmc
-          JOIN movies m ON m.movie_id = pmc.movie_id
-          WHERE pmc.person_id = pp.person_id
-        ) metrics ON true
         ORDER BY
           CASE WHEN LOWER(pp.name) = LOWER($2) THEN 0 ELSE 1 END,
           CASE WHEN LOWER(pp.name) LIKE LOWER($3) THEN 0 ELSE 1 END,
@@ -2481,7 +2458,7 @@ function normalizeDbPersonRow(row) {
     recognitionScore: Number(row.recognition_score || 0),
     creditCount: Number(row.credit_count || 0),
     totalVotes: Number(row.total_votes || 0),
-    knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, 3) : [],
+    knownFor: Array.isArray(row.known_for) ? row.known_for.filter(Boolean).slice(0, PEOPLE_SEARCH_KNOWN_FOR_LIMIT) : [],
     profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
     ratingLabel: score !== null ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
   };
