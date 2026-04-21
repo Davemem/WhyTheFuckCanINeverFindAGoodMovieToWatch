@@ -5,6 +5,34 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { Pool } = require("pg");
+const { readJsonBody, getRequestIp } = require("./lib/auth/http");
+const { verifyGoogleIdToken } = require("./lib/auth/google");
+const { createCsrfToken, isValidCsrfToken } = require("./lib/auth/csrf");
+const { createAllowedOrigins, isTrustedOriginRequest } = require("./lib/auth/request-guards");
+const {
+  getUserAccountOverview,
+} = require("./lib/auth/account-store");
+const {
+  buildClearedSessionCookie,
+  buildSessionCookie,
+  createUserSession,
+  getAuthContextFromRequest,
+  listUserSessions,
+  revokeOtherUserSessions,
+  revokeSessionByToken,
+  revokeUserSessionById,
+} = require("./lib/auth/session");
+const { findOrCreateUserFromGoogleIdentity } = require("./lib/auth/user-store");
+const {
+  getUserSavedState,
+  importUserSavedState,
+  normalizeSavedMoviePayload,
+  normalizeSavedPersonPayload,
+  removeUserPerson,
+  removeUserTitle,
+  saveUserPerson,
+  saveUserTitle,
+} = require("./lib/auth/saved-data-store");
 
 loadEnv(path.join(__dirname, ".env"));
 
@@ -13,6 +41,14 @@ const tmdbToken = process.env.TMDB_BEARER_TOKEN || "";
 const tmdbApiKey = process.env.TMDB_API_KEY || "";
 const omdbApiKey = process.env.OMDB_API_KEY || "";
 const databaseUrl = process.env.DATABASE_URL || "";
+const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
+const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}`;
+const additionalAllowedOrigins = process.env.AUTH_ALLOWED_ORIGINS || "";
+const sessionCookieName = process.env.SESSION_COOKIE_NAME || "moviepicker_session";
+const sessionSecret = process.env.SESSION_SECRET || "";
+const appUrl = parseOptionalUrl(appBaseUrl);
+const isSecureAppOrigin = Boolean(appUrl && appUrl.protocol === "https:");
+const allowedAuthOrigins = createAllowedOrigins(appBaseUrl, additionalAllowedOrigins);
 const staticRoot = __dirname;
 const cache = new Map();
 const cacheDir = path.join(__dirname, ".cache");
@@ -252,17 +288,17 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (requestUrl.pathname.startsWith("/api/")) {
-      await handleApi(requestUrl, res);
+      await handleApi(req, requestUrl, res);
       return;
     }
 
     serveStatic(requestUrl.pathname, res);
   } catch (error) {
+    logServerError("request", error);
     res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
     res.end(
       JSON.stringify({
         error: "Server error",
-        detail: error instanceof Error ? error.message : "Unknown error",
       }),
     );
   }
@@ -272,7 +308,673 @@ server.listen(port, () => {
   process.stdout.write(`Server running at http://localhost:${port}\n`);
 });
 
-async function handleApi(requestUrl, res) {
+async function handleApi(req, requestUrl, res) {
+  if (requestUrl.pathname === "/api/auth/session") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET" });
+      return;
+    }
+
+    const authContext = await resolveAuthContext(req);
+    sendJson(res, 200, buildSessionPayload(authContext), {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/auth/google") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "POST" });
+      return;
+    }
+
+    if (!dbPools || !sessionSecret || !googleClientId) {
+      if (req.headers["content-type"]?.includes("application/json")) {
+        await readJsonBody(req).catch(() => ({}));
+      }
+
+      sendJson(
+        res,
+        503,
+        { error: "Google sign-in is not configured on the server." },
+        { "Cache-Control": "no-store" },
+      );
+      return;
+    }
+
+    let body = {};
+    try {
+      if (!assertTrustedWriteRequest(req, res, { requireCsrf: false })) {
+        return;
+      }
+
+      body = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    const credential = typeof body.credential === "string" ? body.credential.trim() : "";
+    if (!credential) {
+      sendJson(res, 400, { error: "Missing Google credential" }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    try {
+      const googleIdentity = await verifyGoogleIdToken({
+        credential,
+        clientId: googleClientId,
+      });
+
+      const authResult = await withDbTransaction(async (dbClient) => {
+        const user = await findOrCreateUserFromGoogleIdentity({
+          dbClient,
+          googleIdentity,
+        });
+        const createdSession = await createUserSession({
+          queryDb: dbClient.query.bind(dbClient),
+          userId: user.id,
+          sessionSecret,
+          ipAddress: getRequestIp(req),
+          userAgent: req.headers["user-agent"] || "",
+        });
+
+        return { user, session: createdSession.session, token: createdSession.token };
+      });
+
+      logStructuredEvent("auth_login_success", {
+        userId: authResult.user.id,
+        email: authResult.user.email,
+        provider: "google",
+        ipAddress: getRequestIp(req),
+      });
+
+      sendJson(
+        res,
+        200,
+        {
+          authenticated: true,
+          user: {
+            id: authResult.user.id,
+            email: authResult.user.email,
+            displayName: authResult.user.displayName,
+            avatarUrl: authResult.user.avatarUrl,
+            emailVerified: authResult.user.emailVerified,
+          },
+          session: {
+            authenticated: true,
+            user: {
+              id: authResult.user.id,
+              email: authResult.user.email,
+              displayName: authResult.user.displayName,
+              avatarUrl: authResult.user.avatarUrl,
+              emailVerified: authResult.user.emailVerified,
+            },
+            expiresAt: authResult.session?.expires_at || null,
+            csrfToken: createCsrfToken(authResult.token, sessionSecret),
+          },
+        },
+        {
+          "Cache-Control": "no-store",
+          "Set-Cookie": buildSessionCookie(sessionCookieName, authResult.token, {
+            secure: isSecureCookieRequest(req),
+          }),
+        },
+      );
+    } catch (error) {
+      logStructuredEvent("auth_login_failure", {
+        provider: "google",
+        ipAddress: getRequestIp(req),
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      logServerError("auth-google", error);
+      sendJson(
+        res,
+        401,
+        { error: "Unable to verify Google sign-in." },
+        { "Cache-Control": "no-store" },
+      );
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/auth/logout") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "POST" });
+      return;
+    }
+
+    const authContext = await resolveAuthContext(req);
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    if (authContext.sessionToken && dbPools && sessionSecret) {
+      await revokeSessionByToken({
+        queryDb,
+        token: authContext.sessionToken,
+        sessionSecret,
+      }).catch((error) => {
+        logServerError("auth-logout", error);
+      });
+      logStructuredEvent("auth_logout", {
+        userId: authContext.user?.id || null,
+        ipAddress: getRequestIp(req),
+      });
+    } else if (req.headers["content-type"]?.includes("application/json")) {
+      await readJsonBody(req).catch(() => ({}));
+    }
+
+    sendJson(
+      res,
+      200,
+      {
+        ok: true,
+        session: buildSessionPayload({
+          isAuthenticated: false,
+          user: null,
+          session: null,
+        }).session,
+      },
+      {
+        "Cache-Control": "no-store",
+        "Set-Cookie": buildClearedSessionCookie(sessionCookieName, {
+          secure: isSecureCookieRequest(req),
+        }),
+      },
+    );
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/saved") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const savedState = await getUserSavedState({
+      queryDb,
+      userId: authContext.user.id,
+    });
+    sendJson(res, 200, buildSavedStatePayload(savedState), {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/account") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const overview = await getUserAccountOverview({
+      queryDb,
+      userId: authContext.user.id,
+    });
+    sendJson(res, 200, {
+      user: {
+        id: authContext.user.id,
+        email: authContext.user.email,
+        displayName: authContext.user.displayName,
+        avatarUrl: authContext.user.avatarUrl,
+        emailVerified: authContext.user.emailVerified,
+        createdAt: authContext.user.createdAt,
+        updatedAt: authContext.user.updatedAt,
+        lastLoginAt: authContext.user.lastLoginAt,
+      },
+      overview,
+    }, {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/sessions") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const sessions = await listUserSessions({
+      queryDb,
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+    });
+    sendJson(res, 200, {
+      sessions,
+      currentSessionId: authContext.session.id,
+    }, {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/sessions/revoke-other") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "POST" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    if (req.headers["content-type"]?.includes("application/json")) {
+      await readJsonBody(req).catch(() => ({}));
+    }
+
+    const revokedCount = await revokeOtherUserSessions({
+      queryDb,
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+    });
+    logStructuredEvent("account_sessions_revoke_others", {
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+      revokedCount,
+      ipAddress: getRequestIp(req),
+    });
+    const sessions = await listUserSessions({
+      queryDb,
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      revokedCount,
+      sessions,
+      currentSessionId: authContext.session.id,
+    }, {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  const sessionDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/sessions\/([^/]+)$/);
+  if (sessionDeleteMatch) {
+    if (req.method !== "DELETE") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "DELETE" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const sessionId = Number(decodeURIComponent(sessionDeleteMatch[1]));
+    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+      sendJson(res, 400, { error: "A valid session id is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    if (sessionId === authContext.session.id) {
+      sendJson(res, 400, { error: "Use sign out to end the current session." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    const revoked = await revokeUserSessionById({
+      queryDb,
+      userId: authContext.user.id,
+      sessionId,
+    });
+    if (!revoked) {
+      sendJson(res, 404, { error: "Session not found." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    logStructuredEvent("account_session_revoked", {
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+      revokedSessionId: sessionId,
+      ipAddress: getRequestIp(req),
+    });
+    const sessions = await listUserSessions({
+      queryDb,
+      userId: authContext.user.id,
+      currentSessionId: authContext.session.id,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      revokedSessionId: sessionId,
+      sessions,
+      currentSessionId: authContext.session.id,
+    }, {
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/watchlist") {
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    if (req.method === "GET") {
+      const savedState = await getUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+      });
+      sendJson(res, 200, {
+        watchlist: savedState.watchlist,
+        watchlistMovies: savedState.watchlistMovies,
+      }, {
+        "Cache-Control": "no-store",
+      });
+      return;
+    }
+
+    if (req.method === "POST") {
+      if (!assertTrustedWriteRequest(req, res, { authContext })) {
+        return;
+      }
+
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+        return;
+      }
+
+      const movie = normalizeSavedMoviePayload(body.movie || body);
+      if (!movie) {
+        sendJson(res, 400, { error: "A valid movie payload is required." }, { "Cache-Control": "no-store" });
+        return;
+      }
+
+      try {
+        await saveUserTitle({
+          queryDb,
+          userId: authContext.user.id,
+          movie,
+        });
+        logStructuredEvent("saved_title_write_success", {
+          userId: authContext.user.id,
+          movieId: movie.id,
+          action: "save",
+        });
+        const savedState = await getUserSavedState({
+          queryDb,
+          userId: authContext.user.id,
+        });
+        sendJson(res, 200, buildSavedStatePayload(savedState), {
+          "Cache-Control": "no-store",
+        });
+      } catch (error) {
+        logStructuredEvent("saved_title_write_failure", {
+          userId: authContext.user.id,
+          movieId: movie.id,
+          action: "save",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+      return;
+    }
+
+    sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET, POST" });
+    return;
+  }
+
+  const watchlistDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/watchlist\/([^/]+)$/);
+  if (watchlistDeleteMatch) {
+    if (req.method !== "DELETE") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "DELETE" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const movieId = Number(decodeURIComponent(watchlistDeleteMatch[1]));
+    if (!Number.isFinite(movieId)) {
+      sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    try {
+      await removeUserTitle({
+        queryDb,
+        userId: authContext.user.id,
+        movieId,
+      });
+      logStructuredEvent("saved_title_write_success", {
+        userId: authContext.user.id,
+        movieId,
+        action: "remove",
+      });
+      const savedState = await getUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+      });
+      sendJson(res, 200, buildSavedStatePayload(savedState), {
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      logStructuredEvent("saved_title_write_failure", {
+        userId: authContext.user.id,
+        movieId,
+        action: "remove",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/saved-people") {
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    if (req.method === "GET") {
+      const savedState = await getUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+      });
+      sendJson(res, 200, {
+        savedPeople: savedState.savedPeople,
+      }, {
+        "Cache-Control": "no-store",
+      });
+      return;
+    }
+
+    if (req.method === "POST") {
+      if (!assertTrustedWriteRequest(req, res, { authContext })) {
+        return;
+      }
+
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+        return;
+      }
+
+      const person = normalizeSavedPersonPayload(body.person || body);
+      if (!person) {
+        sendJson(res, 400, { error: "A valid person payload is required." }, { "Cache-Control": "no-store" });
+        return;
+      }
+
+      try {
+        await saveUserPerson({
+          queryDb,
+          userId: authContext.user.id,
+          person,
+        });
+        logStructuredEvent("saved_person_write_success", {
+          userId: authContext.user.id,
+          personId: person.id,
+          action: "save",
+        });
+        const savedState = await getUserSavedState({
+          queryDb,
+          userId: authContext.user.id,
+        });
+        sendJson(res, 200, buildSavedStatePayload(savedState), {
+          "Cache-Control": "no-store",
+        });
+      } catch (error) {
+        logStructuredEvent("saved_person_write_failure", {
+          userId: authContext.user.id,
+          personId: person.id,
+          action: "save",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+      return;
+    }
+
+    sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET, POST" });
+    return;
+  }
+
+  const savedPeopleDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/saved-people\/([^/]+)$/);
+  if (savedPeopleDeleteMatch) {
+    if (req.method !== "DELETE") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "DELETE" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    const personId = decodeURIComponent(savedPeopleDeleteMatch[1]);
+    if (!personId) {
+      sendJson(res, 400, { error: "A valid person id is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    try {
+      await removeUserPerson({
+        queryDb,
+        userId: authContext.user.id,
+        personId,
+      });
+      logStructuredEvent("saved_person_write_success", {
+        userId: authContext.user.id,
+        personId,
+        action: "remove",
+      });
+      const savedState = await getUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+      });
+      sendJson(res, 200, buildSavedStatePayload(savedState), {
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      logStructuredEvent("saved_person_write_failure", {
+        userId: authContext.user.id,
+        personId,
+        action: "remove",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/me/saved/import") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "POST" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext) {
+      return;
+    }
+
+    if (!assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    try {
+      const importResult = await importUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+        watchlistMovies: body.watchlistMovies || [],
+        savedPeople: body.savedPeople || [],
+      });
+      logStructuredEvent("saved_import_success", {
+        userId: authContext.user.id,
+        importedTitles: importResult.importedTitles,
+        importedPeople: importResult.importedPeople,
+      });
+      const savedState = await getUserSavedState({
+        queryDb,
+        userId: authContext.user.id,
+      });
+      sendJson(res, 200, {
+        ok: true,
+        imported: importResult,
+        ...buildSavedStatePayload(savedState),
+      }, {
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      logStructuredEvent("saved_import_failure", {
+        userId: authContext.user.id,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    return;
+  }
+
   if (!tmdbToken && !tmdbApiKey) {
     handleDemoApi(requestUrl, res);
     return;
@@ -2560,6 +3262,55 @@ async function queryDb(sql, params = []) {
   throw lastError || new Error("Database query failed");
 }
 
+async function withDbTransaction(handler) {
+  const { client, release } = await getPreferredDbClient();
+
+  try {
+    await client.query("BEGIN");
+    const result = await handler(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      logServerError("db-rollback", rollbackError);
+    }
+    throw error;
+  } finally {
+    release();
+  }
+}
+
+async function getPreferredDbClient() {
+  if (!dbPools) {
+    throw new Error("Database pool not configured");
+  }
+
+  const order = preferredDbPool === "plain" ? ["plain", "ssl"] : ["ssl", "plain"];
+  let lastError = null;
+  for (const mode of order) {
+    const pool = dbPools[mode];
+    if (!pool) {
+      continue;
+    }
+
+    try {
+      const client = await pool.connect();
+      preferredDbPool = mode;
+      return {
+        client,
+        release: () => client.release(),
+      };
+    } catch (error) {
+      lastError = error;
+      logServerError(`db-connect-${mode}`, error);
+    }
+  }
+
+  throw lastError || new Error("Database connection failed");
+}
+
 function logServerError(scope, error) {
   const detail = error instanceof Error ? error.message : String(error);
   process.stderr.write(`[${new Date().toISOString()}] ${scope}: ${detail}\n`);
@@ -2580,6 +3331,153 @@ function normalizeDbPersonRow(row) {
     profileUrl: row.profile_path ? `https://image.tmdb.org/t/p/w500${row.profile_path}` : "",
     ratingLabel: score !== null ? `Career score ${score.toFixed(1)}` : "Known-for score unavailable",
   };
+}
+
+async function resolveAuthContext(req) {
+  if (!dbPools || !sessionSecret) {
+    return {
+      isAuthenticated: false,
+      sessionToken: "",
+      session: null,
+      user: null,
+    };
+  }
+
+  try {
+    return await getAuthContextFromRequest({
+      req,
+      queryDb,
+      sessionCookieName,
+      sessionSecret,
+    });
+  } catch (error) {
+    logStructuredEvent("session_lookup_failure", {
+      ipAddress: getRequestIp(req),
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    logServerError("resolveAuthContext", error);
+    return {
+      isAuthenticated: false,
+      sessionToken: "",
+      session: null,
+      user: null,
+    };
+  }
+}
+
+async function requireAuthenticatedUser(req, res) {
+  const authContext = await resolveAuthContext(req);
+  if (authContext?.isAuthenticated && authContext.user) {
+    return authContext;
+  }
+
+  sendJson(res, 401, buildAuthError("AUTH_REQUIRED", "Authentication required."), {
+    "Cache-Control": "no-store",
+  });
+  return null;
+}
+
+function buildSavedStatePayload(savedState) {
+  return {
+    watchlist: Array.isArray(savedState?.watchlist) ? savedState.watchlist : [],
+    watchlistMovies: Array.isArray(savedState?.watchlistMovies) ? savedState.watchlistMovies : [],
+    savedPeople: Array.isArray(savedState?.savedPeople) ? savedState.savedPeople : [],
+  };
+}
+
+function buildSessionPayload(authContext) {
+  const signInEnabled = Boolean(dbPools && sessionSecret && googleClientId);
+
+  if (!authContext?.isAuthenticated || !authContext.user || !authContext.session) {
+    return {
+      session: {
+        authenticated: false,
+        user: null,
+        expiresAt: null,
+        csrfToken: "",
+      },
+      config: {
+        googleClientId,
+        appBaseUrl,
+        signInEnabled,
+      },
+    };
+  }
+
+  return {
+    session: {
+      authenticated: true,
+      user: {
+        id: authContext.user.id,
+        email: authContext.user.email,
+        displayName: authContext.user.displayName,
+        avatarUrl: authContext.user.avatarUrl,
+        emailVerified: authContext.user.emailVerified,
+      },
+      expiresAt: authContext.session.expiresAt,
+      csrfToken: createCsrfToken(authContext.sessionToken, sessionSecret),
+    },
+    config: {
+      googleClientId,
+      appBaseUrl,
+      signInEnabled,
+    },
+  };
+}
+
+function isSecureCookieRequest(req) {
+  if (isSecureAppOrigin) {
+    return true;
+  }
+
+  return req.headers["x-forwarded-proto"] === "https";
+}
+
+function parseOptionalUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function assertTrustedWriteRequest(req, res, options = {}) {
+  if (!isTrustedOriginRequest(req, allowedAuthOrigins)) {
+    sendJson(res, 403, buildAuthError("INVALID_ORIGIN", "Request origin is not allowed."), {
+      "Cache-Control": "no-store",
+    });
+    return false;
+  }
+
+  if (options.requireCsrf === false) {
+    return true;
+  }
+
+  const authContext = options.authContext;
+  const expectedToken = authContext?.sessionToken
+    ? createCsrfToken(authContext.sessionToken, sessionSecret)
+    : "";
+  if (!expectedToken || !isValidCsrfToken(req, expectedToken)) {
+    sendJson(res, 403, buildAuthError("INVALID_CSRF", "Security validation failed."), {
+      "Cache-Control": "no-store",
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function buildAuthError(code, error) {
+  return { code, error };
+}
+
+function logStructuredEvent(event, fields = {}) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...fields,
+  };
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 function serveStatic(requestPath, res) {
@@ -2654,8 +3552,11 @@ function contentType(filePath) {
   }
 }
 
-function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+function sendJson(res, statusCode, payload, headers = {}) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    ...headers,
+  });
   res.end(JSON.stringify(payload));
 }
 

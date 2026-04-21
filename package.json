@@ -7,6 +7,8 @@
   },
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
+    "deploy:render": "node scripts/deploy-render.js",
     "build:people-index": "node scripts/build-people-index.js",
     "db:init": "node scripts/init-ingest-db.js",
     "ingest:person-ids": "node scripts/ingest-person-ids.js",
@@ -17,6 +19,7 @@
     "pipeline:auto": "node scripts/auto-pipeline.js"
   },
   "dependencies": {
+    "google-auth-library": "^10.6.2",
     "pg": "^8.13.1"
   }
 }

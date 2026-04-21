@@ -24,11 +24,14 @@ const elements = {
   personTemplate: document.querySelector("#saved-person-card-template"),
 };
 
-const watchlist = loadWatchlist();
-const watchlistMovies = loadWatchlistMovies();
-const savedPeople = loadSavedPeople();
+const savedDataClient = window.savedDataClient || null;
+const watchlist = new Set();
+const watchlistMovies = new Map();
+const savedPeople = new Map();
 const personCatalogCache = new Map();
 const personCatalogEnrichment = new Map();
+let savedStateSource = "local";
+let savedStateError = "";
 const uiState = {
   activeTab: "actors",
   visiblePeopleCounts: {
@@ -49,6 +52,18 @@ const uiState = {
   railScrollLeft: new Map(),
   railEnrichmentTimers: new Map(),
 };
+
+if (savedDataClient) {
+  savedDataClient.subscribe(handleSavedDataUpdate);
+} else {
+  syncSavedCollections({
+    watchlistIds: [...loadWatchlist()],
+    watchlistMovies: [...loadWatchlistMovies().values()],
+    savedPeople: [...loadSavedPeople().values()],
+    source: "local",
+    error: "",
+  });
+}
 
 elements.savedActorsGrid?.addEventListener("click", handleSavedAction);
 elements.savedWritersGrid?.addEventListener("click", handleSavedAction);
@@ -144,11 +159,13 @@ function renderSavedPage() {
   });
 
   if (!savedActors.length && !savedWriters.length && !savedFilmmakers.length) {
-    elements.savedStatus.textContent = "No saved people in this browser yet.";
+    elements.savedStatus.textContent = emptySavedPeopleMessage();
     return;
   }
 
-  elements.savedStatus.textContent = "Saved people loaded. Click a person to open their catalog.";
+  elements.savedStatus.textContent = savedStateSource === "remote"
+    ? "Saved people loaded from your account. Click a person to open their catalog."
+    : "Saved people loaded. Click a person to open their catalog.";
 }
 
 function renderSavedPeopleGrid(container, people, tabKey, emptyMessage) {
@@ -422,6 +439,27 @@ function handleSavedAction(event) {
   const movieButton = event.target.closest("[data-watchlist-id]");
   if (movieButton) {
     const movieId = Number(movieButton.dataset.watchlistId);
+    if (savedDataClient) {
+      let movie = null;
+      if (!watchlist.has(movieId)) {
+        const rawMovie = movieButton.dataset.watchlistMovie;
+        if (!rawMovie) {
+          return;
+        }
+        try {
+          movie = JSON.parse(rawMovie);
+        } catch {
+          return;
+        }
+      } else {
+        movie = { id: movieId };
+      }
+      savedDataClient.toggleTitle(movie).catch((error) => {
+        elements.savedStatus.textContent = error.message;
+      });
+      return;
+    }
+
     if (watchlist.has(movieId)) {
       watchlist.delete(movieId);
       watchlistMovies.delete(movieId);
@@ -449,6 +487,12 @@ function handleSavedAction(event) {
   const personButton = event.target.closest("[data-saved-person-id]");
   if (personButton) {
     const removedPersonId = String(personButton.dataset.savedPersonId);
+    if (savedDataClient) {
+      savedDataClient.removePerson(removedPersonId).catch((error) => {
+        elements.savedStatus.textContent = error.message;
+      });
+      return;
+    }
     const removedPerson = savedPeople.get(removedPersonId);
     savedPeople.delete(removedPersonId);
     if (removedPerson?.bucket) {
@@ -547,6 +591,47 @@ function persistSavedPeople() {
     savedPeopleStorageKey,
     JSON.stringify([...savedPeople.values()]),
   );
+}
+
+function handleSavedDataUpdate(snapshot) {
+  syncSavedCollections(snapshot);
+  renderSavedPage();
+}
+
+function syncSavedCollections(snapshot) {
+  savedStateSource = snapshot.source || "local";
+  savedStateError = snapshot.error || "";
+
+  watchlist.clear();
+  (snapshot.watchlistIds || []).forEach((movieId) => {
+    if (Number.isFinite(Number(movieId))) {
+      watchlist.add(Number(movieId));
+    }
+  });
+
+  watchlistMovies.clear();
+  (snapshot.watchlistMovies || []).forEach((movie) => {
+    if (movie && Number.isFinite(Number(movie.id))) {
+      watchlistMovies.set(Number(movie.id), movie);
+    }
+  });
+
+  savedPeople.clear();
+  (snapshot.savedPeople || []).forEach((person) => {
+    if (person?.id && person?.name) {
+      savedPeople.set(String(person.id), person);
+    }
+  });
+}
+
+function emptySavedPeopleMessage() {
+  if (savedStateSource === "remote") {
+    return "No saved people in your account yet.";
+  }
+  if (savedStateSource === "remote-error" && savedStateError) {
+    return "Your account saved people could not load right now.";
+  }
+  return "No saved people in this browser yet.";
 }
 
 async function ensurePersonCatalog(person) {

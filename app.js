@@ -68,11 +68,15 @@ const elements = {
   suggestedPanels: document.querySelector("#suggested-panels"),
 };
 
-const watchlist = loadWatchlist();
-const watchlistMovies = loadWatchlistMovies();
-const savedPeople = loadSavedPeople();
+const savedDataClient = window.savedDataClient || null;
+const watchlist = new Set();
+const watchlistMovies = new Map();
+const savedPeople = new Map();
 let debouncedMovieRefresh = null;
 const entityPageCache = new Map();
+let savedStateSource = "local";
+let savedStateError = "";
+let bootstrapComplete = false;
 const liveState = {
   genres: [],
   featuredActors: [],
@@ -110,6 +114,18 @@ const liveState = {
   },
   renderToken: 0,
 };
+
+if (savedDataClient) {
+  savedDataClient.subscribe(handleSavedDataUpdate);
+} else {
+  syncSavedCollections({
+    watchlistIds: [...loadWatchlist()],
+    watchlistMovies: [...loadWatchlistMovies().values()],
+    savedPeople: [...loadSavedPeople().values()],
+    source: "local",
+    error: "",
+  });
+}
 
 bootstrap().catch((error) => {
   setStatus(error.message, true);
@@ -179,6 +195,9 @@ async function bootstrap() {
   if (shouldFetchOnLoad()) {
     startupTasks.push(refreshMovies());
   }
+  bootstrapComplete = true;
+  renderWatchlist();
+  syncRenderedSavedPeopleButtons();
   setStatus(mode === "demo" ? "Demo catalog connected." : "Live catalog connected.", false);
   Promise.allSettled(startupTasks);
 }
@@ -980,7 +999,7 @@ function renderWatchlist() {
     const emptyState = document.createElement("div");
     emptyState.className = "empty-state";
     emptyState.innerHTML =
-      "<h3>Your watchlist is empty.</h3><p>Save live results here and they will stay on this browser.</p>";
+      `<h3>Your watchlist is empty.</h3><p>${escapeHtml(emptyWatchlistMessage())}</p>`;
     elements.watchlistGrid.append(emptyState);
     return;
   }
@@ -1095,13 +1114,9 @@ function handlePersonSelection(event) {
   const saveButton = event.target.closest("[data-save-person]");
   if (saveButton) {
     const currentScrollY = window.scrollY;
-    toggleSavedPerson(saveButton.dataset.savedPerson || "");
-    syncRenderedSavedPeopleButtons();
-    renderActorPreview();
-    renderRolePreview("writers");
-    renderRolePreview("directors");
-    renderRolePreview("producers");
-    renderRolePreview("studios");
+    toggleSavedPerson(saveButton.dataset.savedPerson || "").catch((error) => {
+      setStatus(error.message, true);
+    });
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: currentScrollY, behavior: "auto" });
     });
@@ -1153,6 +1168,13 @@ function handleWatchlistAction(event) {
 
   const movieId = Number(button.dataset.watchlistId);
   const movie = [...liveState.movies, ...watchlistMovies.values()].find((entry) => entry.id === movieId);
+  if (savedDataClient) {
+    savedDataClient.toggleTitle(movie || { id: movieId }).catch((error) => {
+      setStatus(error.message, true);
+    });
+    return;
+  }
+
   if (watchlist.has(movieId)) {
     watchlist.delete(movieId);
     watchlistMovies.delete(movieId);
@@ -1162,7 +1184,6 @@ function handleWatchlistAction(event) {
       watchlistMovies.set(movieId, movie);
     }
   }
-
   persistWatchlist();
   persistWatchlistMovies();
   renderMovies(liveState.movies);
@@ -1778,14 +1799,18 @@ function classifySavedPersonBucket(department) {
 
 function toggleSavedPerson(rawRecord) {
   if (!rawRecord) {
-    return;
+    return Promise.resolve();
   }
 
   let record;
   try {
     record = JSON.parse(rawRecord);
   } catch {
-    return;
+    return Promise.resolve();
+  }
+
+  if (savedDataClient) {
+    return savedDataClient.togglePerson(record);
   }
 
   const key = String(record.id);
@@ -1795,6 +1820,7 @@ function toggleSavedPerson(rawRecord) {
     savedPeople.set(key, record);
   }
   persistSavedPeople();
+  return Promise.resolve();
 }
 
 function syncRenderedSavedPeopleButtons() {
@@ -1810,6 +1836,54 @@ function syncRenderedSavedPeopleButtons() {
     button.textContent = isSaved ? "Saved person" : "Save person";
     button.classList.toggle("is-saved", isSaved);
   });
+}
+
+function handleSavedDataUpdate(snapshot) {
+  syncSavedCollections(snapshot);
+  savedStateSource = snapshot.source || "local";
+  savedStateError = snapshot.error || "";
+  if (!bootstrapComplete) {
+    return;
+  }
+
+  renderWatchlist();
+  syncRenderedSavedPeopleButtons();
+  if (liveState.movies.length) {
+    renderMovies(liveState.movies);
+  }
+}
+
+function syncSavedCollections(snapshot) {
+  watchlist.clear();
+  (snapshot.watchlistIds || []).forEach((movieId) => {
+    if (Number.isFinite(Number(movieId))) {
+      watchlist.add(Number(movieId));
+    }
+  });
+
+  watchlistMovies.clear();
+  (snapshot.watchlistMovies || []).forEach((movie) => {
+    if (movie && Number.isFinite(Number(movie.id))) {
+      watchlistMovies.set(Number(movie.id), movie);
+    }
+  });
+
+  savedPeople.clear();
+  (snapshot.savedPeople || []).forEach((person) => {
+    if (person?.id && person?.name) {
+      savedPeople.set(String(person.id), person);
+    }
+  });
+}
+
+function emptyWatchlistMessage() {
+  if (savedStateSource === "remote") {
+    return "Save live results here and they will stay with your account across refreshes and devices.";
+  }
+  if (savedStateSource === "remote-error" && savedStateError) {
+    return "Your account watchlist could not load right now. Retry after the account state reconnects.";
+  }
+  return "Save live results here and they will stay on this browser.";
 }
 
 function debounce(callback, delayMs) {

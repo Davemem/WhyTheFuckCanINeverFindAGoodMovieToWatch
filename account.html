@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Account</title>
+    <meta
+      name="description"
+      content="Review your Movie Selector account, saved-data totals, and active signed-in sessions."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260421b" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="title-bar">
+        <nav class="title-bar-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/people.html?department=actors">Actors</a>
+          <a href="/people.html?department=writers">Writers</a>
+          <a href="/people.html?department=directors">Directors</a>
+          <a href="/people.html?department=producers">Producers</a>
+          <a href="/people.html?department=studios">Studios</a>
+          <a href="/saved.html">Saved People</a>
+          <a href="/saved-titles.html">Saved Titles</a>
+          <a class="is-active" href="/account.html">Account</a>
+        </nav>
+        <div class="title-bar-account" data-auth-root aria-live="polite"></div>
+      </div>
+      <section class="saved-sync-banner" data-saved-sync-banner hidden></section>
+
+      <header class="hero account-page-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">phase 5</p>
+          <h1>Account settings</h1>
+          <p class="hero-text">
+            Review the account currently signed into this browser, see how much of your library is synced, and sign out older sessions you no longer trust.
+          </p>
+          <p id="account-status" class="hero-subtext">
+            Checking account access.
+          </p>
+        </div>
+
+        <section class="filter-panel" aria-label="Account overview">
+          <div class="filter-panel-header">
+            <h2>Account overview</h2>
+          </div>
+          <div class="hero-stats account-hero-stats">
+            <div>
+              <span id="account-saved-titles-count" class="stat-number">0</span>
+              <span class="stat-label">Saved titles</span>
+            </div>
+            <div>
+              <span id="account-saved-people-count" class="stat-number">0</span>
+              <span class="stat-label">Saved people</span>
+            </div>
+            <div>
+              <span id="account-active-sessions-count" class="stat-number">0</span>
+              <span class="stat-label">Active sessions</span>
+            </div>
+          </div>
+        </section>
+      </header>
+
+      <main class="account-page-main">
+        <section class="catalog-section account-summary-section" aria-labelledby="account-summary-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Profile</p>
+              <h2 id="account-summary-heading">Signed-in account</h2>
+            </div>
+          </div>
+          <div id="account-summary-card" class="account-summary-card"></div>
+        </section>
+
+        <section class="catalog-section account-sessions-section" aria-labelledby="account-sessions-heading">
+          <div class="results-header">
+            <div>
+              <p class="section-label">Sessions</p>
+              <h2 id="account-sessions-heading">Where you are signed in</h2>
+            </div>
+            <div class="section-actions">
+              <p id="account-sessions-summary" class="results-summary"></p>
+              <button id="revoke-other-sessions-button" type="button" class="ghost-button">
+                Sign out other sessions
+              </button>
+            </div>
+          </div>
+          <div id="account-sessions-list" class="account-session-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./auth-client.js?v=20260421c" defer></script>
+    <script src="./saved-data-client.js?v=20260421a" defer></script>
+    <script src="./account.js?v=20260421a" defer></script>
+  </body>
+</html>

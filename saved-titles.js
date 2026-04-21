@@ -8,8 +8,22 @@ const elements = {
   template: document.querySelector("#movie-card-template"),
 };
 
-const watchlist = loadWatchlist();
-const watchlistMovies = loadWatchlistMovies();
+const savedDataClient = window.savedDataClient || null;
+const watchlist = new Set();
+const watchlistMovies = new Map();
+let savedStateSource = "local";
+let savedStateError = "";
+
+if (savedDataClient) {
+  savedDataClient.subscribe(handleSavedDataUpdate);
+} else {
+  syncSavedCollections({
+    watchlistIds: [...loadWatchlist()],
+    watchlistMovies: [...loadWatchlistMovies().values()],
+    source: "local",
+    error: "",
+  });
+}
 
 elements.grid?.addEventListener("click", handleGridClick);
 window.addEventListener("resize", debounce(() => refreshSynopsisToggles(elements.grid), 120));
@@ -34,7 +48,7 @@ function renderSavedTitlesPage() {
   if (!movies.length) {
     elements.grid.append(buildEmptyState("No saved titles yet.", "Save titles from the catalog and they will show up here."));
     if (elements.status) {
-      elements.status.textContent = "No saved titles in this browser yet.";
+      elements.status.textContent = emptySavedTitlesMessage();
     }
     return;
   }
@@ -45,7 +59,9 @@ function renderSavedTitlesPage() {
   window.requestAnimationFrame(() => refreshSynopsisToggles(elements.grid));
 
   if (elements.status) {
-    elements.status.textContent = "Saved titles loaded.";
+    elements.status.textContent = savedStateSource === "remote"
+      ? "Saved titles loaded from your account."
+      : "Saved titles loaded.";
   }
 }
 
@@ -107,6 +123,15 @@ function handleGridClick(event) {
   }
 
   const movieId = Number(movieButton.dataset.watchlistId);
+  if (savedDataClient) {
+    savedDataClient.removeTitle(movieId).catch((error) => {
+      if (elements.status) {
+        elements.status.textContent = error.message;
+      }
+    });
+    return;
+  }
+
   watchlist.delete(movieId);
   watchlistMovies.delete(movieId);
   persistWatchlist();
@@ -163,6 +188,40 @@ function persistWatchlist() {
 
 function persistWatchlistMovies() {
   window.localStorage.setItem(watchlistMoviesStorageKey, JSON.stringify([...watchlistMovies.values()]));
+}
+
+function handleSavedDataUpdate(snapshot) {
+  syncSavedCollections(snapshot);
+  renderSavedTitlesPage();
+}
+
+function syncSavedCollections(snapshot) {
+  savedStateSource = snapshot.source || "local";
+  savedStateError = snapshot.error || "";
+
+  watchlist.clear();
+  (snapshot.watchlistIds || []).forEach((movieId) => {
+    if (Number.isFinite(Number(movieId))) {
+      watchlist.add(Number(movieId));
+    }
+  });
+
+  watchlistMovies.clear();
+  (snapshot.watchlistMovies || []).forEach((movie) => {
+    if (movie && Number.isFinite(Number(movie.id))) {
+      watchlistMovies.set(Number(movie.id), movie);
+    }
+  });
+}
+
+function emptySavedTitlesMessage() {
+  if (savedStateSource === "remote") {
+    return "No saved titles in your account yet.";
+  }
+  if (savedStateSource === "remote-error" && savedStateError) {
+    return "Your account saved titles could not load right now.";
+  }
+  return "No saved titles in this browser yet.";
 }
 
 function escapeHtml(value) {

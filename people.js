@@ -20,7 +20,16 @@ const elements = {
 };
 const devStatusFlagKey = "wtfcineverfind-debug";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
-const savedPeople = loadSavedPeople();
+const savedDataClient = window.savedDataClient || null;
+const savedPeople = new Map();
+let savedStateSource = "local";
+let savedStateError = "";
+
+if (savedDataClient) {
+  savedDataClient.subscribe(handleSavedDataUpdate);
+} else {
+    syncSavedPeopleState({ savedPeople: [...loadSavedPeople().values()], source: "local", error: "" });
+}
 
 const pageState = {
   department: readDepartmentFromUrl(),
@@ -159,11 +168,11 @@ function handlePersonSelection(event) {
   const saveButton = event.target.closest("[data-save-person]");
   if (saveButton) {
     const currentScrollY = window.scrollY;
-    toggleSavedPerson(saveButton.dataset.savedPerson || "");
-    renderDirectory();
-    if (pageState.currentSearchPeople.length) {
-      renderPeopleResults(pageState.currentSearchPeople);
-    }
+    toggleSavedPerson(saveButton.dataset.savedPerson || "").catch((error) => {
+      if (elements.directoryResultsSummary) {
+        elements.directoryResultsSummary.textContent = error.message;
+      }
+    });
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: currentScrollY, behavior: "auto" });
     });
@@ -680,14 +689,18 @@ function persistSavedPeople() {
 
 function toggleSavedPerson(rawRecord) {
   if (!rawRecord) {
-    return;
+    return Promise.resolve();
   }
 
   let record;
   try {
     record = JSON.parse(rawRecord);
   } catch {
-    return;
+    return Promise.resolve();
+  }
+
+  if (savedDataClient) {
+    return savedDataClient.togglePerson(record);
   }
 
   const key = String(record.id);
@@ -697,6 +710,26 @@ function toggleSavedPerson(rawRecord) {
     savedPeople.set(key, record);
   }
   persistSavedPeople();
+  return Promise.resolve();
+}
+
+function handleSavedDataUpdate(snapshot) {
+  syncSavedPeopleState(snapshot);
+  renderDirectory();
+  if (pageState.currentSearchPeople.length) {
+    renderPeopleResults(pageState.currentSearchPeople);
+  }
+}
+
+function syncSavedPeopleState(snapshot) {
+  savedStateSource = snapshot.source || "local";
+  savedStateError = snapshot.error || "";
+  savedPeople.clear();
+  (snapshot.savedPeople || []).forEach((person) => {
+    if (person?.id && person?.name) {
+      savedPeople.set(String(person.id), person);
+    }
+  });
 }
 
 function matchesDepartment(person, department) {
