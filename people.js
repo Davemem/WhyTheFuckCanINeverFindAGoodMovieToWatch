@@ -1,3 +1,5 @@
+const watchlistStorageKey = "wtfcineverfind-watchlist";
+const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
 const elements = {
   indexSummary: document.querySelector("#index-summary"),
   resultsSection: document.querySelector("#people-results-section"),
@@ -5,7 +7,6 @@ const elements = {
   resultsRail: document.querySelector("#people-results-grid")?.closest("[data-movie-rail]"),
   resultsSummary: document.querySelector("#people-results-summary"),
   resultsTitle: document.querySelector("#people-results-title"),
-  resultsBack: document.querySelector("#people-results-back"),
   directorySection: document.querySelector("#people-directory-section"),
   directoryResultsSummary: document.querySelector("#directory-results-summary"),
   directoryRefresh: document.querySelector("#directory-refresh"),
@@ -22,6 +23,8 @@ const elements = {
 const devStatusFlagKey = "wtfcineverfind-debug";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
 const savedDataClient = window.savedDataClient || null;
+const watchlist = new Set();
+const watchlistMovies = new Map();
 const savedPeople = new Map();
 let savedStateSource = "local";
 let savedStateError = "";
@@ -43,7 +46,13 @@ const pageState = {
 if (savedDataClient) {
   savedDataClient.subscribe(handleSavedDataUpdate);
 } else {
-  syncSavedPeopleState({ savedPeople: [...loadSavedPeople().values()], source: "local", error: "" });
+  syncSavedState({
+    watchlistIds: [...loadWatchlist()],
+    watchlistMovies: [...loadWatchlistMovies().values()],
+    savedPeople: [...loadSavedPeople().values()],
+    source: "local",
+    error: "",
+  });
 }
 
 bootstrap().catch((error) => {
@@ -100,7 +109,7 @@ function applyDevStatusVisibility() {
 function bindEvents() {
   elements.directoryGrid.addEventListener("click", handlePersonSelection);
   elements.resultsGrid?.addEventListener("click", handlePersonSelection);
-  elements.resultsBack?.addEventListener("click", handleResultsBack);
+  elements.resultsGrid?.addEventListener("click", handleWatchlistAction);
   elements.directoryRefresh?.addEventListener("click", refreshDirectorySuggestions);
   window.addEventListener("popstate", handlePopState);
   window.addEventListener("catalog:people-search", handleInlineSearchEvent);
@@ -226,6 +235,38 @@ function handlePersonSelection(event) {
     window.dispatchEvent(new CustomEvent("catalog:people-search"));
   } else {
     window.location.href = nextUrl;
+  }
+}
+
+function handleWatchlistAction(event) {
+  const button = event.target.closest("[data-watchlist-id]");
+  if (!button) {
+    return;
+  }
+
+  const movieId = Number(button.dataset.watchlistId);
+  const movie = [...pageState.currentMovies, ...watchlistMovies.values()].find((entry) => entry.id === movieId);
+  if (savedDataClient) {
+    savedDataClient.toggleTitle(movie || { id: movieId }).catch((error) => {
+      if (elements.resultsSummary) {
+        elements.resultsSummary.textContent = error.message;
+      }
+    });
+    return;
+  }
+
+  if (watchlist.has(movieId)) {
+    watchlist.delete(movieId);
+    watchlistMovies.delete(movieId);
+  } else if (movie) {
+    watchlist.add(movieId);
+    watchlistMovies.set(movieId, movie);
+  }
+
+  persistWatchlist();
+  persistWatchlistMovies();
+  if (pageState.currentMovies.length) {
+    renderMovies(pageState.currentMovies, pageState.currentMovies.length);
   }
 }
 
@@ -518,6 +559,8 @@ function buildMovieCard(movie) {
     progressive: true,
     defaultLogline: "Live discovery result.",
     defaultMatchReason: "Live discovery result.",
+    savedButtonLabel: watchlist.has(movie.id) ? "Saved to watchlist" : "Save to watchlist",
+    isSaved: watchlist.has(movie.id),
   });
 }
 
@@ -603,20 +646,10 @@ function renderErrorState(message) {
   elements.resultsGrid.append(errorState);
 }
 
-function handleResultsBack() {
-  window.location.href = `/people.html?department=${pageState.department}`;
-}
-
 function setSearchMode(isSearchMode) {
   document.body.classList.toggle("people-has-search-results", Boolean(isSearchMode));
   if (elements.resultsSection) {
     elements.resultsSection.hidden = !isSearchMode;
-  }
-  if (elements.resultsBack) {
-    elements.resultsBack.hidden = !isSearchMode;
-  }
-  if (elements.directorySection) {
-    elements.directorySection.hidden = isSearchMode;
   }
 }
 
@@ -724,10 +757,45 @@ function loadSavedPeople() {
   }
 }
 
+function loadWatchlist() {
+  try {
+    const raw = window.localStorage.getItem(watchlistStorageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(parsed.filter((value) => Number.isFinite(value)));
+  } catch {
+    return new Set();
+  }
+}
+
+function loadWatchlistMovies() {
+  try {
+    const raw = window.localStorage.getItem(watchlistMoviesStorageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Map(
+      parsed
+        .filter((entry) => entry && Number.isFinite(entry.id))
+        .map((entry) => [entry.id, entry]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 function persistSavedPeople() {
   window.localStorage.setItem(
     savedPeopleStorageKey,
     JSON.stringify([...savedPeople.values()]),
+  );
+}
+
+function persistWatchlist() {
+  window.localStorage.setItem(watchlistStorageKey, JSON.stringify([...watchlist]));
+}
+
+function persistWatchlistMovies() {
+  window.localStorage.setItem(
+    watchlistMoviesStorageKey,
+    JSON.stringify([...watchlistMovies.values()]),
   );
 }
 
@@ -758,16 +826,34 @@ function toggleSavedPerson(rawRecord) {
 }
 
 function handleSavedDataUpdate(snapshot) {
-  syncSavedPeopleState(snapshot);
+  syncSavedState(snapshot);
   renderDirectory();
   if (pageState.currentSearchPeople.length) {
     renderPeopleResults(pageState.currentSearchPeople);
   }
+  if (pageState.currentMovies.length) {
+    renderMovies(pageState.currentMovies, pageState.currentMovies.length);
+  }
 }
 
-function syncSavedPeopleState(snapshot) {
+function syncSavedState(snapshot) {
   savedStateSource = snapshot.source || "local";
   savedStateError = snapshot.error || "";
+
+  watchlist.clear();
+  (snapshot.watchlistIds || []).forEach((movieId) => {
+    if (Number.isFinite(Number(movieId))) {
+      watchlist.add(Number(movieId));
+    }
+  });
+
+  watchlistMovies.clear();
+  (snapshot.watchlistMovies || []).forEach((movie) => {
+    if (movie && Number.isFinite(Number(movie.id))) {
+      watchlistMovies.set(Number(movie.id), movie);
+    }
+  });
+
   savedPeople.clear();
   (snapshot.savedPeople || []).forEach((person) => {
     if (person?.id && person?.name) {

@@ -36,11 +36,7 @@ const elements = {
   resultsGrid: document.querySelector("#results-grid"),
   resultsRail: document.querySelector("#results-grid")?.closest("[data-movie-rail]"),
   resultsSection: document.querySelector("#results-section"),
-  resultsBack: document.querySelector("#results-back"),
   resultsSummary: document.querySelector("#results-summary"),
-  resultsPagination: document.querySelector("#results-pagination"),
-  resultsPaginationSummary: document.querySelector("#results-pagination-summary"),
-  resultsLoadMore: document.querySelector("#results-load-more"),
   movieCount: document.querySelector("#movie-count"),
   peopleCount: document.querySelector("#people-count"),
   watchlistCount: document.querySelector("#watchlist-count"),
@@ -345,12 +341,6 @@ function bindEvents() {
   if (elements.resetButton) {
     elements.resetButton.addEventListener("click", resetFilters);
   }
-  if (elements.resultsBack) {
-    elements.resultsBack.addEventListener("click", resetFilters);
-  }
-  if (elements.resultsLoadMore) {
-    elements.resultsLoadMore.addEventListener("click", loadMoreEntityResults);
-  }
   window.addEventListener("popstate", handlePopState);
 }
 
@@ -490,56 +480,6 @@ async function refreshMovies() {
   }
 }
 
-async function loadMoreEntityResults() {
-  const state = getFilterState();
-  const entityState = liveState.entitySearch;
-  if (!state.personQuery || state.exactMatch || !entityState.hasMore || entityState.isLoadingMore) {
-    return;
-  }
-
-  liveState.entitySearch = {
-    ...entityState,
-    isLoadingMore: true,
-  };
-  syncResultsPagination();
-
-  try {
-    const payload = await fetchEntityPage({
-      query: state.personQuery,
-      searchType: state.searchType,
-      page: entityState.page + 1,
-      limit: entityState.limit,
-    });
-    if (state.personQuery !== getFilterState().personQuery || state.searchType !== getFilterState().searchType || liveState.exactMatch) {
-      return;
-    }
-
-    liveState.entities = dedupePeopleById([
-      ...liveState.entities,
-      ...(payload.results || []),
-    ]);
-    liveState.totalMatches = payload.total || liveState.entities.length;
-    liveState.entitySearch = {
-      ...liveState.entitySearch,
-      page: payload.page || entityState.page + 1,
-      limit: payload.limit || entityState.limit,
-      total: payload.total || liveState.entities.length,
-      hasMore: Boolean(payload.hasMore),
-      isLoadingMore: false,
-    };
-    renderEntityResults(liveState.entities, state.searchType);
-    syncRenderedSavedPeopleButtons();
-    prefetchNextEntityPage();
-  } catch (error) {
-    liveState.entitySearch = {
-      ...liveState.entitySearch,
-      isLoadingMore: false,
-    };
-    syncResultsPagination();
-    setStatus(error.message, true);
-  }
-}
-
 async function fetchEntityPage({ query, searchType, page, limit = liveState.entitySearch.limit || 25 }) {
   const cacheKey = `${searchType}:${query.toLowerCase()}:${page}:${limit}`;
   if (entityPageCache.has(cacheKey)) {
@@ -649,7 +589,6 @@ function renderEntityResults(entities, searchType) {
     grid.append(buildDirectoryPersonCard(entity, searchType === "studio" ? "Show studio movies" : "Show matching movies"));
   });
   elements.resultsGrid.append(grid);
-  syncResultsPagination();
 }
 
 function renderIdleState() {
@@ -674,25 +613,6 @@ function resetEntityPagination() {
     hasMore: false,
     isLoadingMore: false,
   };
-  syncResultsPagination();
-}
-
-function syncResultsPagination() {
-  if (!elements.resultsPagination || !elements.resultsPaginationSummary || !elements.resultsLoadMore) {
-    return;
-  }
-
-  const entityState = liveState.entitySearch;
-  const shouldShow = Boolean(entityState.query) && entityState.searchType === "person" && (entityState.hasMore || entityState.total > 0);
-  elements.resultsPagination.hidden = !shouldShow;
-  if (!shouldShow) {
-    return;
-  }
-
-  elements.resultsPaginationSummary.textContent = `${liveState.entities.length} of ${entityState.total} people shown.`;
-  elements.resultsLoadMore.hidden = !entityState.hasMore;
-  elements.resultsLoadMore.disabled = entityState.isLoadingMore;
-  elements.resultsLoadMore.textContent = entityState.isLoadingMore ? "Loading more..." : "Load more people";
 }
 
 function buildMovieCard(movie) {
@@ -1006,7 +926,6 @@ function renderLoadingState() {
   setSearchMode(true);
   elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
   elements.resultsGrid.classList.remove("is-entity-results");
-  syncResultsPagination();
   if (elements.resultsRail) {
     window.MovieResults.setRailStatus(elements.resultsRail, "loading");
   }
@@ -1022,7 +941,6 @@ function renderErrorState(message) {
   setSearchMode(true);
   elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
   elements.resultsGrid.classList.remove("is-entity-results");
-  syncResultsPagination();
   if (elements.resultsRail) {
     window.MovieResults.setRailStatus(elements.resultsRail, "error");
   }
@@ -1272,9 +1190,6 @@ function setSearchMode(isSearchMode) {
   document.body.classList.toggle("has-search-results", Boolean(isSearchMode));
   if (elements.resultsSection) {
     elements.resultsSection.hidden = !isSearchMode;
-  }
-  if (elements.suggestedPanels) {
-    elements.suggestedPanels.hidden = isSearchMode;
   }
 }
 
