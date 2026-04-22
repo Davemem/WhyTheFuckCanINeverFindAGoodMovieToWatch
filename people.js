@@ -25,12 +25,6 @@ const savedPeople = new Map();
 let savedStateSource = "local";
 let savedStateError = "";
 
-if (savedDataClient) {
-  savedDataClient.subscribe(handleSavedDataUpdate);
-} else {
-    syncSavedPeopleState({ savedPeople: [...loadSavedPeople().values()], source: "local", error: "" });
-}
-
 const pageState = {
   department: readDepartmentFromUrl(),
   currentPeople: [],
@@ -41,6 +35,12 @@ const pageState = {
   refreshCount: 0,
   renderToken: 0,
 };
+
+if (savedDataClient) {
+  savedDataClient.subscribe(handleSavedDataUpdate);
+} else {
+  syncSavedPeopleState({ savedPeople: [...loadSavedPeople().values()], source: "local", error: "" });
+}
 
 bootstrap().catch((error) => {
   if (elements.directoryResultsSummary) {
