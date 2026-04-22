@@ -34,6 +34,9 @@ const pageState = {
   currentSearchPeople: [],
   refreshCount: 0,
   renderToken: 0,
+  requestId: 0,
+  enrichRequestId: 0,
+  enrichAttempts: new Map(),
 };
 
 if (savedDataClient) {
@@ -399,11 +402,15 @@ function shouldFetchResultsOnLoad() {
 }
 
 async function refreshResults() {
+  const requestId = ++pageState.requestId;
   const state = getSearchStateFromUrl();
   if (state.personQuery && !state.exactPerson && state.searchType === "person") {
     renderPeopleLoadingState();
     try {
       const peoplePayload = await fetchJson(`/api/people?query=${encodeURIComponent(state.personQuery)}`);
+      if (requestId !== pageState.requestId) {
+        return;
+      }
       const matches = (peoplePayload.results || []).filter((person) => matchesDepartment(person, pageState.department));
       pageState.currentSearchPeople = matches;
       pageState.currentMovies = [];
@@ -433,38 +440,40 @@ async function refreshResults() {
 
   try {
     const payload = await fetchJson(`/api/discover?${params.toString()}`);
+    if (requestId !== pageState.requestId) {
+      return;
+    }
     pageState.currentSearchPeople = [];
     pageState.currentMovies = payload.movies || [];
+    pageState.enrichAttempts = new Map();
     elements.resultsTitle.textContent = buildResultsTitle(payload);
     renderMovies(pageState.currentMovies, payload.totalMatches || pageState.currentMovies.length);
+    enrichVisibleMovies(requestId);
     setSearchMode(true);
   } catch (error) {
+    if (requestId !== pageState.requestId) {
+      return;
+    }
     renderErrorState(error.message);
     setSearchMode(true);
   }
 }
 
 function renderMovies(movies, totalMatches) {
-  if (!elements.resultsGrid || !elements.resultsSummary) {
-    return;
-  }
-
-  elements.resultsGrid.replaceChildren();
-  elements.resultsSummary.textContent = `${totalMatches || movies.length} movie${
-    (totalMatches || movies.length) === 1 ? "" : "s"
-  } match your current filter stack.`;
-
-  if (!movies.length) {
-    const emptyState = document.createElement("div");
-    emptyState.className = "empty-state";
-    emptyState.innerHTML =
-      "<h3>No live matches.</h3><p>Broaden the filters or try a different person.</p>";
-    elements.resultsGrid.append(emptyState);
-    return;
-  }
-
-  movies.forEach((movie) => {
-    elements.resultsGrid.append(buildMovieCard(movie));
+  const renderToken = ++pageState.renderToken;
+  window.MovieResults.renderMovieCards({
+    container: elements.resultsGrid,
+    movies,
+    totalMatches: totalMatches || movies.length,
+    summaryElement: elements.resultsSummary,
+    summaryText: `${totalMatches || movies.length} movie${
+      (totalMatches || movies.length) === 1 ? "" : "s"
+    } match your current filter stack.`,
+    emptyTitle: "No live matches.",
+    emptyMessage: "Broaden the filters or try a different person.",
+    buildCard: buildMovieCard,
+    batchSize: 24,
+    isCurrentRender: () => renderToken === pageState.renderToken,
   });
 }
 
@@ -494,33 +503,40 @@ function renderPeopleResults(people) {
 }
 
 function buildMovieCard(movie) {
-  const fragment = elements.movieCardTemplate.content.cloneNode(true);
-  const poster = fragment.querySelector(".movie-poster");
-  const posterFrame = fragment.querySelector(".movie-poster-frame");
-  fragment.querySelector("h3").textContent = movie.title;
-  fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
-  fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
-  fragment.querySelector(".logline").textContent = movie.logline || "Live discovery result.";
-  fragment.querySelector(".rating-imdb").textContent = formatRating(movie.imdb, 1);
-  fragment.querySelector(".rating-rt").textContent = formatPercent(movie.rt);
-  fragment.querySelector(".rating-meta").textContent = formatInteger(movie.metacritic);
-  fragment.querySelector(".rating-tmdb").textContent = formatRating(movie.tmdb, 1);
-  fragment.querySelector(".cast").textContent = movie.cast?.length ? movie.cast.join(", ") : "Unknown";
-  fragment.querySelector(".director").textContent = movie.director || "Unknown";
-  fragment.querySelector(".producer").textContent = movie.producers?.length ? movie.producers.join(", ") : "Unknown";
-  fragment.querySelector(".match-reason").textContent = movie.matchReason || "Live discovery result.";
-  fragment.querySelector(".genres").textContent = formatGenres(movie);
+  return window.MovieResults.buildMovieCard(elements.movieCardTemplate, movie, {
+    progressive: true,
+    defaultLogline: "Live discovery result.",
+    defaultMatchReason: "Live discovery result.",
+  });
+}
 
-  if (movie.posterUrl) {
-    poster.src = movie.posterUrl;
-    poster.alt = `${movie.title} poster`;
-  } else {
-    posterFrame.classList.add("is-empty");
-    poster.remove();
-    posterFrame.innerHTML = `<span>${movie.title}</span>`;
-  }
-
-  return fragment;
+async function enrichVisibleMovies(parentRequestId) {
+  const enrichRequestId = ++pageState.enrichRequestId;
+  await window.MovieResults.progressivelyEnrichMovies({
+    movies: pageState.currentMovies,
+    getMovies: () => pageState.currentMovies,
+    fetchJson,
+    enrichUrl: (ids) => `/api/enrich?ids=${ids.join(",")}`,
+    enrichAttempts: pageState.enrichAttempts,
+    maxAttempts: 2,
+    batchSize: 2,
+    retryDelayMs: 400,
+    isCurrent: () => parentRequestId === pageState.requestId && enrichRequestId === pageState.enrichRequestId,
+    onUpdate: (enrichedById) => {
+      pageState.currentMovies = pageState.currentMovies.map((movie) => {
+        const enriched = enrichedById.get(movie.id);
+        if (!enriched) {
+          return movie;
+        }
+        return {
+          ...movie,
+          ...enriched,
+          matchReason: movie.matchReason || enriched.matchReason,
+        };
+      });
+      window.MovieResults.patchMovieCards(elements.resultsGrid, enrichedById, buildMovieCard);
+    },
+  });
 }
 
 function renderLoadingState() {

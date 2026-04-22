@@ -593,44 +593,22 @@ function syncRangeLabels() {
 function renderMovies(movies) {
   liveState.renderToken += 1;
   const renderToken = liveState.renderToken;
-  setSearchMode(true);
   resetEntityPagination();
-  elements.resultsGrid.replaceChildren();
-  elements.resultsSummary.textContent = `${liveState.totalMatches || movies.length} live movie${
-    (liveState.totalMatches || movies.length) === 1 ? "" : "s"
-  } match your current filter stack.`;
-
-  if (!movies.length) {
-    const emptyState = document.createElement("div");
-    emptyState.className = "empty-state";
-    emptyState.innerHTML =
-      "<h3>No live matches.</h3><p>Broaden the filters or switch to a different person, studio, or award search.</p>";
-    elements.resultsGrid.append(emptyState);
-    return;
-  }
-
-  const batchSize = 24;
-  let index = 0;
-
-  const renderBatch = () => {
-    if (renderToken !== liveState.renderToken) {
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    const end = Math.min(index + batchSize, movies.length);
-    for (let cursor = index; cursor < end; cursor += 1) {
-      fragment.append(buildMovieCard(movies[cursor]));
-    }
-    elements.resultsGrid.append(fragment);
-    index = end;
-
-    if (index < movies.length) {
-      window.requestAnimationFrame(renderBatch);
-    }
-  };
-
-  window.requestAnimationFrame(renderBatch);
+  window.MovieResults.renderMovieCards({
+    container: elements.resultsGrid,
+    movies,
+    totalMatches: liveState.totalMatches || movies.length,
+    summaryElement: elements.resultsSummary,
+    summaryText: `${liveState.totalMatches || movies.length} live movie${
+      (liveState.totalMatches || movies.length) === 1 ? "" : "s"
+    } match your current filter stack.`,
+    emptyTitle: "No live matches.",
+    emptyMessage: "Broaden the filters or switch to a different person, studio, or award search.",
+    buildCard: buildMovieCard,
+    batchSize: 24,
+    setSearchMode,
+    isCurrentRender: () => renderToken === liveState.renderToken,
+  });
 }
 
 function renderEntityResults(entities, searchType) {
@@ -705,59 +683,13 @@ function syncResultsPagination() {
 }
 
 function buildMovieCard(movie) {
-  const fragment = elements.cardTemplate.content.cloneNode(true);
-  const article = fragment.querySelector(".movie-card");
-  const poster = fragment.querySelector(".movie-poster");
-  const posterFrame = fragment.querySelector(".movie-poster-frame");
-  const imdbValue = fragment.querySelector(".rating-imdb");
-  const rtValue = fragment.querySelector(".rating-rt");
-  const metaValue = fragment.querySelector(".rating-meta");
-  const tmdbValue = fragment.querySelector(".rating-tmdb");
-  const castValue = fragment.querySelector(".cast");
-  const directorValue = fragment.querySelector(".director");
-  const producerValue = fragment.querySelector(".producer");
-  const matchReasonValue = fragment.querySelector(".match-reason");
-  const genresValue = fragment.querySelector(".genres");
-  article.dataset.movieId = String(movie.id);
-  article.classList.toggle("is-loading-card", !movie.isEnriched);
-  fragment.querySelector("h3").textContent = movie.title;
-  fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
-  fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
-  fragment.querySelector(".logline").textContent = movie.logline;
-  setCardField(imdbValue, movie.isEnriched ? formatRating(movie.imdb, 1) : "Loading");
-  setCardField(rtValue, movie.isEnriched ? formatPercent(movie.rt) : "Loading");
-  setCardField(metaValue, movie.isEnriched ? formatInteger(movie.metacritic) : "Loading");
-  setCardField(tmdbValue, formatRating(movie.tmdb, 1), !movie.tmdb);
-  setCardField(castValue, movie.isEnriched ? (movie.cast.length ? movie.cast.join(", ") : "Unknown") : "Loading cast");
-  setCardField(directorValue, movie.isEnriched ? (movie.director || "Unknown") : "Loading director");
-  setCardField(
-    producerValue,
-    movie.isEnriched ? (movie.producers.length ? movie.producers.join(", ") : "Unknown") : "Loading producers",
-  );
-  setCardField(matchReasonValue, movie.matchReason || "Loading match reason", !movie.matchReason);
-  setCardField(genresValue, movie.isEnriched ? formatGenres(movie) : "Loading genres");
-
-  if (movie.posterUrl) {
-    poster.src = movie.posterUrl;
-    poster.alt = `${movie.title} poster`;
-  } else {
-    posterFrame.classList.add("is-empty");
-    poster.remove();
-    posterFrame.innerHTML = `<span>${movie.title}</span>`;
-  }
-
-  const button = fragment.querySelector(".watchlist-button");
-  const saved = watchlist.has(movie.id);
-  button.dataset.watchlistId = String(movie.id);
-  button.textContent = saved ? "Saved to watchlist" : "Save to watchlist";
-  button.classList.toggle("is-saved", saved);
-
-  return fragment;
-}
-
-function setCardField(element, value, pending = false) {
-  element.textContent = value;
-  element.classList.toggle("is-pending", Boolean(pending));
+  return window.MovieResults.buildMovieCard(elements.cardTemplate, movie, {
+    progressive: true,
+    defaultLogline: "Live discovery result.",
+    defaultMatchReason: "Loading match reason",
+    savedButtonLabel: watchlist.has(movie.id) ? "Saved to watchlist" : "Save to watchlist",
+    isSaved: watchlist.has(movie.id),
+  });
 }
 
 function renderRolePreview(role) {
@@ -1010,65 +942,33 @@ function renderWatchlist() {
 }
 
 async function enrichVisibleMovies(parentRequestId) {
-  const ids = liveState.movies
-    .filter((movie) => !movie.isEnriched && (liveState.enrichAttempts.get(movie.id) || 0) < 2)
-    .map((movie) => movie.id)
-    .slice(0, 2);
-
-  if (!ids.length) {
-    return;
-  }
-
   const enrichRequestId = ++liveState.enrichRequestId;
-  ids.forEach((id) => {
-    liveState.enrichAttempts.set(id, (liveState.enrichAttempts.get(id) || 0) + 1);
-  });
-
-  try {
-    const payload = await fetchJson(`/api/enrich?ids=${ids.join(",")}`);
-    if (parentRequestId !== liveState.requestId || enrichRequestId !== liveState.enrichRequestId) {
-      return;
-    }
-
-    const enrichedById = new Map((payload.movies || []).map((movie) => [movie.id, movie]));
-    liveState.movies = liveState.movies.map((movie) => {
-      const enriched = enrichedById.get(movie.id);
-      if (!enriched) {
-        return movie;
-      }
-
-      return {
-        ...movie,
-        ...enriched,
-        matchReason: movie.matchReason || enriched.matchReason,
-      };
-    });
-    patchMovieCards(enrichedById);
-    syncWatchlistMovieDetails(enrichedById);
-    renderWatchlist();
-    enrichVisibleMovies(parentRequestId);
-  } catch {
-    window.setTimeout(() => {
-      if (parentRequestId === liveState.requestId) {
-        enrichVisibleMovies(parentRequestId);
-      }
-    }, 400);
-  }
-}
-
-function patchMovieCards(enrichedById) {
-  enrichedById.forEach((movie, id) => {
-    const currentCard = elements.resultsGrid.querySelector(`[data-movie-id="${id}"]`);
-    if (!currentCard) {
-      return;
-    }
-
-    const replacement = buildMovieCard(movie).firstElementChild;
-    if (!replacement) {
-      return;
-    }
-
-    currentCard.replaceWith(replacement);
+  await window.MovieResults.progressivelyEnrichMovies({
+    movies: liveState.movies,
+    getMovies: () => liveState.movies,
+    fetchJson,
+    enrichUrl: (ids) => `/api/enrich?ids=${ids.join(",")}`,
+    enrichAttempts: liveState.enrichAttempts,
+    maxAttempts: 2,
+    batchSize: 2,
+    retryDelayMs: 400,
+    isCurrent: () => parentRequestId === liveState.requestId && enrichRequestId === liveState.enrichRequestId,
+    onUpdate: (enrichedById) => {
+      liveState.movies = liveState.movies.map((movie) => {
+        const enriched = enrichedById.get(movie.id);
+        if (!enriched) {
+          return movie;
+        }
+        return {
+          ...movie,
+          ...enriched,
+          matchReason: movie.matchReason || enriched.matchReason,
+        };
+      });
+      window.MovieResults.patchMovieCards(elements.resultsGrid, enrichedById, buildMovieCard);
+      syncWatchlistMovieDetails(enrichedById);
+      renderWatchlist();
+    },
   });
 }
 

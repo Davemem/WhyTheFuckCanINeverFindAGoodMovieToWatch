@@ -197,58 +197,12 @@ function renderSavedPeopleGrid(container, people, tabKey, emptyMessage) {
 }
 
 function buildMovieCard(movie, options = {}) {
-  const fragment = elements.movieTemplate.content.cloneNode(true);
-  const article = fragment.querySelector(".movie-card");
-  const poster = fragment.querySelector(".movie-poster");
-  const posterFrame = fragment.querySelector(".movie-poster-frame");
-  if (options.extraClass) {
-    article.classList.add(options.extraClass);
-  }
-  const cardKey = options.cardKey || `${options.extraClass || "movie"}:${movie.id}`;
-  article.dataset.cardKey = cardKey;
-  fragment.querySelector("h3").textContent = movie.title;
-  fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
-  fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
-  fragment.querySelector(".logline").textContent = movie.logline || "No overview available yet.";
-  fragment.querySelector(".rating-imdb").textContent = formatRating(movie.imdb, 1);
-  fragment.querySelector(".rating-rt").textContent = formatPercent(movie.rt);
-  fragment.querySelector(".rating-meta").textContent = formatInteger(movie.metacritic);
-  fragment.querySelector(".rating-tmdb").textContent = formatRating(movie.tmdb, 1);
-  fragment.querySelector(".cast").textContent = movie.cast?.length ? movie.cast.join(", ") : "Unknown";
-  fragment.querySelector(".director").textContent = movie.director || "Unknown";
-  fragment.querySelector(".producer").textContent = movie.producers?.length
-    ? movie.producers.join(", ")
-    : "Unknown";
-  fragment.querySelector(".match-reason").textContent = movie.matchReason || "Saved from the catalog.";
-  fragment.querySelector(".genres").textContent = movie.genres?.length
-    ? movie.genres.join(" / ")
-    : "Unknown";
-  if (options.hideMatchReason) {
-    fragment.querySelector(".match-reason")?.closest("div")?.remove();
-  }
-
-  if (movie.posterUrl) {
-    poster.src = movie.posterUrl;
-    poster.alt = `${movie.title} poster`;
-  } else {
-    posterFrame.classList.add("is-empty");
-    poster.remove();
-    posterFrame.innerHTML = `<span>${movie.title}</span>`;
-  }
-
-  const button = fragment.querySelector(".watchlist-button");
-  const isSaved = watchlist.has(movie.id);
-  button.textContent = options.allowToggleSave ? (isSaved ? "Remove title" : "Save title") : "Remove title";
-  button.classList.toggle("is-saved", isSaved || !options.allowToggleSave);
-  button.dataset.watchlistId = String(movie.id);
-  if (options.allowToggleSave) {
-    button.dataset.watchlistMovie = JSON.stringify(movie);
-  }
-
-  if (options.expandedByDefault) {
-    article.classList.add("is-expanded");
-  }
-  return fragment;
+  return window.MovieResults.buildMovieCard(elements.movieTemplate, movie, {
+    ...options,
+    defaultMatchReason: "Saved from the catalog.",
+    forceSavedButton: !options.allowToggleSave,
+    isSaved: watchlist.has(movie.id),
+  });
 }
 
 function buildSavedPersonCard(person, isSelected) {
