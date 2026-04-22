@@ -34,6 +34,7 @@ const elements = {
   sortFilter: document.querySelector("#sort-filter"),
   resetButton: document.querySelector("#reset-button"),
   resultsGrid: document.querySelector("#results-grid"),
+  resultsRail: document.querySelector("#results-grid")?.closest("[data-movie-rail]"),
   resultsSection: document.querySelector("#results-section"),
   resultsBack: document.querySelector("#results-back"),
   resultsSummary: document.querySelector("#results-summary"),
@@ -180,6 +181,9 @@ async function bootstrap() {
   syncSearchModeUi();
   syncMovieFilterState();
   bindEvents();
+  if (elements.resultsRail) {
+    window.MovieResults.bindRail(elements.resultsRail);
+  }
   renderActorPreview();
   renderRolePreview("writers");
   renderRolePreview("directors");
@@ -593,6 +597,8 @@ function syncRangeLabels() {
 function renderMovies(movies) {
   liveState.renderToken += 1;
   const renderToken = liveState.renderToken;
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
   resetEntityPagination();
   window.MovieResults.renderMovieCards({
     container: elements.resultsGrid,
@@ -608,12 +614,17 @@ function renderMovies(movies) {
     batchSize: 24,
     setSearchMode,
     isCurrentRender: () => renderToken === liveState.renderToken,
+    railRoot: elements.resultsRail,
   });
 }
 
 function renderEntityResults(entities, searchType) {
   liveState.renderToken += 1;
   setSearchMode(true);
+  if (elements.resultsRail) {
+    elements.resultsRail.dataset.railContentKind = "entity";
+  }
+  elements.resultsGrid.classList.add("is-entity-results");
   elements.resultsGrid.replaceChildren();
   const total = liveState.entitySearch.total || entities.length;
   const selectionPrompt = searchType === "studio"
@@ -644,6 +655,8 @@ function renderEntityResults(entities, searchType) {
 function renderIdleState() {
   liveState.renderToken += 1;
   setSearchMode(false);
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
   resetEntityPagination();
   elements.resultsGrid.replaceChildren();
   elements.resultsTitle.textContent = "Movies selected by the people behind them";
@@ -991,7 +1004,12 @@ function syncWatchlistMovieDetails(enrichedById) {
 function renderLoadingState() {
   liveState.renderToken += 1;
   setSearchMode(true);
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
   syncResultsPagination();
+  if (elements.resultsRail) {
+    window.MovieResults.setRailStatus(elements.resultsRail, "loading");
+  }
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
@@ -1002,7 +1020,12 @@ function renderLoadingState() {
 function renderErrorState(message) {
   liveState.renderToken += 1;
   setSearchMode(true);
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
   syncResultsPagination();
+  if (elements.resultsRail) {
+    window.MovieResults.setRailStatus(elements.resultsRail, "error");
+  }
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");
   errorState.className = "empty-state";

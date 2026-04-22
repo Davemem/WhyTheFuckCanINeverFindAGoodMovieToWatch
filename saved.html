@@ -110,26 +110,33 @@
               Directors / Producers
             </button>
           </div>
-          <section id="saved-person-catalog" class="saved-person-rail saved-people-catalog" data-saved-person-rail hidden>
-            <div class="saved-person-rail-header">
+          <section
+            id="saved-person-catalog"
+            class="saved-person-rail saved-people-catalog movie-rail"
+            data-saved-person-rail
+            data-movie-rail
+            data-rail-status="idle"
+            hidden
+          >
+            <div class="saved-person-rail-header movie-rail-header">
               <div>
                 <p class="saved-person-titles-label">Full catalog</p>
                 <h3 id="saved-person-catalog-name" class="saved-people-catalog-name"></h3>
               </div>
-              <div class="saved-person-rail-meta">
-                <span class="saved-person-rail-count" data-saved-person-visible-count></span>
-                <div class="saved-person-rail-controls">
-                  <button type="button" class="ghost-button saved-person-rail-button" data-rail-direction="prev" aria-label="Previous titles">
+              <div class="saved-person-rail-meta movie-rail-meta">
+                <span class="saved-person-rail-count movie-rail-count" data-saved-person-visible-count data-movie-rail-count></span>
+                <div class="saved-person-rail-controls movie-rail-controls">
+                  <button type="button" class="ghost-button saved-person-rail-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
                     &larr;
                   </button>
-                  <button type="button" class="ghost-button saved-person-rail-button" data-rail-direction="next" aria-label="Next titles">
+                  <button type="button" class="ghost-button saved-person-rail-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
                     &rarr;
                   </button>
                 </div>
               </div>
             </div>
-            <div class="saved-person-titles-viewport" data-saved-person-titles-viewport>
-              <div class="saved-person-titles-track" data-saved-person-titles></div>
+            <div class="saved-person-titles-viewport movie-rail-viewport" data-saved-person-titles-viewport data-movie-rail-viewport>
+              <div class="saved-person-titles-track movie-rail-track" data-saved-person-titles data-movie-rail-track></div>
             </div>
           </section>
           <div
@@ -244,7 +251,7 @@
 
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260422a" defer></script>
+    <script src="./movie-results.js?v=20260422b" defer></script>
     <script src="./saved.js?v=20260421a" defer></script>
   </body>
 </html>

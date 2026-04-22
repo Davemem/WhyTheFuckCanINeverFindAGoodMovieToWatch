@@ -230,7 +230,22 @@
               </button>
             </div>
           </div>
-          <section id="results-grid" class="results-grid" aria-live="polite"></section>
+          <section class="movie-rail movie-results-rail" data-movie-rail data-rail-status="idle">
+            <div class="movie-rail-meta">
+              <span class="movie-rail-count" data-movie-rail-count></span>
+              <div class="movie-rail-controls">
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
+                  &larr;
+                </button>
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
+                  &rarr;
+                </button>
+              </div>
+            </div>
+            <div class="movie-rail-viewport" data-movie-rail-viewport>
+              <section id="results-grid" class="movie-rail-track results-grid" data-movie-rail-track aria-live="polite"></section>
+            </div>
+          </section>
           <div id="results-pagination" class="results-pagination" hidden>
             <p id="results-pagination-summary" class="results-summary"></p>
             <button id="results-load-more" type="button" class="ghost-button">
@@ -456,7 +471,7 @@
 
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260422a" defer></script>
+    <script src="./movie-results.js?v=20260422b" defer></script>
     <script src="./app.js?v=20260421a" defer></script>
   </body>
 </html>

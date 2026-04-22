@@ -160,7 +160,22 @@
               </button>
             </div>
           </div>
-          <section id="people-results-grid" class="results-grid" aria-live="polite"></section>
+          <section class="movie-rail movie-results-rail" data-movie-rail data-rail-status="idle">
+            <div class="movie-rail-meta">
+              <span class="movie-rail-count" data-movie-rail-count></span>
+              <div class="movie-rail-controls">
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
+                  &larr;
+                </button>
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
+                  &rarr;
+                </button>
+              </div>
+            </div>
+            <div class="movie-rail-viewport" data-movie-rail-viewport>
+              <section id="people-results-grid" class="movie-rail-track results-grid" data-movie-rail-track aria-live="polite"></section>
+            </div>
+          </section>
         </section>
 
         <section id="people-directory-section" class="catalog-section" aria-labelledby="directory-grid-heading">
@@ -259,7 +274,7 @@
 
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260422a" defer></script>
+    <script src="./movie-results.js?v=20260422b" defer></script>
     <script src="./people.js?v=20260421a" defer></script>
     <script src="./catalog-search.js?v=20260414a" defer></script>
   </body>

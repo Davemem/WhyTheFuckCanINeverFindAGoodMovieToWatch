@@ -5,6 +5,7 @@ const elements = {
   status: document.querySelector("#saved-titles-status"),
   count: document.querySelector("#saved-titles-count"),
   grid: document.querySelector("#saved-titles-grid"),
+  rail: document.querySelector("#saved-titles-grid")?.closest("[data-movie-rail]"),
   template: document.querySelector("#movie-card-template"),
 };
 
@@ -26,6 +27,9 @@ if (savedDataClient) {
 }
 
 elements.grid?.addEventListener("click", handleGridClick);
+if (elements.rail) {
+  window.MovieResults.bindRail(elements.rail);
+}
 window.addEventListener("resize", debounce(() => refreshSynopsisToggles(elements.grid), 120));
 
 renderSavedTitlesPage();
@@ -46,6 +50,9 @@ function renderSavedTitlesPage() {
   elements.grid.replaceChildren();
 
   if (!movies.length) {
+    if (elements.rail) {
+      window.MovieResults.setRailStatus(elements.rail, "empty");
+    }
     elements.grid.append(buildEmptyState("No saved titles yet.", "Save titles from the catalog and they will show up here."));
     if (elements.status) {
       elements.status.textContent = emptySavedTitlesMessage();
@@ -56,6 +63,10 @@ function renderSavedTitlesPage() {
   movies.forEach((movie) => {
     elements.grid.append(buildMovieCard(movie));
   });
+  if (elements.rail) {
+    window.MovieResults.setRailStatus(elements.rail, "loaded");
+    window.MovieResults.syncRail(elements.rail);
+  }
   window.requestAnimationFrame(() => refreshSynopsisToggles(elements.grid));
 
   if (elements.status) {
@@ -66,41 +77,12 @@ function renderSavedTitlesPage() {
 }
 
 function buildMovieCard(movie) {
-  const fragment = elements.template.content.cloneNode(true);
-  const article = fragment.querySelector(".movie-card");
-  const poster = fragment.querySelector(".movie-poster");
-  const posterFrame = fragment.querySelector(".movie-poster-frame");
-
-  article.classList.add("saved-title-card");
-  fragment.querySelector("h3").textContent = movie.title;
-  fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
-  fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
-  fragment.querySelector(".logline").textContent = movie.logline || "No overview available yet.";
-  fragment.querySelector(".rating-imdb").textContent = formatRating(movie.imdb, 1);
-  fragment.querySelector(".rating-rt").textContent = formatPercent(movie.rt);
-  fragment.querySelector(".rating-meta").textContent = formatInteger(movie.metacritic);
-  fragment.querySelector(".rating-tmdb").textContent = formatRating(movie.tmdb, 1);
-  fragment.querySelector(".cast").textContent = movie.cast?.length ? movie.cast.join(", ") : "Unknown";
-  fragment.querySelector(".director").textContent = movie.director || "Unknown";
-  fragment.querySelector(".producer").textContent = movie.producers?.length ? movie.producers.join(", ") : "Unknown";
-  fragment.querySelector(".genres").textContent = movie.genres?.length ? movie.genres.join(" / ") : "Unknown";
-  fragment.querySelector(".match-reason")?.closest("div")?.remove();
-
-  if (movie.posterUrl) {
-    poster.src = movie.posterUrl;
-    poster.alt = `${movie.title} poster`;
-  } else {
-    posterFrame.classList.add("is-empty");
-    poster.remove();
-    posterFrame.innerHTML = `<span>${escapeHtml(movie.title)}</span>`;
-  }
-
-  const button = fragment.querySelector(".watchlist-button");
-  button.textContent = "Remove title";
-  button.classList.add("is-saved");
-  button.dataset.watchlistId = String(movie.id);
-
-  return fragment;
+  return window.MovieResults.buildMovieCard(elements.template, movie, {
+    extraClass: "saved-title-card",
+    hideMatchReason: true,
+    forceSavedButton: true,
+    isSaved: true,
+  });
 }
 
 function handleGridClick(event) {

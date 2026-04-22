@@ -909,11 +909,10 @@ main {
 }
 
 .results-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 10px;
-  align-items: start;
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
+  align-items: stretch;
 }
 
 .results-pagination {
@@ -967,11 +966,112 @@ main {
 }
 
 .saved-title-page-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, 252px);
-  gap: 14px;
+  display: flex;
+  gap: 8px;
   align-items: start;
   justify-content: start;
+}
+
+.movie-rail,
+.saved-person-rail {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.movie-rail-header,
+.movie-rail-meta,
+.movie-rail-controls,
+.saved-person-rail-header,
+.saved-person-rail-meta,
+.saved-person-rail-controls {
+  display: flex;
+  align-items: center;
+}
+
+.movie-rail-header,
+.movie-rail-meta,
+.saved-person-rail-header,
+.saved-person-rail-meta {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.movie-rail-controls,
+.saved-person-rail-controls {
+  gap: 6px;
+}
+
+.movie-rail-count,
+.saved-person-rail-count,
+.saved-person-titles-label,
+.saved-person-title-card-label {
+  margin: 0;
+  color: var(--accent-deep);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.movie-rail-count,
+.saved-person-rail-count {
+  font-size: 0.68rem;
+}
+
+.movie-rail-button,
+.saved-person-rail-button {
+  min-width: 38px;
+  padding-inline: 0;
+}
+
+.movie-rail-button:disabled,
+.saved-person-rail-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.movie-rail-viewport,
+.saved-person-titles-viewport {
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.movie-rail-track,
+.saved-person-titles-track {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.movie-rail-viewport::-webkit-scrollbar,
+.saved-person-titles-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.movie-results-rail {
+  margin-top: 10px;
+}
+
+.movie-rail[data-rail-content-kind="entity"] .movie-rail-meta {
+  display: none;
+}
+
+.movie-rail[data-rail-content-kind="entity"] .movie-rail-viewport {
+  overflow: visible;
+}
+
+.results-grid.is-entity-results {
+  display: block;
+}
+
+.results-grid .movie-card,
+.saved-title-page-grid .movie-card {
+  flex: 0 0 252px;
+  min-width: 252px;
+  align-self: start;
 }
 
 .saved-people-tabs {

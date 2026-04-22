@@ -69,8 +69,22 @@ elements.savedActorsGrid?.addEventListener("click", handleSavedAction);
 elements.savedWritersGrid?.addEventListener("click", handleSavedAction);
 elements.savedFilmmakersGrid?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("click", handleSavedAction);
-elements.savedPersonCatalog?.addEventListener("scroll", handleRailScroll, true);
-elements.savedPersonCatalog?.addEventListener("click", handleRailButtonClick);
+if (elements.savedPersonCatalog) {
+  window.MovieResults.bindRail(elements.savedPersonCatalog, {
+    cardWidth: savedTitleRailCardWidth,
+    gap: savedTitleRailGap,
+    statusText: {
+      loading: "Loading full catalog...",
+      error: "Catalog unavailable",
+      empty: "No titles available",
+    },
+    onScroll: (rail, viewport) => {
+      uiState.railScrollLeft.set(rail.dataset.personId || "", viewport.scrollLeft);
+      syncRail(rail);
+      scheduleRailEnrichment(rail);
+    },
+  });
+}
 elements.savedTabButtons.forEach((button) => {
   button.addEventListener("click", () =>
     setActiveTab(button.dataset.savedTab || "actors", { clearSelection: true }),
@@ -242,42 +256,6 @@ function buildSavedPersonTitleCard(movie, personId) {
   });
 }
 
-function handleRailButtonClick(event) {
-  const button = event.target.closest("[data-rail-direction]");
-  if (!button) {
-    return;
-  }
-
-  const rail = button.closest("[data-saved-person-rail]");
-  const viewport = rail?.querySelector("[data-saved-person-titles-viewport]");
-  if (!viewport) {
-    return;
-  }
-
-  const direction = button.dataset.railDirection === "prev" ? -1 : 1;
-  const visibleCount = getVisibleRailCount(viewport);
-  const step = visibleCount * (savedTitleRailCardWidth + savedTitleRailGap);
-  viewport.scrollBy({ left: direction * step, behavior: "smooth" });
-  window.setTimeout(() => {
-    syncRail(rail);
-    scheduleRailEnrichment(rail);
-  }, 180);
-}
-
-function handleRailScroll(event) {
-  const viewport = event.target.closest("[data-saved-person-titles-viewport]");
-  if (!viewport) {
-    return;
-  }
-
-  const rail = viewport.closest("[data-saved-person-rail]");
-  if (rail) {
-    uiState.railScrollLeft.set(rail.dataset.personId || "", viewport.scrollLeft);
-    syncRail(rail);
-    scheduleRailEnrichment(rail);
-  }
-}
-
 function syncAllRails() {
   if (elements.savedPersonCatalog && !elements.savedPersonCatalog.hidden) {
     syncRail(elements.savedPersonCatalog);
@@ -285,47 +263,23 @@ function syncAllRails() {
 }
 
 function syncRail(rail) {
-  const viewport = rail.querySelector("[data-saved-person-titles-viewport]");
-  const track = rail.querySelector("[data-saved-person-titles]");
-  const countLabel = rail.querySelector("[data-saved-person-visible-count]");
-  const previousButton = rail.querySelector('[data-rail-direction="prev"]');
-  const nextButton = rail.querySelector('[data-rail-direction="next"]');
-  const status = rail.dataset.catalogStatus || "loaded";
-  const cards = [...track.children];
-  const total = cards.length;
-  const visibleCount = getVisibleRailCount(viewport);
-  const step = savedTitleRailCardWidth + savedTitleRailGap;
-  const currentIndex = Math.min(total - 1, Math.max(0, Math.round(viewport.scrollLeft / step)));
-  const endIndex = Math.min(total, currentIndex + visibleCount);
-
-  if (countLabel) {
-    if (status === "loading" || status === "idle") {
-      countLabel.textContent = "Loading full catalog...";
-    } else if (status === "error") {
-      countLabel.textContent = "Catalog unavailable";
-    } else {
-      countLabel.textContent = `${Math.min(visibleCount, total)} on this row · ${total ? currentIndex + 1 : 0}-${endIndex} of ${total}`;
-    }
-  }
-
-  const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth - 4);
-  if (previousButton) {
-    previousButton.disabled = status !== "loaded" || viewport.scrollLeft <= 4 || total <= visibleCount;
-  }
-  if (nextButton) {
-    nextButton.disabled = status !== "loaded" || viewport.scrollLeft >= maxScrollLeft || total <= visibleCount;
-  }
+  rail.dataset.railStatus = rail.dataset.catalogStatus || "loaded";
+  window.MovieResults.syncRail(rail, {
+    cardWidth: savedTitleRailCardWidth,
+    gap: savedTitleRailGap,
+    statusText: {
+      loading: "Loading full catalog...",
+      error: "Catalog unavailable",
+      empty: "No titles available",
+    },
+  });
 }
 
 function getVisibleRailCount(viewport) {
-  if (!viewport) {
-    return 1;
-  }
-
-  return Math.max(
-    1,
-    Math.floor((viewport.clientWidth + savedTitleRailGap) / (savedTitleRailCardWidth + savedTitleRailGap)),
-  );
+  return window.MovieResults.getVisibleRailCount(viewport, {
+    cardWidth: savedTitleRailCardWidth,
+    gap: savedTitleRailGap,
+  });
 }
 
 function setActiveTab(tab, options = {}) {
@@ -789,6 +743,7 @@ function renderPersonRail(rail, personId) {
   };
 
   rail.dataset.catalogStatus = catalogState.status;
+  rail.dataset.railStatus = catalogState.status;
   rail.dataset.personId = String(personId);
   if (railLabel) {
     railLabel.textContent = catalogState.status === "loaded" ? "Full catalog" : "Loading catalog";

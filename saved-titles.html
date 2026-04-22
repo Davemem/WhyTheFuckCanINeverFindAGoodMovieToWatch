@@ -65,7 +65,22 @@
               <h2 id="saved-titles-heading">Your watchlist</h2>
             </div>
           </div>
-          <div id="saved-titles-grid" class="saved-title-page-grid"></div>
+          <section class="movie-rail movie-results-rail" data-movie-rail data-rail-status="idle">
+            <div class="movie-rail-meta">
+              <span class="movie-rail-count" data-movie-rail-count></span>
+              <div class="movie-rail-controls">
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
+                  &larr;
+                </button>
+                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
+                  &rarr;
+                </button>
+              </div>
+            </div>
+            <div class="movie-rail-viewport" data-movie-rail-viewport>
+              <div id="saved-titles-grid" class="movie-rail-track saved-title-page-grid" data-movie-rail-track></div>
+            </div>
+          </section>
         </section>
       </main>
     </div>
@@ -132,6 +147,7 @@
 
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
+    <script src="./movie-results.js?v=20260422b" defer></script>
     <script src="./saved-titles.js?v=20260421a" defer></script>
   </body>
 </html>

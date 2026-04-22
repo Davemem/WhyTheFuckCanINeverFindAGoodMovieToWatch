@@ -150,6 +150,8 @@
       setSearchMode,
       beforeRender,
       isCurrentRender = null,
+      railRoot = null,
+      railOptions = {},
     } = config;
 
     if (!container) {
@@ -161,6 +163,11 @@
     }
     if (typeof beforeRender === "function") {
       beforeRender();
+    }
+
+    if (railRoot) {
+      bindRail(railRoot, railOptions);
+      setRailStatus(railRoot, movies.length ? "loaded" : "empty", railOptions);
     }
 
     container.replaceChildren();
@@ -188,6 +195,9 @@
         fragment.append(buildCard(movies[cursor]));
       }
       container.append(fragment);
+      if (railRoot) {
+        syncRail(railRoot, railOptions);
+      }
       index = end;
 
       if (index < movies.length) {
@@ -210,6 +220,148 @@
         currentCard.replaceWith(replacement);
       }
     });
+  }
+
+  function resolveRail(rootOrTrack) {
+    if (!rootOrTrack) {
+      return null;
+    }
+    if (rootOrTrack.matches?.("[data-movie-rail]")) {
+      return rootOrTrack;
+    }
+    return rootOrTrack.closest?.("[data-movie-rail]") || null;
+  }
+
+  function getRailParts(rootOrTrack) {
+    const root = resolveRail(rootOrTrack);
+    if (!root) {
+      return null;
+    }
+    return {
+      root,
+      viewport: root.querySelector("[data-movie-rail-viewport]"),
+      track: root.querySelector("[data-movie-rail-track]"),
+      countLabel: root.querySelector("[data-movie-rail-count]"),
+      previousButton: root.querySelector('[data-rail-direction="prev"]'),
+      nextButton: root.querySelector('[data-rail-direction="next"]'),
+    };
+  }
+
+  function getRailStep(parts, options = {}) {
+    const firstCard = parts.track?.firstElementChild;
+    if (firstCard instanceof HTMLElement) {
+      const styles = global.getComputedStyle(parts.track);
+      const gap = Number.parseFloat(styles.columnGap || styles.gap || String(options.gap || 8)) || 8;
+      return firstCard.getBoundingClientRect().width + gap;
+    }
+    return (options.cardWidth || 252) + (options.gap || 8);
+  }
+
+  function getVisibleRailCount(rootOrTrack, options = {}) {
+    const parts = getRailParts(rootOrTrack);
+    if (!parts?.viewport) {
+      return 1;
+    }
+    const step = Math.max(1, getRailStep(parts, options));
+    return Math.max(1, Math.floor((parts.viewport.clientWidth + (options.gap || 8)) / step));
+  }
+
+  function buildRailCountText(parts, options = {}) {
+    const total = parts.track?.children.length || 0;
+    const status = parts.root.dataset.railStatus || "loaded";
+    const visibleCount = getVisibleRailCount(parts.root, options);
+    const step = Math.max(1, getRailStep(parts, options));
+    const currentIndex = Math.min(total - 1, Math.max(0, Math.round((parts.viewport?.scrollLeft || 0) / step)));
+    const endIndex = Math.min(total, currentIndex + visibleCount);
+    const statusText = options.statusText || {};
+
+    if (status === "loading" || status === "idle") {
+      return statusText.loading || "Loading titles...";
+    }
+    if (status === "error") {
+      return statusText.error || "Titles unavailable";
+    }
+    if (!total) {
+      return statusText.empty || "No titles available";
+    }
+    if (typeof statusText.loaded === "function") {
+      return statusText.loaded({ total, visibleCount, currentIndex, endIndex });
+    }
+    return `${Math.min(visibleCount, total)} on this row · ${currentIndex + 1}-${endIndex} of ${total}`;
+  }
+
+  function syncRail(rootOrTrack, options = {}) {
+    const parts = getRailParts(rootOrTrack);
+    if (!parts?.viewport || !parts.track) {
+      return;
+    }
+
+    if (parts.countLabel) {
+      parts.countLabel.textContent = buildRailCountText(parts, options);
+    }
+
+    const total = parts.track.children.length || 0;
+    const visibleCount = getVisibleRailCount(parts.root, options);
+    const status = parts.root.dataset.railStatus || "loaded";
+    const maxScrollLeft = Math.max(0, parts.viewport.scrollWidth - parts.viewport.clientWidth - 4);
+
+    if (parts.previousButton) {
+      parts.previousButton.disabled = status !== "loaded" || parts.viewport.scrollLeft <= 4 || total <= visibleCount;
+    }
+    if (parts.nextButton) {
+      parts.nextButton.disabled = status !== "loaded" || parts.viewport.scrollLeft >= maxScrollLeft || total <= visibleCount;
+    }
+  }
+
+  function setRailStatus(rootOrTrack, status, options = {}) {
+    const parts = getRailParts(rootOrTrack);
+    if (!parts?.root) {
+      return;
+    }
+    parts.root.dataset.railStatus = status;
+    syncRail(parts.root, options);
+  }
+
+  function bindRail(rootOrTrack, options = {}) {
+    const parts = getRailParts(rootOrTrack);
+    if (!parts?.root || parts.root.dataset.movieRailBound === "1") {
+      if (parts?.root) {
+        parts.root.__movieRailOptions = { ...(parts.root.__movieRailOptions || {}), ...options };
+      }
+      return parts?.root || null;
+    }
+
+    parts.root.__movieRailOptions = options;
+
+    parts.root.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-rail-direction]");
+      if (!button || !parts.viewport) {
+        return;
+      }
+      const direction = button.dataset.railDirection === "prev" ? -1 : 1;
+      const visibleCount = getVisibleRailCount(parts.root, parts.root.__movieRailOptions || {});
+      const step = getRailStep(parts, parts.root.__movieRailOptions || {});
+      parts.viewport.scrollBy({ left: direction * visibleCount * step, behavior: "smooth" });
+      global.setTimeout(() => {
+        syncRail(parts.root, parts.root.__movieRailOptions || {});
+      }, 180);
+    });
+
+    parts.root.addEventListener("scroll", (event) => {
+      const viewport = event.target.closest("[data-movie-rail-viewport]");
+      if (!viewport) {
+        return;
+      }
+      const currentOptions = parts.root.__movieRailOptions || {};
+      syncRail(parts.root, currentOptions);
+      if (typeof currentOptions.onScroll === "function") {
+        currentOptions.onScroll(parts.root, viewport);
+      }
+    }, true);
+
+    parts.root.dataset.movieRailBound = "1";
+    syncRail(parts.root, options);
+    return parts.root;
   }
 
   async function progressivelyEnrichMovies(config) {
@@ -266,13 +418,17 @@
 
   global.MovieResults = {
     buildMovieCard,
+    bindRail,
     formatGenres,
     formatInteger,
     formatPercent,
     formatRating,
+    getVisibleRailCount,
     patchMovieCards,
     progressivelyEnrichMovies,
     renderMovieCards,
+    setRailStatus,
     setCardField,
+    syncRail,
   };
 })(window);

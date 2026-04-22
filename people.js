@@ -2,6 +2,7 @@ const elements = {
   indexSummary: document.querySelector("#index-summary"),
   resultsSection: document.querySelector("#people-results-section"),
   resultsGrid: document.querySelector("#people-results-grid"),
+  resultsRail: document.querySelector("#people-results-grid")?.closest("[data-movie-rail]"),
   resultsSummary: document.querySelector("#people-results-summary"),
   resultsTitle: document.querySelector("#people-results-title"),
   resultsBack: document.querySelector("#people-results-back"),
@@ -57,6 +58,9 @@ async function bootstrap() {
   applyDepartmentCopy();
   syncCatalogRoleChoices();
   bindEvents();
+  if (elements.resultsRail) {
+    window.MovieResults.bindRail(elements.resultsRail);
+  }
   setSearchMode(false);
 
   const statusPromise = fetchJsonWithTimeout("/api/index-status", 2500);
@@ -461,6 +465,8 @@ async function refreshResults() {
 
 function renderMovies(movies, totalMatches) {
   const renderToken = ++pageState.renderToken;
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
   window.MovieResults.renderMovieCards({
     container: elements.resultsGrid,
     movies,
@@ -474,6 +480,7 @@ function renderMovies(movies, totalMatches) {
     buildCard: buildMovieCard,
     batchSize: 24,
     isCurrentRender: () => renderToken === pageState.renderToken,
+    railRoot: elements.resultsRail,
   });
 }
 
@@ -482,6 +489,10 @@ function renderPeopleResults(people) {
     return;
   }
 
+  if (elements.resultsRail) {
+    elements.resultsRail.dataset.railContentKind = "entity";
+  }
+  elements.resultsGrid.classList.add("is-entity-results");
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = `${people.length} person${people.length === 1 ? "" : "s"} matched your search.`;
 
@@ -543,6 +554,11 @@ function renderLoadingState() {
   if (!elements.resultsGrid || !elements.resultsSummary) {
     return;
   }
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
+  if (elements.resultsRail) {
+    window.MovieResults.setRailStatus(elements.resultsRail, "loading");
+  }
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = "Fetching live results.";
   const loadingState = document.createElement("div");
@@ -555,6 +571,13 @@ function renderPeopleLoadingState() {
   if (!elements.resultsGrid || !elements.resultsSummary) {
     return;
   }
+  if (elements.resultsRail) {
+    elements.resultsRail.dataset.railContentKind = "entity";
+  }
+  elements.resultsGrid.classList.add("is-entity-results");
+  if (elements.resultsRail) {
+    window.MovieResults.setRailStatus(elements.resultsRail, "loading");
+  }
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = "Searching people.";
   const loadingState = document.createElement("div");
@@ -566,6 +589,11 @@ function renderPeopleLoadingState() {
 function renderErrorState(message) {
   if (!elements.resultsGrid || !elements.resultsSummary) {
     return;
+  }
+  elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
+  elements.resultsGrid.classList.remove("is-entity-results");
+  if (elements.resultsRail) {
+    window.MovieResults.setRailStatus(elements.resultsRail, "error");
   }
   elements.resultsGrid.replaceChildren();
   elements.resultsSummary.textContent = "Search failed.";
