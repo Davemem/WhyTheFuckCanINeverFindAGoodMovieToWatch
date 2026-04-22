@@ -23,6 +23,7 @@
     localWatchlist: new Set(),
     localWatchlistMovies: new Map(),
     localSavedPeople: new Map(),
+    autoImportInFlight: false,
     importPrompt: {
       visible: false,
       titleCount: 0,
@@ -160,31 +161,7 @@
       return loadRemoteState({ preserveInfo: true });
     },
     async importLocalState() {
-      if (!state.authenticated || !state.user?.id) {
-        throw new Error("Sign in to import local saved data.");
-      }
-
-      ensureRemoteWritable();
-
-      const payload = {
-        watchlist: [...state.localWatchlist],
-        watchlistMovies: [...state.localWatchlistMovies.values()],
-        savedPeople: [...state.localSavedPeople.values()],
-      };
-
-      const response = await fetchJson("/api/me/saved/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      applyRemotePayload(response);
-      markImportDecision("imported");
-      state.info = `Imported ${response.imported?.importedTitles || 0} titles and ${response.imported?.importedPeople || 0} people into your account.`;
-      state.error = "";
-      updateImportPrompt();
-      emitChange();
-      return getSnapshot();
+      return runLocalImport({ silentIfEmpty: false });
     },
     dismissImportPrompt() {
       markImportDecision("dismissed");
@@ -205,6 +182,7 @@
       state.loading = false;
       state.source = "local";
       state.info = "";
+      state.autoImportInFlight = false;
       applyLocalSnapshotToActiveState();
       updateImportPrompt();
       emitChange();
@@ -227,10 +205,12 @@
       applyRemotePayload(payload);
       state.source = "remote";
       state.error = "";
+      await maybeAutoImportLocalState();
       updateImportPrompt();
     } catch (error) {
       state.source = "remote-error";
       state.error = error instanceof Error ? error.message : "Unable to load account saves.";
+      state.autoImportInFlight = false;
       state.watchlist = new Set();
       state.watchlistMovies = new Map();
       state.savedPeople = new Map();
@@ -293,6 +273,84 @@
     updateImportPrompt();
     emitChange();
     return getSnapshot();
+  }
+
+  async function maybeAutoImportLocalState() {
+    if (!state.authenticated || state.source !== "remote" || state.autoImportInFlight) {
+      return false;
+    }
+
+    const pendingTitleCount = countMissingLocalTitles();
+    const pendingPersonCount = countMissingLocalPeople();
+    if (!pendingTitleCount && !pendingPersonCount) {
+      markImportDecision("imported");
+      return false;
+    }
+
+    await runLocalImport({ silentIfEmpty: true });
+    return true;
+  }
+
+  async function runLocalImport(options = {}) {
+    if (!state.authenticated || !state.user?.id) {
+      throw new Error("Sign in to import local saved data.");
+    }
+
+    ensureRemoteWritable();
+
+    const payload = buildPendingImportPayload();
+    if (!payload.watchlistMovies.length && !payload.savedPeople.length) {
+      markImportDecision("imported");
+      updateImportPrompt();
+      if (!options.silentIfEmpty) {
+        state.info = "Your local saves are already synced to this account.";
+        state.error = "";
+        emitChange();
+      }
+      return getSnapshot();
+    }
+
+    state.autoImportInFlight = true;
+
+    try {
+      const response = await fetchJson("/api/me/saved/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      applyRemotePayload(response);
+      markImportDecision("imported");
+      state.info = `Synced ${response.imported?.importedTitles || 0} local title${(response.imported?.importedTitles || 0) === 1 ? "" : "s"} and ${response.imported?.importedPeople || 0} local people to your account.`;
+      state.error = "";
+      updateImportPrompt();
+      emitChange();
+      return getSnapshot();
+    } finally {
+      state.autoImportInFlight = false;
+    }
+  }
+
+  function buildPendingImportPayload() {
+    const pendingMovies = [];
+    state.localWatchlistMovies.forEach((movie, movieId) => {
+      if (!state.watchlist.has(movieId)) {
+        pendingMovies.push(movie);
+      }
+    });
+
+    const pendingPeople = [];
+    state.localSavedPeople.forEach((person, personId) => {
+      if (!state.savedPeople.has(personId) && person?.name) {
+        pendingPeople.push(person);
+      }
+    });
+
+    return {
+      watchlist: pendingMovies.map((movie) => movie.id),
+      watchlistMovies: pendingMovies,
+      savedPeople: pendingPeople,
+    };
   }
 
   function loadLocalSnapshot() {
@@ -358,6 +416,7 @@
     state.importPrompt = {
       visible:
         Boolean(state.authenticated && state.source === "remote")
+        && !state.autoImportInFlight
         && (pendingTitleCount > 0 || pendingPersonCount > 0)
         && decision !== "imported"
         && decision !== "dismissed",
