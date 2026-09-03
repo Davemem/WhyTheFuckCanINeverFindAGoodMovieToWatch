@@ -275,6 +275,7 @@ function bindEvents() {
   }
   if (elements.searchType) {
     elements.searchType.addEventListener("change", () => {
+      liveState.exactMatch = false;
       syncSearchModeUi();
       elements.peopleSuggestions.replaceChildren();
       refreshMovies();
@@ -537,17 +538,19 @@ function syncRangeLabels() {
 function renderMovies(movies) {
   liveState.renderToken += 1;
   const renderToken = liveState.renderToken;
+  const totalMatches = liveState.totalMatches || movies.length;
+  const visibleMatches = movies.length;
   elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
   elements.resultsGrid.classList.remove("is-entity-results");
   resetEntityPagination();
   window.MovieResults.renderMovieCards({
     container: elements.resultsGrid,
     movies,
-    totalMatches: liveState.totalMatches || movies.length,
+    totalMatches,
     summaryElement: elements.resultsSummary,
-    summaryText: `${liveState.totalMatches || movies.length} live movie${
-      (liveState.totalMatches || movies.length) === 1 ? "" : "s"
-    } match your current filter stack.`,
+    summaryText: visibleMatches > 0 && totalMatches > visibleMatches
+      ? `Showing the top ${visibleMatches} of ${totalMatches} live movies that match your current filters.`
+      : `${totalMatches} live movie${totalMatches === 1 ? "" : "s"} match your current filter stack.`,
     emptyTitle: "No live matches.",
     emptyMessage: "Broaden the filters or switch to a different person, studio, or award search.",
     buildCard: buildMovieCard,
@@ -769,7 +772,7 @@ function buildDirectoryPersonCard(person, openLabel = "Show matching movies") {
   } else {
     portraitFrame.classList.add("is-empty");
     portrait.remove();
-    portraitFrame.innerHTML = `<span>${person.name}</span>`;
+    appendTextFallback(portraitFrame, person.name);
   }
 
   return fragment;
@@ -811,7 +814,7 @@ function renderPeopleDirectory(container, people) {
     } else {
       portraitFrame.classList.add("is-empty");
       portrait.remove();
-      portraitFrame.innerHTML = `<span>${person.name}</span>`;
+      appendTextFallback(portraitFrame, person.name);
     }
 
     container.append(fragment);
@@ -947,8 +950,22 @@ function renderErrorState(message) {
   elements.resultsGrid.replaceChildren();
   const errorState = document.createElement("div");
   errorState.className = "empty-state";
-  errorState.innerHTML = `<h3>Live fetch failed.</h3><p>${message}</p>`;
+  appendMessageState(errorState, "Live fetch failed.", message);
   elements.resultsGrid.append(errorState);
+}
+
+function appendTextFallback(container, value) {
+  const fallback = document.createElement("span");
+  fallback.textContent = value;
+  container.replaceChildren(fallback);
+}
+
+function appendMessageState(container, title, message) {
+  const heading = document.createElement("h3");
+  const copy = document.createElement("p");
+  heading.textContent = title;
+  copy.textContent = message;
+  container.append(heading, copy);
 }
 
 function handlePersonSelection(event) {
@@ -1057,7 +1074,9 @@ function resetFilters() {
 function setActiveRole(role) {
   liveState.activeRole = role;
   elements.roleFilter.querySelectorAll(".segment").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.role === role);
+    const isActive = button.dataset.role === role;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
 }
 

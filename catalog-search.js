@@ -269,7 +269,9 @@ function syncSearchTypeUi({
       roleLabel.textContent = "Studios ignore role matching";
     }
     form.querySelectorAll("[data-role-choice]").forEach((choice) => {
-      choice.classList.toggle("is-active", choice.dataset.roleChoice === "any");
+      const isActive = choice.dataset.roleChoice === "any";
+      choice.classList.toggle("is-active", isActive);
+      choice.setAttribute("aria-pressed", String(isActive));
     });
     applyStudioPlaceholder(personInput);
     return;
@@ -289,7 +291,9 @@ function applyRoleChoice(form, value) {
     roleLabel.textContent = value === "any" ? "Any role" : `Only ${value} matches`;
   }
   form.querySelectorAll("[data-role-choice]").forEach((choice) => {
-    choice.classList.toggle("is-active", choice.dataset.roleChoice === value);
+    const isActive = choice.dataset.roleChoice === value;
+    choice.classList.toggle("is-active", isActive);
+    choice.setAttribute("aria-pressed", String(isActive));
   });
 }
 

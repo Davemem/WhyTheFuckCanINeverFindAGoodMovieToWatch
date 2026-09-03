@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="./styles.css?v=20260414a" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
@@ -27,7 +28,7 @@
           <a href="/people.html?department=producers">Producers</a>
           <a href="/people.html?department=studios">Studios</a>
           <a href="/saved.html">Saved People</a>
-          <a class="is-active" href="/saved-titles.html">Saved Titles</a>
+          <a class="is-active" href="/saved-titles.html" aria-current="page">Saved Titles</a>
           <a href="/account.html">Account</a>
         </nav>
         <div class="title-bar-account" data-auth-root aria-live="polite"></div>
@@ -57,7 +58,7 @@
         </section>
       </header>
 
-      <main>
+      <main id="main-content" tabindex="-1">
         <section class="catalog-section" aria-labelledby="saved-titles-heading">
           <div class="results-header">
             <div>
@@ -88,7 +89,7 @@
     <template id="movie-card-template">
       <article class="movie-card">
         <div class="movie-poster-frame">
-          <img class="movie-poster" alt="" loading="lazy" />
+          <img class="movie-poster" alt="" loading="lazy" width="500" height="750" />
         </div>
         <div class="card-topline">
           <span class="pill pill-year"></span>

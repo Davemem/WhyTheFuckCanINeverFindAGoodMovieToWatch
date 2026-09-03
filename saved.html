@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="./styles.css?v=20260414a" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
@@ -26,7 +27,7 @@
           <a href="/people.html?department=directors">Directors</a>
           <a href="/people.html?department=producers">Producers</a>
           <a href="/people.html?department=studios">Studios</a>
-          <a class="is-active" href="/saved.html">Saved People</a>
+          <a class="is-active" href="/saved.html" aria-current="page">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
           <a href="/account.html">Account</a>
         </nav>
@@ -67,7 +68,7 @@
         </section>
       </header>
 
-      <main>
+      <main id="main-content" tabindex="-1">
         <section class="catalog-section" aria-labelledby="saved-people-heading">
           <div class="results-header">
             <div>
@@ -94,6 +95,7 @@
               role="tab"
               aria-selected="false"
               aria-controls="saved-writers-panel"
+              tabindex="-1"
               data-saved-tab="writers"
             >
               Writers
@@ -105,6 +107,7 @@
               role="tab"
               aria-selected="false"
               aria-controls="saved-filmmakers-panel"
+              tabindex="-1"
               data-saved-tab="filmmakers"
             >
               Directors / Producers
@@ -172,7 +175,7 @@
     <template id="movie-card-template">
       <article class="movie-card">
         <div class="movie-poster-frame">
-          <img class="movie-poster" alt="" loading="lazy" />
+          <img class="movie-poster" alt="" loading="lazy" width="500" height="750" />
         </div>
         <div class="card-topline">
           <span class="pill pill-year"></span>
@@ -233,7 +236,7 @@
       <article class="saved-person-row" data-select-person-id>
         <div class="saved-person-profile">
           <div class="person-card-visual saved-person-visual">
-            <img class="person-card-portrait" alt="" loading="lazy" />
+            <img class="person-card-portrait" alt="" loading="lazy" width="500" height="750" />
           </div>
           <div class="saved-person-copy">
             <p class="person-card-role"></p>

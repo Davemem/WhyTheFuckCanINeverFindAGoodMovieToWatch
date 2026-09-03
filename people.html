@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="./styles.css?v=20260414a" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
@@ -34,7 +35,15 @@
       </div>
       <section class="saved-sync-banner" data-saved-sync-banner hidden></section>
 
-      <main>
+      <main id="main-content" tabindex="-1">
+        <header class="catalog-section directory-page-header">
+          <p class="section-label">Directory</p>
+          <h1 id="directory-page-heading">Actors directory</h1>
+          <p id="directory-page-description" class="results-summary">
+            Browse ranked actors, then open a filmography or refine the catalog filters.
+          </p>
+        </header>
+
         <section class="filter-panel catalog-launch-panel" aria-label="Search the movie catalog">
           <div class="filter-panel-header">
             <h2>Search the movie catalog</h2>
@@ -87,8 +96,8 @@
               </div>
               <input type="hidden" name="role" value="any" data-role-input />
               <div class="segmented-control" aria-label="Filter by credit type" data-role-segments>
-                <button type="button" class="segment is-active" data-role-choice="any">Any</button>
-                <button type="button" class="segment" data-role-choice="cast">Cast</button>
+                <button type="button" class="segment is-active" data-role-choice="any" aria-pressed="true">Any</button>
+                <button type="button" class="segment" data-role-choice="cast" aria-pressed="false">Cast</button>
               </div>
             </div>
 
@@ -196,7 +205,7 @@
     <template id="person-card-template">
       <article class="person-card">
         <div class="person-card-visual">
-          <img class="person-card-portrait" alt="" loading="lazy" />
+          <img class="person-card-portrait" alt="" loading="lazy" width="500" height="750" />
         </div>
         <p class="person-card-role"></p>
         <h3></h3>
@@ -216,7 +225,7 @@
     <template id="movie-card-template">
       <article class="movie-card">
         <div class="movie-poster-frame">
-          <img class="movie-poster" alt="" loading="lazy" />
+          <img class="movie-poster" alt="" loading="lazy" width="500" height="750" />
         </div>
         <div class="card-topline">
           <span class="pill pill-year"></span>

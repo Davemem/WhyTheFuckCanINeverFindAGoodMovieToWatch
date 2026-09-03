@@ -205,7 +205,6 @@
       applyRemotePayload(payload);
       state.source = "remote";
       state.error = "";
-      await maybeAutoImportLocalState();
       updateImportPrompt();
     } catch (error) {
       state.source = "remote-error";
@@ -273,22 +272,6 @@
     updateImportPrompt();
     emitChange();
     return getSnapshot();
-  }
-
-  async function maybeAutoImportLocalState() {
-    if (!state.authenticated || state.source !== "remote" || state.autoImportInFlight) {
-      return false;
-    }
-
-    const pendingTitleCount = countMissingLocalTitles();
-    const pendingPersonCount = countMissingLocalPeople();
-    if (!pendingTitleCount && !pendingPersonCount) {
-      markImportDecision("imported");
-      return false;
-    }
-
-    await runLocalImport({ silentIfEmpty: true });
-    return true;
   }
 
   async function runLocalImport(options = {}) {

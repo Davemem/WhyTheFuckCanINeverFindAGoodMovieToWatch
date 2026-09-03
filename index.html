@@ -17,10 +17,11 @@
     <link rel="stylesheet" href="./styles.css?v=20260414a" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
-          <a class="is-active" href="/">Home</a>
+          <a class="is-active" href="/" aria-current="page">Home</a>
           <a href="/people.html?department=actors">Actors</a>
           <a href="/people.html?department=writers">Writers</a>
           <a href="/people.html?department=directors">Directors</a>
@@ -40,13 +41,13 @@
             <span>Selector</span>
           </h1>
           <p class="hero-text">
-            Can't find a movie after endlessy browsing? Find new (and old)
+            Can't find a movie after endlessly browsing? Find new (and old)
             movies by searching the filmographies of actors,
             directors, producers, and writers you already know and love, or
             switch over to studio and award-winning searches, then tighten the
             list by ratings, genre, and release year. Save your favourite
             people and save titles to make your future movie selection stress
-            free
+            free.
           </p>
           <p id="data-source" class="hero-subtext">
             Live data will load here once the TMDb and OMDb keys are configured.
@@ -133,11 +134,11 @@
                   <strong id="role-description" class="field-helper">Any role</strong>
                 </div>
                 <div class="segmented-control" id="role-filter" aria-label="Filter by credit type">
-                  <button type="button" class="segment is-active" data-role="any">Any</button>
-                  <button type="button" class="segment" data-role="cast">Cast</button>
-                  <button type="button" class="segment" data-role="director">Director</button>
-                  <button type="button" class="segment" data-role="producer">Producer</button>
-                  <button type="button" class="segment" data-role="writer">Writer</button>
+                  <button type="button" class="segment is-active" data-role="any" aria-pressed="true">Any</button>
+                  <button type="button" class="segment" data-role="cast" aria-pressed="false">Cast</button>
+                  <button type="button" class="segment" data-role="director" aria-pressed="false">Director</button>
+                  <button type="button" class="segment" data-role="producer" aria-pressed="false">Producer</button>
+                  <button type="button" class="segment" data-role="writer" aria-pressed="false">Writer</button>
                 </div>
               </div>
 
@@ -202,7 +203,7 @@
         </section>
       </header>
 
-      <main>
+      <main id="main-content" tabindex="-1">
         <section class="status-strip" aria-live="polite" hidden>
           <p id="api-status">Waiting for live data.</p>
         </section>
@@ -342,7 +343,7 @@
     <template id="movie-card-template">
       <article class="movie-card">
         <div class="movie-poster-frame">
-          <img class="movie-poster" alt="" loading="lazy" />
+          <img class="movie-poster" alt="" loading="lazy" width="500" height="750" />
         </div>
         <div class="card-topline">
           <span class="pill pill-year"></span>
@@ -399,7 +400,7 @@
     <template id="person-card-template">
       <article class="person-card">
         <div class="person-card-visual">
-          <img class="person-card-portrait" alt="" loading="lazy" />
+          <img class="person-card-portrait" alt="" loading="lazy" width="500" height="750" />
         </div>
         <p class="person-card-role"></p>
         <h3></h3>

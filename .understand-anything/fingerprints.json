@@ -1,0 +1,4072 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "31af56f77b010e66057f120ec3df487c3ebded27",
+  "generatedAt": "2026-09-03T09:38:37.745Z",
+  "files": {
+    ".DS_Store": {
+      "filePath": ".DS_Store",
+      "contentHash": "3159a3b1def8b0d84f0de03e92122e9e81d8d19598ef30b7e1bff0c0fd7eefc7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": false
+    },
+    ".env.example": {
+      "filePath": ".env.example",
+      "contentHash": "f91dd61d0edda5b1e624fb2ad56a59dbfd7813427486140486a30bf3df03896c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    ".github/workflows/deploy-render.yml": {
+      "filePath": ".github/workflows/deploy-render.yml",
+      "contentHash": "6a606fbf01e18134c9fe5a39e8b7c4a79a3fedbaf8a55199026ac38c91e0bfb6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "account.html": {
+      "filePath": "account.html",
+      "contentHash": "ebafcc91a43efa77e3c3d41bb8fe7a265e4cc6a82cfd4bd636c5f12956e5a751",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 105,
+      "hasStructuralAnalysis": false
+    },
+    "account.js": {
+      "filePath": "account.js",
+      "contentHash": "f80edd22b7429f218de929c10ec97320580872d900ed70e6ea29c1e5bd5ff3a5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 400,
+      "hasStructuralAnalysis": true
+    },
+    "app.js": {
+      "filePath": "app.js",
+      "contentHash": "6b678b50a525581edf98c08e7a72e8dca214b3f491e0dfecb4e9c43385f37adf",
+      "functions": [
+        {
+          "name": "bootstrap",
+          "params": [],
+          "exported": false,
+          "lineCount": 73
+        },
+        {
+          "name": "loadFeaturedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "populateGenres",
+          "params": [],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "populateDecades",
+          "params": [],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "bindEvents",
+          "params": [],
+          "exported": false,
+          "lineCount": 94
+        },
+        {
+          "name": "handleMovieFilterIntent",
+          "params": [],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "updatePersonSuggestions",
+          "params": [],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "refreshMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 94
+        },
+        {
+          "name": "fetchEntityPage",
+          "params": [],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "prefetchNextEntityPage",
+          "params": [],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "syncRangeLabels",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "renderMovies",
+          "params": [
+            "movies"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "renderEntityResults",
+          "params": [
+            "entities",
+            "searchType"
+          ],
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "renderIdleState",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "resetEntityPagination",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "buildMovieCard",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "renderRolePreview",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "renderActorPreview",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "applyDevStatusVisibility",
+          "params": [],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "applyRandomPlaceholder",
+          "params": [
+            "input",
+            "pools"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "applyStudioPlaceholder",
+          "params": [
+            "input"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "pickRandomName",
+          "params": [
+            "list",
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "refreshRotatingSection",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "buildRotatingPersonCard",
+          "params": [
+            "person",
+            "rank"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "buildDirectoryPersonCard",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "buildRankedPersonRow",
+          "params": [
+            "person",
+            "rank"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "renderPeopleDirectory",
+          "params": [
+            "container",
+            "people"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "loadIndexStatus",
+          "params": [],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "renderWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "enrichVisibleMovies",
+          "params": [
+            "parentRequestId"
+          ],
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "syncWatchlistMovieDetails",
+          "params": [
+            "enrichedById"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "renderLoadingState",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "renderErrorState",
+          "params": [
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "appendTextFallback",
+          "params": [
+            "container",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "appendMessageState",
+          "params": [
+            "container",
+            "title",
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "handlePersonSelection",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "handlePersonSearchKeydown",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "handleSortChange",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "handleWatchlistAction",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "resetFilters",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "setActiveRole",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "getFilterState",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "buildFetchKey",
+          "params": [
+            "state"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "applyStateFromUrl",
+          "params": [],
+          "exported": false,
+          "lineCount": 34
+        },
+        {
+          "name": "updateUrlFromState",
+          "params": [
+            "state"
+          ],
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "shouldFetchOnLoad",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "handlePopState",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "setSearchMode",
+          "params": [
+            "isSearchMode"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "currentSearchType",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "isEntitySelectionMode",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "syncSearchModeUi",
+          "params": [],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "syncMovieFilterState",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "buildResultsTitle",
+          "params": [
+            "payload"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "fetchJson",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "fetchJsonWithTimeout",
+          "params": [
+            "url",
+            "timeoutMs"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "setStatus",
+          "params": [
+            "message",
+            "isError"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "formatRating",
+          "params": [
+            "value",
+            "decimals"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatPercent",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatInteger",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatGenres",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "formatDateTime",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "filterPeopleDirectory",
+          "params": [
+            "people",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "sortPeopleDirectory",
+          "params": [
+            "people",
+            "sort"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "pickRotatingPeopleForRole",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "getRotatingPool",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "pickFromRolePool",
+          "params": [
+            "people",
+            "count",
+            "seedKey"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "loadRecentPickIds",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "saveRecentPickIds",
+          "params": [
+            "role",
+            "ids"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "shufflePeople",
+          "params": [
+            "people",
+            "seedKey"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "dedupePeopleById",
+          "params": [
+            "people"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "getDailySeed",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "compareDiscoveryPeople",
+          "params": [
+            "left",
+            "right"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "discoveryScore",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "seededIndex",
+          "params": [
+            "seedKey",
+            "size"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "hashString",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "sortMoviesClient",
+          "params": [
+            "movies",
+            "sortBy"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "compareMovies",
+          "params": [
+            "left",
+            "right",
+            "sortBy"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "compareNumber",
+          "params": [
+            "primaryLeft",
+            "primaryRight",
+            "left",
+            "right"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "loadWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "loadSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "persistWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "loadWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "persistWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "persistSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "applyPersonActionButtons",
+          "params": [
+            "fragment",
+            "person",
+            "openLabel"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "normalizeSavedPerson",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "classifySavedPersonBucket",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "toggleSavedPerson",
+          "params": [
+            "rawRecord"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "syncRenderedSavedPeopleButtons",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "handleSavedDataUpdate",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "syncSavedCollections",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "emptyWatchlistMessage",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "debounce",
+          "params": [
+            "callback",
+            "delayMs"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "buildDecadeOptions",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1766,
+      "hasStructuralAnalysis": true
+    },
+    "auth-client.js": {
+      "filePath": "auth-client.js",
+      "contentHash": "cb50457021830ef81f69c462c3dfcfd64de553ce16b6ed714cca7c295d7cedf0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 384,
+      "hasStructuralAnalysis": true
+    },
+    "catalog-search.js": {
+      "filePath": "catalog-search.js",
+      "contentHash": "3738a9dd181ed8c8392feba13d6215608528eed72175f1d50884dc5042cfdba8",
+      "functions": [
+        {
+          "name": "setupCatalogSearch",
+          "params": [
+            "form"
+          ],
+          "exported": false,
+          "lineCount": 157
+        },
+        {
+          "name": "applyDepartmentDefaults",
+          "params": [],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "hydrateFormFromUrl",
+          "params": [],
+          "exported": false,
+          "lineCount": 53
+        },
+        {
+          "name": "syncSearchTypeUi",
+          "params": [],
+          "exported": false,
+          "lineCount": 38
+        },
+        {
+          "name": "applyRoleChoice",
+          "params": [
+            "form",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "populateGenres",
+          "params": [
+            "select",
+            "genres"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "populateDecades",
+          "params": [
+            "select"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "syncRangeLabels",
+          "params": [
+            "imdbInput",
+            "rtInput",
+            "imdbValue",
+            "rtValue"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "buildDecadeOptions",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "applyRandomPlaceholder",
+          "params": [
+            "input",
+            "pools"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "applyStudioPlaceholder",
+          "params": [
+            "input"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "pickRandomName",
+          "params": [
+            "list",
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "hashString",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "fetchJson",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "fetchBootstrapLite",
+          "params": [],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "debounce",
+          "params": [
+            "callback",
+            "wait"
+          ],
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 442,
+      "hasStructuralAnalysis": true
+    },
+    "docs/.DS_Store": {
+      "filePath": "docs/.DS_Store",
+      "contentHash": "d95e1ffa42a1d3d9df278bb195cbac8a3b01cc3643cad53a901056ecf5012859",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": false
+    },
+    "docs/auth/01-current-state-analysis.md": {
+      "filePath": "docs/auth/01-current-state-analysis.md",
+      "contentHash": "6a247003c360ae9c9ed586c90cbda6c055822959e56ac32d96eb7c6099e1c562",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 280,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/02-phase-1-foundation.md": {
+      "filePath": "docs/auth/02-phase-1-foundation.md",
+      "contentHash": "b21acb4214e53c0a150eccf02b113a960fff114a7d452923ff339f2057db1ddc",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 165,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/03-phase-2-google-sign-in.md": {
+      "filePath": "docs/auth/03-phase-2-google-sign-in.md",
+      "contentHash": "159eb2e4f9a39ef85dd0820ef3f1df17543fe18824dbe12bd6827deacb016a9e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 160,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/04-phase-3-user-data-sync.md": {
+      "filePath": "docs/auth/04-phase-3-user-data-sync.md",
+      "contentHash": "c095aa49a851be811bc8a5657e3615df205bd108dfd67b6ae83d609f2f831055",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 156,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/05-phase-4-hardening-launch.md": {
+      "filePath": "docs/auth/05-phase-4-hardening-launch.md",
+      "contentHash": "4508452c31d3ad765e81769fbc37b37d9bbd11ef0749eb1ba91847a41e63268c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 122,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/06-phase-5-account-sessions.md": {
+      "filePath": "docs/auth/06-phase-5-account-sessions.md",
+      "contentHash": "bdedb8249a48fd7520af1a70e67d180ca8abd1a4b7a63f053e1f9b5079495974",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 92,
+      "hasStructuralAnalysis": true
+    },
+    "docs/auth/README.md": {
+      "filePath": "docs/auth/README.md",
+      "contentHash": "af9d96322bda6a0e9f82b6f925cfe928a93ba0ffb86d5671a4c696ed478c84a2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "index.html": {
+      "filePath": "index.html",
+      "contentHash": "24bbf9c3d9f45cedba9741fe5b526be1572a9dae190e1ab6b74cf4bd3eef195f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 470,
+      "hasStructuralAnalysis": false
+    },
+    "lib/auth/account-store.js": {
+      "filePath": "lib/auth/account-store.js",
+      "contentHash": "65239352dd745433e2519bafd56f04f420e7f2f305a4a475b30e249f72f2dbd7",
+      "functions": [
+        {
+          "name": "getUserAccountOverview",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/cookies.js": {
+      "filePath": "lib/auth/cookies.js",
+      "contentHash": "07d29900fe045f15c170350377e477f59d85161634faf651a418cbea2cf7553d",
+      "functions": [
+        {
+          "name": "parseCookies",
+          "params": [
+            "headerValue"
+          ],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "serializeCookie",
+          "params": [
+            "name",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 27
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/csrf.js": {
+      "filePath": "lib/auth/csrf.js",
+      "contentHash": "048d0c5a3fdf5601b41b159610e2a69943a2ed43b672ea8fd36b144f8c356368",
+      "functions": [
+        {
+          "name": "createCsrfToken",
+          "params": [
+            "sessionToken",
+            "sessionSecret"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "readCsrfTokenFromRequest",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "isValidCsrfToken",
+          "params": [
+            "req",
+            "expectedToken"
+          ],
+          "exported": false,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/google.js": {
+      "filePath": "lib/auth/google.js",
+      "contentHash": "0bbddc0d38f3d338d1f9be5614eff7cf4ff60f25c9d7d7aa26e398797075f5e0",
+      "functions": [
+        {
+          "name": "getGoogleOAuthClient",
+          "params": [
+            "clientId"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "verifyGoogleIdToken",
+          "params": [],
+          "exported": false,
+          "lineCount": 48
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 73,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/http.js": {
+      "filePath": "lib/auth/http.js",
+      "contentHash": "effafd7a97f5734bee751618e3dad6a7f03e949ba9f3ac425ef3ad72672d08e1",
+      "functions": [
+        {
+          "name": "readJsonBody",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "getRequestOrigin",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "getRequestIp",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/request-guards.js": {
+      "filePath": "lib/auth/request-guards.js",
+      "contentHash": "aed01e51dabd1e897e16f6e56ac5704f87fffb02473e27bec5ad6b8ad0ca3bcf",
+      "functions": [
+        {
+          "name": "createAllowedOrigins",
+          "params": [
+            "appBaseUrl"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "isTrustedOriginRequest",
+          "params": [
+            "req",
+            "allowedOrigins"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "addOriginIfValid",
+          "params": [
+            "target",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 40,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/saved-data-store.js": {
+      "filePath": "lib/auth/saved-data-store.js",
+      "contentHash": "391a22661327244ff8d5bef150915941fcecd1009b422b2ef1bcbfecc465df2b",
+      "functions": [
+        {
+          "name": "normalizeSavedMoviePayload",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "normalizeSavedPersonPayload",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "listUserSavedTitles",
+          "params": [],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "listUserSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "saveUserTitle",
+          "params": [],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "removeUserTitle",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "saveUserPerson",
+          "params": [],
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "removeUserPerson",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "importUserSavedState",
+          "params": [],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "getUserSavedState",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "sanitizeObject",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "sanitizeJsonValue",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "sanitizeText",
+          "params": [
+            "value",
+            "maxLength"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 285,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/session.js": {
+      "filePath": "lib/auth/session.js",
+      "contentHash": "96c3295ea6662903d9dcf44ba2ea1d0c0c85f7cc6c7dbf41e7904cb21f4eb297",
+      "functions": [
+        {
+          "name": "createSessionToken",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "hashSessionToken",
+          "params": [
+            "token",
+            "secret"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "readSessionTokenFromRequest",
+          "params": [
+            "req",
+            "cookieName"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "buildSessionCookie",
+          "params": [
+            "cookieName",
+            "token"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "buildClearedSessionCookie",
+          "params": [
+            "cookieName"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "createUserSession",
+          "params": [],
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "revokeSessionByToken",
+          "params": [],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "listUserSessions",
+          "params": [],
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "revokeUserSessionById",
+          "params": [],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "revokeOtherUserSessions",
+          "params": [],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "getAuthContextFromRequest",
+          "params": [],
+          "exported": false,
+          "lineCount": 92
+        },
+        {
+          "name": "cleanupExpiredSessions",
+          "params": [],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "shouldRefreshLastSeen",
+          "params": [
+            "lastSeenAt"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 307,
+      "hasStructuralAnalysis": true
+    },
+    "lib/auth/user-store.js": {
+      "filePath": "lib/auth/user-store.js",
+      "contentHash": "062c8592f58355bf74f7079c848cc1e5ad403f70a6cbd6c79574418e39f7c6a9",
+      "functions": [
+        {
+          "name": "buildAuthUserProfile",
+          "params": [
+            "googleIdentity"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "findOrCreateUserFromGoogleIdentity",
+          "params": [],
+          "exported": false,
+          "lineCount": 133
+        },
+        {
+          "name": "normalizeAuthUser",
+          "params": [
+            "row"
+          ],
+          "exported": false,
+          "lineCount": 12
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 163,
+      "hasStructuralAnalysis": true
+    },
+    "LICENSE.md": {
+      "filePath": "LICENSE.md",
+      "contentHash": "9465fa4934e9ec53fff83aaf97ba3925068a4d155115acc67e9e0b22f259dcd0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "movie-results.js": {
+      "filePath": "movie-results.js",
+      "contentHash": "3b46b942f06ed286d1539599079b3f0acef2c31d53e39a825c633fbde86e9cb7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 441,
+      "hasStructuralAnalysis": true
+    },
+    "package.json": {
+      "filePath": "package.json",
+      "contentHash": "a6de32743c0915ad0b4732cfce211e99f4aac46ceb42f7bc5c4e0938b2093623",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 26,
+      "hasStructuralAnalysis": true
+    },
+    "people.html": {
+      "filePath": "people.html",
+      "contentHash": "f16e9892cc73727ef6ef234eb9e0c85475976538eadd88929c36fac2581f6415",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 289,
+      "hasStructuralAnalysis": false
+    },
+    "people.js": {
+      "filePath": "people.js",
+      "contentHash": "03ea93593cf9c8aa9205c3756db38ec0e040d368d6990e0ab786f41a7e14b2e3",
+      "functions": [
+        {
+          "name": "bootstrap",
+          "params": [],
+          "exported": false,
+          "lineCount": 33
+        },
+        {
+          "name": "applyDevStatusVisibility",
+          "params": [],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "bindEvents",
+          "params": [],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "renderDirectory",
+          "params": [],
+          "exported": false,
+          "lineCount": 38
+        },
+        {
+          "name": "buildPersonCard",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "handlePersonSelection",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 57
+        },
+        {
+          "name": "handleWatchlistAction",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "refreshDirectory",
+          "params": [],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "handlePopState",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "handleInlineSearchEvent",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "applyDepartmentCopy",
+          "params": [],
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "syncCatalogRoleChoices",
+          "params": [],
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "updateActiveTab",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "readDepartmentFromUrl",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "loadDirectoryForDepartment",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "currentDirectoryQuery",
+          "params": [],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "chooseVisibleDirectoryPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "refreshDirectorySuggestions",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "getSearchStateFromUrl",
+          "params": [],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "shouldFetchResultsOnLoad",
+          "params": [],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "refreshResults",
+          "params": [],
+          "exported": false,
+          "lineCount": 60
+        },
+        {
+          "name": "renderMovies",
+          "params": [
+            "movies",
+            "totalMatches"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "renderPeopleResults",
+          "params": [
+            "people"
+          ],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "buildMovieCard",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "enrichVisibleMovies",
+          "params": [
+            "parentRequestId"
+          ],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "renderLoadingState",
+          "params": [],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "renderPeopleLoadingState",
+          "params": [],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "renderErrorState",
+          "params": [
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "appendTextFallback",
+          "params": [
+            "container",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "appendMessageState",
+          "params": [
+            "container",
+            "title",
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "setSearchMode",
+          "params": [
+            "isSearchMode"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "formatRating",
+          "params": [
+            "value",
+            "decimals"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatPercent",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatInteger",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatGenres",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "departmentLabelPlural",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "applyPersonActionButtons",
+          "params": [
+            "fragment",
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "normalizeSavedPerson",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "classifySavedPersonBucket",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "loadSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "loadWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "loadWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "persistSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "persistWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "persistWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "toggleSavedPerson",
+          "params": [
+            "rawRecord"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "handleSavedDataUpdate",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "syncSavedState",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "matchesDepartment",
+          "params": [
+            "person",
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "buildResultsTitle",
+          "params": [
+            "payload"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "pickDistinctWindow",
+          "params": [
+            "source",
+            "limit",
+            "department",
+            "refreshCount"
+          ],
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "shuffleWithDailyBias",
+          "params": [
+            "list",
+            "seedKey"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "hashString",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "fetchJson",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "fetchJsonWithTimeout",
+          "params": [
+            "url",
+            "timeoutMs"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "debounce",
+          "params": [
+            "callback",
+            "delayMs"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "formatDateTime",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1035,
+      "hasStructuralAnalysis": true
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "d24fd8db894a13f4e6d50740ef4a4b7ec67b7ea54f64ad76e639cacaca1ae7c7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 212,
+      "hasStructuralAnalysis": true
+    },
+    "render.yaml": {
+      "filePath": "render.yaml",
+      "contentHash": "c41853ff1649bdf692ccad956320bdfe0231b2fc0e365de6d7eda1374b8e02a0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 49,
+      "hasStructuralAnalysis": true
+    },
+    "saved-data-client.js": {
+      "filePath": "saved-data-client.js",
+      "contentHash": "a312ad04b875cc5c152958401a61fc8dc44eb6a321a44d1bbb3daa8b6d8aad84",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 693,
+      "hasStructuralAnalysis": true
+    },
+    "saved-titles.html": {
+      "filePath": "saved-titles.html",
+      "contentHash": "6b3360d086ce078ab98aa9d5f7963b743a35c79f9b9d7b16d9e48be9e3f26ed9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 155,
+      "hasStructuralAnalysis": false
+    },
+    "saved-titles.js": {
+      "filePath": "saved-titles.js",
+      "contentHash": "aee48ee66b636fc2826da869fe8119c634c5e1ceb0e62a4cd4571ca2945e9acb",
+      "functions": [
+        {
+          "name": "renderSavedTitlesPage",
+          "params": [],
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "buildMovieCard",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "handleGridClick",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "buildEmptyState",
+          "params": [
+            "title",
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "formatRating",
+          "params": [
+            "value",
+            "decimals"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatPercent",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatInteger",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "loadWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "loadWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "persistWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "persistWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "handleSavedDataUpdate",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "syncSavedCollections",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "emptySavedTitlesMessage",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "escapeHtml",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "debounce",
+          "params": [
+            "callback",
+            "delayMs"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "refreshSynopsisToggles",
+          "params": [
+            "container"
+          ],
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 248,
+      "hasStructuralAnalysis": true
+    },
+    "saved.html": {
+      "filePath": "saved.html",
+      "contentHash": "2ea8d417fde204d20c016b7ad2406ebe2783eea1e8c92c601fd1516413480116",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 261,
+      "hasStructuralAnalysis": false
+    },
+    "saved.js": {
+      "filePath": "saved.js",
+      "contentHash": "c0f9170db8bf000b6e720379523e36a00c0f35a70f152813e0eb95de193bb6f5",
+      "functions": [
+        {
+          "name": "renderSavedPage",
+          "params": [],
+          "exported": false,
+          "lineCount": 78
+        },
+        {
+          "name": "renderSavedPeopleGrid",
+          "params": [
+            "container",
+            "people",
+            "tabKey",
+            "emptyMessage"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "buildMovieCard",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "buildSavedPersonCard",
+          "params": [
+            "person",
+            "isSelected"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "buildSavedPersonTitleCard",
+          "params": [
+            "movie",
+            "personId"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "syncAllRails",
+          "params": [],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "syncRail",
+          "params": [
+            "rail"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "getVisibleRailCount",
+          "params": [
+            "viewport"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "setActiveTab",
+          "params": [
+            "tab"
+          ],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "handleSavedTabKeydown",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "handleWindowScroll",
+          "params": [],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "handleSavedAction",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 94
+        },
+        {
+          "name": "buildEmptyState",
+          "params": [
+            "title",
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "formatRating",
+          "params": [
+            "value",
+            "decimals"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatPercent",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "formatInteger",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "loadWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "loadWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "loadSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "persistWatchlist",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "persistWatchlistMovies",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "persistSavedPeople",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "handleSavedDataUpdate",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "syncSavedCollections",
+          "params": [
+            "snapshot"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "emptySavedPeopleMessage",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "ensurePersonCatalog",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "ensureCatalogEnrichment",
+          "params": [
+            "personId",
+            "startIndex",
+            "count"
+          ],
+          "exported": false,
+          "lineCount": 42
+        },
+        {
+          "name": "inferCatalogRole",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "captureScrollState",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "restoreScrollState",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "scheduleRailEnrichment",
+          "params": [
+            "rail"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "updatePersonRails",
+          "params": [
+            "personId"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "renderActiveCatalogRail",
+          "params": [],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "renderPersonRail",
+          "params": [
+            "rail",
+            "personId"
+          ],
+          "exported": false,
+          "lineCount": 66
+        },
+        {
+          "name": "refreshSynopsisToggles",
+          "params": [
+            "container"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "resolveSelectedPersonId",
+          "params": [
+            "tabKey",
+            "people"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "updateSelectedPersonCards",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "isWriterPerson",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "fetchJson",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "debounce",
+          "params": [
+            "callback",
+            "delayMs"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "escapeHtml",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "cssEscape",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 907,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/auto-pipeline.js": {
+      "filePath": "scripts/auto-pipeline.js",
+      "contentHash": "0a67c82039d7b87f6cd97bff8a592f46bc04d5504cf3bb4b64d0a51f5144fae1",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 57
+        },
+        {
+          "name": "runScript",
+          "params": [
+            "scriptName"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "countPending",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "sleep",
+          "params": [
+            "ms"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 128,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/build-people-index.js": {
+      "filePath": "scripts/build-people-index.js",
+      "contentHash": "d0f800de70e51762511937213cdd92c4907c5bd19d4c8566194e86a55eecd7d4",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 60
+        },
+        {
+          "name": "hydratePersonForIndex",
+          "params": [
+            "candidate",
+            "index"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "buildIndexEntries",
+          "params": [
+            "details",
+            "credits",
+            "fallbackPopularity"
+          ],
+          "exported": false,
+          "lineCount": 84
+        },
+        {
+          "name": "buildDepartmentLabel",
+          "params": [
+            "knownForDepartment",
+            "hasDirector",
+            "hasActing",
+            "hasProducer",
+            "hasWriter"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "isScoredMovieCredit",
+          "params": [
+            "credit"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "dedupeCredits",
+          "params": [
+            "credits"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "scoreCredits",
+          "params": [
+            "credits"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "topCreditTitles",
+          "params": [
+            "credits"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "scoreKnownForCredit",
+          "params": [
+            "credit"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "compareIndexedPeople",
+          "params": [
+            "left",
+            "right"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "downloadLatestPersonExport",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "tmdb",
+          "params": [
+            "endpoint"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "readFetchCache",
+          "params": [
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "writeFetchCache",
+          "params": [
+            "key",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "fetchCacheFile",
+          "params": [
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "curlJson",
+          "params": [
+            "url",
+            "headers"
+          ],
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "curlBuffer",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "mapWithConcurrency",
+          "params": [
+            "items",
+            "concurrency",
+            "mapper"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "getNumberArg",
+          "params": [
+            "flag",
+            "fallback"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "addDays",
+          "params": [
+            "date",
+            "amount"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "formatExportDate",
+          "params": [
+            "date"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "ensureDir",
+          "params": [
+            "dirPath"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "loadEnv",
+          "params": [
+            "filePath"
+          ],
+          "exported": false,
+          "lineCount": 24
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 512,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/build-site-snapshots.js": {
+      "filePath": "scripts/build-site-snapshots.js",
+      "contentHash": "72a90fbc86f001908cec5ab539b11eb7ffc634b2ee203613129a753c56cc4458",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 14
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 26,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/deploy-render.js": {
+      "filePath": "scripts/deploy-render.js",
+      "contentHash": "027753531e2457b89f06c92626fc955de518aaefbb3c5b9e26c81e8178500653",
+      "functions": [
+        {
+          "name": "loadDotEnv",
+          "params": [],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "getArgValue",
+          "params": [
+            "flag"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "hasFlag",
+          "params": [
+            "flag"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "runGit",
+          "params": [
+            "args"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "resolveDeployUrl",
+          "params": [
+            "rawUrl"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "addCommitQuery",
+          "params": [
+            "url",
+            "commit"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "triggerDeploy",
+          "params": [
+            "name",
+            "rawUrl",
+            "commit"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 48
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 151,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/hydrate-people.js": {
+      "filePath": "scripts/hydrate-people.js",
+      "contentHash": "fbd7a5938e8213bddfeaa15afa38811edcbc57e7f5f1d596c96fb7e2f51bdfab",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 115
+        },
+        {
+          "name": "commitPerson",
+          "params": [
+            "pool",
+            "record"
+          ],
+          "exported": false,
+          "lineCount": 73
+        },
+        {
+          "name": "upsertCredits",
+          "params": [
+            "client",
+            "personId",
+            "credits",
+            "creditType"
+          ],
+          "exported": false,
+          "lineCount": 74
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 281,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/ingest-person-ids.js": {
+      "filePath": "scripts/ingest-person-ids.js",
+      "contentHash": "ba9ebae771ddfbf4332ff098b8e454da2454d988750f0545830885f4e056cb84",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 80
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 95,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/init-ingest-db.js": {
+      "filePath": "scripts/init-ingest-db.js",
+      "contentHash": "d4ee5184efa2d4d45795f73394b9cf22b692b25d1ab6b6f6de6cd639cc4bf267",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 20,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/lib/common.js": {
+      "filePath": "scripts/lib/common.js",
+      "contentHash": "81b4145878455132d8bf97ecbd3ee2d8c2cb06cac77dc77cd3797bd3c7df4c57",
+      "functions": [
+        {
+          "name": "loadEnv",
+          "params": [],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "ensureDir",
+          "params": [
+            "dirPath"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "getNumberArg",
+          "params": [
+            "flag",
+            "fallback"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "formatExportDate",
+          "params": [
+            "date"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "addDays",
+          "params": [
+            "date",
+            "amount"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "execCurl",
+          "params": [
+            "args"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "curlJson",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "curlBuffer",
+          "params": [
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "createTmdbClient",
+          "params": [],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "downloadLatestPersonExport",
+          "params": [],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "downloadLatestPersonExportTopByPopularity",
+          "params": [
+            "maxIds"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "streamTopPeopleFromExport",
+          "params": [
+            "url",
+            "maxIds"
+          ],
+          "exported": false,
+          "lineCount": 114
+        },
+        {
+          "name": "minHeapPush",
+          "params": [
+            "heap",
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "minHeapifyUp",
+          "params": [
+            "heap",
+            "index"
+          ],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "minHeapifyDown",
+          "params": [
+            "heap",
+            "index"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "mapWithConcurrency",
+          "params": [
+            "items",
+            "concurrency",
+            "mapper"
+          ],
+          "exported": false,
+          "lineCount": 18
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 398,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/lib/ingest-db.js": {
+      "filePath": "scripts/lib/ingest-db.js",
+      "contentHash": "04c77720a6ea324680f8739cc33961154338bbb174be10fee997f5cf6155e64b",
+      "functions": [
+        {
+          "name": "createPool",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "applySchema",
+          "params": [
+            "pool"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "shouldUseSsl",
+          "params": [
+            "connectionString"
+          ],
+          "exported": false,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/lib/site-snapshots.js": {
+      "filePath": "scripts/lib/site-snapshots.js",
+      "contentHash": "dfa46f44bf14b4adf723ec6a9449c4974a2beff28bc4ccbd525840b503736f7e",
+      "functions": [
+        {
+          "name": "publishSiteSnapshot",
+          "params": [
+            "pool"
+          ],
+          "exported": false,
+          "lineCount": 60
+        },
+        {
+          "name": "fetchCounts",
+          "params": [
+            "pool"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "fetchRankedPeople",
+          "params": [
+            "pool",
+            "role",
+            "limit"
+          ],
+          "exported": false,
+          "lineCount": 102
+        },
+        {
+          "name": "roleToSqlFilter",
+          "params": [
+            "role",
+            "alias"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "writerRoleSqlFilter",
+          "params": [
+            "alias"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "buildSuggestedPool",
+          "params": [
+            "people",
+            "limit"
+          ],
+          "exported": false,
+          "lineCount": 35
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 249,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/refresh-person-recognition.js": {
+      "filePath": "scripts/refresh-person-recognition.js",
+      "contentHash": "73df6092c4a712bd2e3ba659e2c5329cfe9e0c9963d68bb8f1f14d6cfea99992",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 92
+        },
+        {
+          "name": "ingestPopular",
+          "params": [
+            "tmdb",
+            "pageCount",
+            "recognitionMap"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "ingestTrending",
+          "params": [
+            "tmdb",
+            "pageCount",
+            "recognitionMap"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "buildRecognitionScore",
+          "params": [
+            "entry"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 166,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/sql/auth-schema.sql": {
+      "filePath": "scripts/sql/auth-schema.sql",
+      "contentHash": "ca9557555d13f7ff9bd1767760f7a892b57f354f955114346d30cfab1de886ef",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 72,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/sql/ingest-schema.sql": {
+      "filePath": "scripts/sql/ingest-schema.sql",
+      "contentHash": "1571c1ad032fd8b0eafc3a832f0550c2fcb0a5561d7f5001cc09ee5ffaf33fb2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 99,
+      "hasStructuralAnalysis": true
+    },
+    "server.js": {
+      "filePath": "server.js",
+      "contentHash": "313fb41bcc759984dc9a36c93bcab541dd845477f264011a3f2f178cbdd331e6",
+      "functions": [
+        {
+          "name": "handleApi",
+          "params": [
+            "req",
+            "requestUrl",
+            "res"
+          ],
+          "exported": false,
+          "lineCount": 838
+        },
+        {
+          "name": "handleDemoApi",
+          "params": [
+            "requestUrl",
+            "res"
+          ],
+          "exported": false,
+          "lineCount": 109
+        },
+        {
+          "name": "buildDemoDiscoverPayload",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 67
+        },
+        {
+          "name": "buildBootstrapPayload",
+          "params": [],
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "buildFeaturedPeoplePayload",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "passesDemoFilters",
+          "params": [
+            "movie",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "buildDiscoverPayload",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "discoverBroad",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 43
+        },
+        {
+          "name": "discoverByPerson",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 45
+        },
+        {
+          "name": "discoverByPersonFromTmdb",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 36
+        },
+        {
+          "name": "discoverByStudio",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 54
+        },
+        {
+          "name": "fetchPersonMoviesFromPostgres",
+          "params": [
+            "personId",
+            "filters",
+            "limit"
+          ],
+          "exported": false,
+          "lineCount": 61
+        },
+        {
+          "name": "buildRoleSqlFilter",
+          "params": [
+            "role",
+            "alias"
+          ],
+          "exported": false,
+          "lineCount": 20
+        },
+        {
+          "name": "buildMovieSortSql",
+          "params": [
+            "sort"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "normalizeDbCreditMovie",
+          "params": [
+            "row"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "buildDbCreditReasons",
+          "params": [
+            "row"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "upsertCredit",
+          "params": [
+            "creditMap",
+            "credit",
+            "role",
+            "personName",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "hydrateMovies",
+          "params": [
+            "items",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "normalizeMovie",
+          "params": [
+            "details",
+            "reasons",
+            "omdbRatings"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "normalizePerson",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "normalizeFeaturedPeopleSource",
+          "params": [
+            "source"
+          ],
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "curateFeaturedPeople",
+          "params": [
+            "results"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "dedupePeople",
+          "params": [
+            "results"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "compareFeaturedPeople",
+          "params": [
+            "left",
+            "right"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "personKnownForScore",
+          "params": [
+            "person"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "getAvailablePeopleDirectory",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "getGenresFast",
+          "params": [],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "withTimeout",
+          "params": [
+            "promise",
+            "timeoutMs"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "readPeopleIndex",
+          "params": [],
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "getLocalPeopleDirectory",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "isActingDepartment",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "isDirectorDepartment",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "isProducerDepartment",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "isWriterDepartment",
+          "params": [
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "buildIndexStatus",
+          "params": [
+            "index"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "peopleDirectorySlice",
+          "params": [
+            "directory",
+            "department"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "getFeaturedStudiosDirectory",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "filterPeopleDirectory",
+          "params": [
+            "people",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "sortPeopleDirectory",
+          "params": [
+            "people",
+            "sort"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "clampNumber",
+          "params": [
+            "value",
+            "fallback",
+            "min",
+            "max"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "searchPeopleFromSnapshot",
+          "params": [
+            "snapshot",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "searchLocalPeopleIndex",
+          "params": [
+            "index",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "comparePeopleSearchResults",
+          "params": [
+            "left",
+            "right",
+            "normalizedQuery"
+          ],
+          "exported": false,
+          "lineCount": 35
+        },
+        {
+          "name": "selectBestPersonMatch",
+          "params": [
+            "results",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "personMatchScore",
+          "params": [
+            "person",
+            "normalizedQuery"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "searchStudios",
+          "params": [
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "searchPeopleFromTmdb",
+          "params": [
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "mergePeopleSearchResults",
+          "params": [
+            "primary",
+            "secondary"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "dedupePeopleByName",
+          "params": [
+            "results"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "normalizeStudio",
+          "params": [
+            "company"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "selectBestStudioMatch",
+          "params": [
+            "results",
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 26
+        },
+        {
+          "name": "dedupeDemoStudios",
+          "params": [],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "normalizeName",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "hashString",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "buildDiscoverCacheKey",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "normalizeDiscoverMovie",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "normalizeCreditMovie",
+          "params": [
+            "movie"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "lookupOmdb",
+          "params": [
+            "imdbId"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "tmdb",
+          "params": [
+            "endpoint"
+          ],
+          "exported": false,
+          "lineCount": 46
+        },
+        {
+          "name": "cachedJson",
+          "params": [
+            "key",
+            "url"
+          ],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "requestJson",
+          "params": [
+            "url",
+            "headers"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "requestViaCurl",
+          "params": [
+            "url",
+            "headers"
+          ],
+          "exported": false,
+          "lineCount": 53
+        },
+        {
+          "name": "mapSort",
+          "params": [
+            "sort"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "matchesGenreAndDecade",
+          "params": [
+            "credit",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "passesRatingFilters",
+          "params": [
+            "movie",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "passesMovieFilters",
+          "params": [
+            "movie",
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "normalizeAwardFilterValue",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "passesAwardFilter",
+          "params": [
+            "movie",
+            "awardFilter"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "matchesSpecificAwardOutcome",
+          "params": [
+            "awardsText",
+            "awardType",
+            "outcome"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "awardTypeSearchToken",
+          "params": [
+            "awardType"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "discoverNeedsHydration",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "determineHydrateLimit",
+          "params": [
+            "filters"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "sortMovies",
+          "params": [
+            "left",
+            "right",
+            "sortBy"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "sortCreditCandidates",
+          "params": [
+            "left",
+            "right",
+            "sortBy"
+          ],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "compareYears",
+          "params": [
+            "leftDate",
+            "rightDate"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "normalizeCrewRole",
+          "params": [
+            "job"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "capitalizeRole",
+          "params": [
+            "role"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "createDbPools",
+          "params": [],
+          "exported": false,
+          "lineCount": 46
+        },
+        {
+          "name": "shouldUseDbSsl",
+          "params": [
+            "connectionString"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "getIndexStatusFromPostgres",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "getPeopleDirectoryFromPostgres",
+          "params": [],
+          "exported": false,
+          "lineCount": 60
+        },
+        {
+          "name": "getSiteSnapshotFromPostgres",
+          "params": [],
+          "exported": false,
+          "lineCount": 59
+        },
+        {
+          "name": "fetchRankedPeopleFromPostgres",
+          "params": [
+            "role",
+            "limit"
+          ],
+          "exported": false,
+          "lineCount": 88
+        },
+        {
+          "name": "roleToSqlFilter",
+          "params": [
+            "role",
+            "alias"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "writerRoleSqlFilter",
+          "params": [
+            "alias"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "searchPeopleFromPostgres",
+          "params": [
+            "query"
+          ],
+          "exported": false,
+          "lineCount": 107
+        },
+        {
+          "name": "getPersonFromPostgresById",
+          "params": [
+            "personId"
+          ],
+          "exported": false,
+          "lineCount": 62
+        },
+        {
+          "name": "queryDb",
+          "params": [
+            "sql"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "withDbTransaction",
+          "params": [
+            "handler"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "getPreferredDbClient",
+          "params": [],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "logServerError",
+          "params": [
+            "scope",
+            "error"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "normalizeDbPersonRow",
+          "params": [
+            "row"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "resolveAuthContext",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 31
+        },
+        {
+          "name": "requireAuthenticatedUser",
+          "params": [
+            "req",
+            "res"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "buildSavedStatePayload",
+          "params": [
+            "savedState"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "buildSessionPayload",
+          "params": [
+            "authContext"
+          ],
+          "exported": false,
+          "lineCount": 39
+        },
+        {
+          "name": "isSecureCookieRequest",
+          "params": [
+            "req"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "parseOptionalUrl",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "assertTrustedWriteRequest",
+          "params": [
+            "req",
+            "res"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "buildAuthError",
+          "params": [
+            "code",
+            "error"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "logStructuredEvent",
+          "params": [
+            "event"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "serveStatic",
+          "params": [
+            "requestPath",
+            "res"
+          ],
+          "exported": false,
+          "lineCount": 63
+        },
+        {
+          "name": "contentType",
+          "params": [
+            "filePath"
+          ],
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "sendJson",
+          "params": [
+            "res",
+            "statusCode",
+            "payload"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "sendPlain",
+          "params": [
+            "res",
+            "statusCode",
+            "text"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "loadEnv",
+          "params": [
+            "filePath"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "ensureCacheDir",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "cacheFilePath",
+          "params": [
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "readDiskCache",
+          "params": [
+            "key"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "writeDiskCache",
+          "params": [
+            "key",
+            "entry"
+          ],
+          "exported": false,
+          "lineCount": 7
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoundedCache",
+          "methods": [
+            "constructor",
+            "get",
+            "set"
+          ],
+          "properties": [],
+          "exported": false,
+          "lineCount": 25
+        }
+      ],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3819,
+      "hasStructuralAnalysis": true
+    },
+    "styles.css": {
+      "filePath": "styles.css",
+      "contentHash": "394f86a26763bc14de955d9fa4187222b7b5080a3d86cf361994141bb323cb32",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2105,
+      "hasStructuralAnalysis": false
+    },
+    "test/auth-hardening.test.js": {
+      "filePath": "test/auth-hardening.test.js",
+      "contentHash": "bb67668850b30d73648d65b7f25f24ef026e10faaaa0bb1b6b0688a1c96af193",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 260,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

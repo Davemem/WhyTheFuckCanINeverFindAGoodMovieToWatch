@@ -38,6 +38,24 @@ body::before {
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent);
 }
 
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff8f1;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 .page-shell {
   width: min(1320px, calc(100% - 28px));
   margin: 0 auto;
@@ -51,6 +69,7 @@ body::before {
   margin-bottom: 10px;
   padding: 10px 14px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -63,13 +82,16 @@ body::before {
 
 .title-bar-nav {
   display: flex;
+  flex: 1 1 620px;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .title-bar-account {
+  flex: 1 1 360px;
   margin-left: auto;
-  min-width: min(100%, 360px);
+  min-width: 0;
 }
 
 .saved-sync-banner {
@@ -147,6 +169,7 @@ body::before {
 
 .account-panel {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -171,13 +194,16 @@ body::before {
 }
 
 .account-copy {
+  flex: 1 1 180px;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
 }
 
 .account-actions {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .account-label,
@@ -657,6 +683,11 @@ input[type="search"] {
   font-size: 0.88rem;
 }
 
+:where(a, button, input, select):focus-visible {
+  outline: 3px solid var(--accent-deep);
+  outline-offset: 3px;
+}
+
 #filters-form {
   display: grid;
   gap: 12px;
@@ -938,6 +969,19 @@ main {
   border: 1px solid var(--line);
   background: rgba(255, 250, 241, 0.56);
   box-shadow: var(--shadow);
+}
+
+.directory-page-header {
+  gap: 8px;
+}
+
+.directory-page-header .section-label,
+.directory-page-header .results-summary {
+  margin: 0;
+}
+
+.directory-page-header h1 {
+  max-width: none;
 }
 
 .saved-people-list {
@@ -1474,17 +1518,9 @@ main {
   gap: 18px;
 }
 
-body.has-search-results .suggested-panels {
-  display: none !important;
-}
-
 .results-section {
   background:
     linear-gradient(180deg, rgba(255, 248, 236, 0.7), rgba(244, 239, 230, 0.86));
-}
-
-body.people-has-search-results #people-directory-section {
-  display: none !important;
 }
 
 body:not(.people-has-search-results) #people-results-section {
@@ -1999,15 +2035,33 @@ dd {
 
   .title-bar {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .title-bar-nav {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    padding: 1px 1px 5px;
+    scrollbar-width: thin;
+  }
+
+  .title-bar-nav a {
+    flex: 0 0 auto;
   }
 
   .title-bar-account {
-    min-width: 100%;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
   }
 
   .account-panel {
     align-items: stretch;
     flex-direction: column;
+    width: 100%;
+    min-width: 0;
   }
 
   .account-subtext {
@@ -2015,9 +2069,11 @@ dd {
     white-space: normal;
   }
 
+  .account-copy,
   .account-actions {
+    flex: 0 0 auto;
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .account-session-actions {
@@ -2029,6 +2085,20 @@ dd {
   }
 
   .account-google-slot {
+    flex: 1 1 220px;
+    justify-content: flex-start;
     min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

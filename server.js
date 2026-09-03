@@ -34,6 +34,67 @@ const {
   saveUserTitle,
 } = require("./lib/auth/saved-data-store");
 
+const PUBLIC_API_GET_PATHS = new Set([
+  "/api/bootstrap",
+  "/api/featured-people",
+  "/api/index-status",
+  "/api/people-directory",
+  "/api/people",
+  "/api/studios",
+  "/api/discover",
+  "/api/enrich",
+]);
+const PUBLIC_STATIC_FILES = new Set([
+  "account.html",
+  "account.js",
+  "app.js",
+  "auth-client.js",
+  "catalog-search.js",
+  "index.html",
+  "movie-results.js",
+  "people.html",
+  "people.js",
+  "saved-data-client.js",
+  "saved-titles.html",
+  "saved-titles.js",
+  "saved.html",
+  "saved.js",
+  "styles.css",
+]);
+const SECURITY_HEADERS = {
+  "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+  "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "SAMEORIGIN",
+};
+
+class BoundedCache extends Map {
+  constructor(maxSize) {
+    super();
+    this.maxSize = maxSize;
+  }
+
+  get(key) {
+    const entry = super.get(key);
+    if (entry?.expiresAt && entry.expiresAt <= Date.now()) {
+      super.delete(key);
+      return undefined;
+    }
+    return entry;
+  }
+
+  set(key, value) {
+    if (super.has(key)) {
+      super.delete(key);
+    }
+    while (this.size >= this.maxSize) {
+      super.delete(this.keys().next().value);
+    }
+    return super.set(key, value);
+  }
+}
+
 loadEnv(path.join(__dirname, ".env"));
 
 const port = Number(process.env.PORT || 3000);
@@ -50,7 +111,7 @@ const appUrl = parseOptionalUrl(appBaseUrl);
 const isSecureAppOrigin = Boolean(appUrl && appUrl.protocol === "https:");
 const allowedAuthOrigins = createAllowedOrigins(appBaseUrl, additionalAllowedOrigins);
 const staticRoot = __dirname;
-const cache = new Map();
+const cache = new BoundedCache(1000);
 const cacheDir = path.join(__dirname, ".cache");
 const peopleIndexPath = path.join(cacheDir, "people-index-v1.json");
 const DISCOVER_RESULT_LIMIT = 60;
@@ -68,8 +129,8 @@ const DISCOVER_AWARD_HYDRATE_LIMIT = 24;
 const DB_STATUS_CACHE_TTL_MS = 1000 * 30;
 const DB_DIRECTORY_CACHE_TTL_MS = 1000 * 60 * 5;
 const DB_PEOPLE_SEARCH_CACHE_TTL_MS = 1000 * 30;
+const DB_FAILURE_CACHE_TTL_MS = 1000 * 15;
 const PEOPLE_SEARCH_KNOWN_FOR_LIMIT = 3;
-const PEOPLE_SEARCH_MIN_FILL_RESULTS = 15;
 const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -282,33 +343,44 @@ const featuredStudios = [
 ensureCacheDir();
 let preferredDbPool = null;
 const dbPools = createDbPools();
+let siteSnapshotRequest = null;
 
 const server = http.createServer(async (req, res) => {
-  const requestUrl = new URL(req.url, `http://${req.headers.host}`);
-
   try {
+    const requestUrl = new URL(req.url || "/", "http://localhost");
     if (requestUrl.pathname.startsWith("/api/")) {
       await handleApi(req, requestUrl, res);
+      return;
+    }
+
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      sendPlain(res, 405, "Method not allowed", { Allow: "GET, HEAD" });
       return;
     }
 
     serveStatic(requestUrl.pathname, res);
   } catch (error) {
     logServerError("request", error);
-    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify({
-        error: "Server error",
-      }),
-    );
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    sendJson(res, 500, { error: "Server error" }, { "Cache-Control": "no-store" });
   }
 });
 
-server.listen(port, () => {
-  process.stdout.write(`Server running at http://localhost:${port}\n`);
-});
+if (require.main === module) {
+  server.listen(port, () => {
+    process.stdout.write(`Server running at http://localhost:${port}\n`);
+  });
+}
 
 async function handleApi(req, requestUrl, res) {
+  if (PUBLIC_API_GET_PATHS.has(requestUrl.pathname) && req.method !== "GET" && req.method !== "HEAD") {
+    sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET, HEAD" });
+    return;
+  }
+
   if (requestUrl.pathname === "/api/auth/session") {
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET" });
@@ -1000,11 +1072,7 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    sendJson(res, 200, {
-      ready: false,
-      generatedAt: null,
-      counts: { actors: 0, directors: 0, producers: 0, writers: 0 },
-    });
+    sendJson(res, 200, buildIndexStatus(readPeopleIndex()));
     return;
   }
 
@@ -1015,7 +1083,8 @@ async function handleApi(req, requestUrl, res) {
     const requestedLimit = clampNumber(requestUrl.searchParams.get("limit"), 10, 1, DB_FEATURED_LIMIT);
     const directory = department === "studios"
       ? { studios: getFeaturedStudiosDirectory() }
-      : await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
+      : await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT))
+        || getLocalPeopleDirectory(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
     const source = directory ? peopleDirectorySlice(directory, department) : [];
     const filtered = filterPeopleDirectory(source, query);
     const sorted = sortPeopleDirectory(filtered, sort);
@@ -1046,20 +1115,25 @@ async function handleApi(req, requestUrl, res) {
     const localIndexResults = localPeopleIndex
       ? searchLocalPeopleIndex(localPeopleIndex, query, { page, limit })
       : null;
-    if (localIndexResults) {
-      sendJson(res, 200, localIndexResults);
+    const snapshotResults = searchPeopleFromSnapshot(
+      await getSiteSnapshotFromPostgres(),
+      query,
+      { page, limit },
+    );
+    const localResults = mergePeopleSearchResults(localIndexResults, snapshotResults, { page, limit });
+    if (localResults.results.length) {
+      sendJson(res, 200, localResults);
       return;
     }
 
     const dbResults = await searchPeopleFromPostgres(query, { page, limit });
-    if ((dbResults.results || []).length >= Math.min(limit, PEOPLE_SEARCH_MIN_FILL_RESULTS) || !tmdbApiKey && !tmdbToken) {
+    if (dbResults.results.length || !tmdbApiKey && !tmdbToken) {
       sendJson(res, 200, dbResults);
       return;
     }
 
     const tmdbResults = await searchPeopleFromTmdb(query, { page, limit });
-    const mergedResults = mergePeopleSearchResults(dbResults, tmdbResults, { page, limit });
-    sendJson(res, 200, mergedResults);
+    sendJson(res, 200, tmdbResults);
     return;
   }
 
@@ -1128,7 +1202,7 @@ async function handleApi(req, requestUrl, res) {
     }
 
     const items = ids.map((id) => ({ id, reasons: [] }));
-    const movies = await hydrateMoviesSequential(items, {
+    const movies = await hydrateMovies(items, {
       imdbMin: 0,
       rtMin: 0,
       sort: "match",
@@ -1321,7 +1395,8 @@ function buildDemoDiscoverPayload(filters) {
 async function buildBootstrapPayload(options = {}) {
   const includePeople = options.includePeople !== false;
   const snapshot = await getSiteSnapshotFromPostgres();
-  const hasLocalPeopleIndex = Boolean(snapshot);
+  const localPeopleIndex = readPeopleIndex();
+  const hasLocalPeopleIndex = Boolean(snapshot || localPeopleIndex);
   const resolvedGenres = await getGenresFast();
 
   const payload = {
@@ -1329,8 +1404,8 @@ async function buildBootstrapPayload(options = {}) {
       hasOmdb: Boolean(omdbApiKey),
       imageBaseUrl: "https://image.tmdb.org/t/p/w500",
       hasLocalPeopleIndex,
-      peopleCounts: snapshot?.counts || { actors: 0, directors: 0, producers: 0, writers: 0 },
-      peopleGeneratedAt: snapshot?.generatedAt || null,
+      peopleCounts: snapshot?.counts || buildIndexStatus(localPeopleIndex).counts,
+      peopleGeneratedAt: snapshot?.generatedAt || localPeopleIndex?.generatedAt || null,
       placeholderPools: snapshot?.placeholderPools || null,
     },
     genres: resolvedGenres,
@@ -1366,13 +1441,7 @@ async function buildFeaturedPeoplePayload() {
     };
   }
 
-  const rankedPeople = {
-    actors: [],
-    directors: [],
-    producers: [],
-    writers: [],
-    studios: getFeaturedStudiosDirectory(),
-  };
+  const rankedPeople = getLocalPeopleDirectory(FEATURED_PEOPLE_LIMIT);
 
   return {
     featuredActors: rankedPeople.actors,
@@ -1480,16 +1549,33 @@ async function discoverBroad(filters) {
 }
 
 async function discoverByPerson(filters) {
-  const person = Number.isFinite(filters.personId) && filters.personId > 0
-    ? await getPersonFromPostgresById(filters.personId)
-    : (await searchPeopleFromPostgres(filters.personQuery, { page: 1, limit: 1 })).results[0];
-  if (!person) {
-    return { matchedPerson: null, totalMatches: 0, movies: [] };
+  let person = null;
+  try {
+    person = Number.isFinite(filters.personId) && filters.personId > 0
+      ? await withTimeout(getPersonFromPostgresById(filters.personId), 2000)
+      : (await searchPeopleFromPostgres(filters.personQuery, { page: 1, limit: 1 })).results[0];
+  } catch (error) {
+    logServerError("discoverByPerson-person", error);
   }
 
-  const allCredits = await fetchPersonMoviesFromPostgres(person.id, filters, PERSON_RESULT_LIMIT);
+  let allCredits = [];
+  if (person) {
+    try {
+      allCredits = await withTimeout(
+        fetchPersonMoviesFromPostgres(person.id, filters, PERSON_RESULT_LIMIT),
+        2500,
+      );
+    } catch (error) {
+      logServerError("discoverByPerson-postgres", error);
+    }
+  }
+
+  if (!person || !allCredits.length) {
+    return discoverByPersonFromTmdb(filters);
+  }
+
   const movies = discoverNeedsHydration(filters)
-    ? await hydrateMoviesSequential(
+    ? await hydrateMovies(
       allCredits.slice(0, determineHydrateLimit(filters)).map((row) => ({
         id: Number(row.id),
         reasons: buildDbCreditReasons(row),
@@ -1497,6 +1583,43 @@ async function discoverByPerson(filters) {
       filters,
     )
     : allCredits.map(normalizeDbCreditMovie);
+
+  return {
+    matchedEntity: { id: person.id, name: person.name, type: "person" },
+    matchedPerson: person,
+    totalMatches: allCredits.length,
+    movies: movies
+      .filter((movie) => passesMovieFilters(movie, filters))
+      .sort((left, right) => sortMovies(left, right, filters.sort)),
+  };
+}
+
+async function discoverByPersonFromTmdb(filters) {
+  const search = await searchPeopleFromTmdb(filters.personQuery, { page: 1, limit: 10 });
+  const person = selectBestPersonMatch(search.results || [], filters.personQuery);
+  if (!person) {
+    return { matchedPerson: null, totalMatches: 0, movies: [] };
+  }
+
+  const credits = await tmdb(`/person/${person.id}/movie_credits`, { language: "en-US" });
+  const creditMap = new Map();
+  (credits.cast || []).forEach((credit) => {
+    upsertCredit(creditMap, credit, "cast", person.name, filters);
+  });
+  (credits.crew || []).forEach((credit) => {
+    const role = normalizeCrewRole(credit.job);
+    if (role) {
+      upsertCredit(creditMap, credit, role, person.name, filters);
+    }
+  });
+
+  const allCredits = [...creditMap.values()]
+    .filter((credit) => matchesGenreAndDecade(credit, filters))
+    .sort((left, right) => sortCreditCandidates(left, right, filters.sort))
+    .slice(0, PERSON_RESULT_LIMIT);
+  const movies = discoverNeedsHydration(filters)
+    ? await hydrateMovies(allCredits.slice(0, determineHydrateLimit(filters)), filters)
+    : allCredits.map(normalizeCreditMovie);
 
   return {
     matchedEntity: { id: person.id, name: person.name, type: "person" },
@@ -1720,39 +1843,37 @@ function upsertCredit(creditMap, credit, role, personName, filters) {
     reasons: [],
   };
 
-  existing.reasons.push(`${capitalizeRole(role)}: ${personName}`);
+  const reason = `${capitalizeRole(role)}: ${personName}`;
+  if (!existing.reasons.includes(reason)) {
+    existing.reasons.push(reason);
+  }
   creditMap.set(credit.id, existing);
 }
 
 async function hydrateMovies(items, filters) {
-  const detailedMovies = await Promise.allSettled(
-    items.map(async (item) => {
-      const details = await tmdb(`/movie/${item.id}`, { append_to_response: "credits" });
-      const omdbRatings = details.imdb_id ? await lookupOmdb(details.imdb_id) : null;
-      const movie = normalizeMovie(details, item.reasons || [], omdbRatings);
-      return movie;
-    }),
-  );
-
-  return detailedMovies
-    .filter((result) => result.status === "fulfilled" && result.value)
-    .map((result) => result.value)
-    .filter((movie) => passesRatingFilters(movie, filters))
-    .sort((left, right) => sortMovies(left, right, filters.sort));
-}
-
-async function hydrateMoviesSequential(items, filters) {
   const movies = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(4, items.length);
 
-  for (const item of items) {
-    try {
-      const details = await tmdb(`/movie/${item.id}`, { append_to_response: "credits" });
-      const omdbRatings = details.imdb_id ? await lookupOmdb(details.imdb_id) : null;
-      movies.push(normalizeMovie(details, item.reasons || [], omdbRatings));
-    } catch {
-      // Skip failed enrichments and let the frontend retry later.
+  const hydrateNext = async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+
+      try {
+        const details = await tmdb(`/movie/${item.id}`, { append_to_response: "credits" });
+        const omdbRatings = details.imdb_id ? await lookupOmdb(details.imdb_id) : null;
+        const movie = normalizeMovie(details, item.reasons || [], omdbRatings);
+        if (movie) {
+          movies.push(movie);
+        }
+      } catch {
+        // Skip failed enrichments and let the frontend retry later.
+      }
     }
-  }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => hydrateNext()));
 
   return movies
     .filter((movie) => passesRatingFilters(movie, filters))
@@ -1994,6 +2115,24 @@ function readPeopleIndex() {
   }
 }
 
+function getLocalPeopleDirectory(limit = DB_FEATURED_LIMIT) {
+  const index = readPeopleIndex();
+  const fallback = {
+    actors: demoPeople.filter((person) => isActingDepartment(person.department)),
+    directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
+    producers: demoPeople.filter((person) => isProducerDepartment(person.department)),
+    writers: demoPeople.filter((person) => isWriterDepartment(person.department)),
+  };
+
+  return {
+    actors: (index?.actors?.length ? index.actors : fallback.actors).slice(0, limit),
+    directors: (index?.directors?.length ? index.directors : fallback.directors).slice(0, limit),
+    producers: (index?.producers?.length ? index.producers : fallback.producers).slice(0, limit),
+    writers: (index?.writers?.length ? index.writers : fallback.writers).slice(0, limit),
+    studios: getFeaturedStudiosDirectory().slice(0, limit),
+  };
+}
+
 function isActingDepartment(department) {
   return String(department || "").toLowerCase().includes("acting");
 }
@@ -2090,6 +2229,9 @@ function sortPeopleDirectory(people, sort) {
 }
 
 function clampNumber(value, fallback, min, max) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return fallback;
+  }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -2136,7 +2278,7 @@ function searchLocalPeopleIndex(index, query, options = {}) {
     ...(index.writers || []),
   ]);
 
-  const ranked = combined
+  const ranked = dedupePeopleByName(combined
     .filter((person) => {
       const haystack = [person.name, person.department, ...(person.knownFor || [])]
         .join(" ")
@@ -2145,7 +2287,7 @@ function searchLocalPeopleIndex(index, query, options = {}) {
     })
     .sort((left, right) => {
       return comparePeopleSearchResults(left, right, normalizedQuery);
-    });
+    }));
   const startIndex = (page - 1) * limit;
   const results = ranked.slice(startIndex, startIndex + limit);
   return {
@@ -2280,10 +2422,10 @@ async function searchPeopleFromTmdb(query, options = {}) {
 function mergePeopleSearchResults(primary, secondary, options = {}) {
   const page = clampNumber(options.page, 1, 1, 200);
   const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
-  const merged = dedupePeople([
+  const merged = dedupePeopleByName(dedupePeople([
     ...(primary?.results || []),
     ...(secondary?.results || []),
-  ]);
+  ]));
   return {
     results: merged.slice(0, limit),
     total: Math.max(Number(primary?.total || 0), Number(secondary?.total || 0), merged.length),
@@ -2291,6 +2433,18 @@ function mergePeopleSearchResults(primary, secondary, options = {}) {
     limit,
     hasMore: Boolean(primary?.hasMore) || Boolean(secondary?.hasMore) || merged.length > limit,
   };
+}
+
+function dedupePeopleByName(results) {
+  const names = new Set();
+  return results.filter((person) => {
+    const name = normalizeName(person?.name || "");
+    if (!name || names.has(name)) {
+      return false;
+    }
+    names.add(name);
+    return true;
+  });
 }
 
 function normalizeStudio(company) {
@@ -2425,8 +2579,8 @@ function normalizeCreditMovie(movie) {
     cast: [],
     director: "",
     producers: [],
-    logline: "Expanded credits available when detail hydration is needed.",
-    posterUrl: "",
+    logline: movie.overview || "No overview available yet.",
+    posterUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
     matchReason: (movie.reasons || []).join(" / ") || "Matched by person credit.",
     isEnriched: false,
   };
@@ -2881,12 +3035,15 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
       return value;
     }
 
-    const [actors, directors, producers, writers] = await Promise.all([
-      fetchRankedPeopleFromPostgres("actors", limit),
-      fetchRankedPeopleFromPostgres("directors", limit),
-      fetchRankedPeopleFromPostgres("producers", limit),
-      fetchRankedPeopleFromPostgres("writers", limit),
-    ]);
+    const [actors, directors, producers, writers] = await withTimeout(
+      Promise.all([
+        fetchRankedPeopleFromPostgres("actors", limit),
+        fetchRankedPeopleFromPostgres("directors", limit),
+        fetchRankedPeopleFromPostgres("producers", limit),
+        fetchRankedPeopleFromPostgres("writers", limit),
+      ]),
+      2500,
+    );
     if (!actors.length && !directors.length && !producers.length && !writers.length) {
       return null;
     }
@@ -2918,35 +3075,47 @@ async function getSiteSnapshotFromPostgres() {
     return diskCached.value;
   }
 
-  try {
-    const result = await withTimeout(
-      queryDb(
-        `
-          SELECT payload, generated_at
-          FROM site_snapshots
-          WHERE snapshot_key = 'home_v1'
-          LIMIT 1
-        `,
-      ),
-      2000,
-    );
-    const row = result.rows[0];
-    if (!row?.payload) {
-      return null;
-    }
-
-    const value = {
-      ...row.payload,
-      generatedAt: row.generated_at || null,
-    };
-    const entry = { value, expiresAt: Date.now() + DB_SNAPSHOT_CACHE_TTL_MS };
-    cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
-    return value;
-  } catch (error) {
-    logServerError("getSiteSnapshotFromPostgres", error);
-    return null;
+  if (siteSnapshotRequest) {
+    return siteSnapshotRequest;
   }
+
+  siteSnapshotRequest = (async () => {
+    try {
+      const result = await withTimeout(
+        queryDb(
+          `
+            SELECT payload, generated_at
+            FROM site_snapshots
+            WHERE snapshot_key = 'home_v1'
+            LIMIT 1
+          `,
+        ),
+        2000,
+      );
+      const row = result.rows[0];
+      if (!row?.payload) {
+        cache.set(cacheKey, { value: null, expiresAt: Date.now() + DB_FAILURE_CACHE_TTL_MS });
+        return null;
+      }
+
+      const value = {
+        ...row.payload,
+        generatedAt: row.generated_at || null,
+      };
+      const entry = { value, expiresAt: Date.now() + DB_SNAPSHOT_CACHE_TTL_MS };
+      cache.set(cacheKey, entry);
+      writeDiskCache(cacheKey, entry);
+      return value;
+    } catch (error) {
+      cache.set(cacheKey, { value: null, expiresAt: Date.now() + DB_FAILURE_CACHE_TTL_MS });
+      logServerError("getSiteSnapshotFromPostgres", error);
+      return null;
+    } finally {
+      siteSnapshotRequest = null;
+    }
+  })();
+
+  return siteSnapshotRequest;
 }
 
 async function fetchRankedPeopleFromPostgres(role, limit) {
@@ -3095,8 +3264,9 @@ async function searchPeopleFromPostgres(query, options = {}) {
   }
 
   try {
-    const result = await queryDb(
-      `
+    const result = await withTimeout(
+      queryDb(
+        `
         WITH matched_people AS (
           SELECT
             p.person_id,
@@ -3153,8 +3323,10 @@ async function searchPeopleFromPostgres(query, options = {}) {
           pp.popularity DESC NULLS LAST,
           CASE WHEN LOWER(pp.department) = 'acting' THEN 0 ELSE 1 END,
           pp.name ASC
-      `,
-      [`%${query}%`, query, `${query}%`, limit, offset],
+        `,
+        [`%${query}%`, query, `${query}%`, limit, offset],
+      ),
+      2000,
     );
     const total = Number(result.rows[0]?.total || 0);
     const value = {
@@ -3482,7 +3654,14 @@ function logStructuredEvent(event, fields = {}) {
 
 function serveStatic(requestPath, res) {
   const normalizedPath = requestPath === "/" ? "/index.html" : requestPath;
-  const filePath = path.resolve(staticRoot, `.${normalizedPath}`);
+  const relativePath = normalizedPath.replace(/^\/+/, "");
+
+  if (!PUBLIC_STATIC_FILES.has(relativePath)) {
+    sendPlain(res, 404, "Not found");
+    return;
+  }
+
+  const filePath = path.join(staticRoot, relativePath);
 
   if (!filePath.startsWith(`${staticRoot}${path.sep}`) && filePath !== path.join(staticRoot, "index.html")) {
     sendPlain(res, 403, "Forbidden");
@@ -3497,7 +3676,7 @@ function serveStatic(requestPath, res) {
 
     const etag = `"${stats.size}-${Number(stats.mtimeMs).toString(16)}"`;
     if (res.req?.headers["if-none-match"] === etag) {
-      res.writeHead(304);
+      res.writeHead(304, SECURITY_HEADERS);
       res.end();
       return;
     }
@@ -3519,6 +3698,7 @@ function serveStatic(requestPath, res) {
         : "no-cache";
 
     res.writeHead(200, {
+      ...SECURITY_HEADERS,
       "Content-Type": contentType(filePath),
       "Cache-Control": cacheControl,
       ETag: etag,
@@ -3554,16 +3734,28 @@ function contentType(filePath) {
 
 function sendJson(res, statusCode, payload, headers = {}) {
   res.writeHead(statusCode, {
+    ...SECURITY_HEADERS,
     "Content-Type": "application/json; charset=utf-8",
     ...headers,
   });
   res.end(JSON.stringify(payload));
 }
 
-function sendPlain(res, statusCode, text) {
-  res.writeHead(statusCode, { "Content-Type": "text/plain; charset=utf-8" });
+function sendPlain(res, statusCode, text, headers = {}) {
+  res.writeHead(statusCode, {
+    ...SECURITY_HEADERS,
+    "Content-Type": "text/plain; charset=utf-8",
+    ...headers,
+  });
   res.end(text);
 }
+
+module.exports = {
+  PUBLIC_API_GET_PATHS,
+  PUBLIC_STATIC_FILES,
+  clampNumber,
+  server,
+};
 
 function loadEnv(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -3607,6 +3799,10 @@ function readDiskCache(key) {
     }
 
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (parsed?.expiresAt && parsed.expiresAt <= Date.now()) {
+      fs.unlinkSync(filePath);
+      return null;
+    }
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;

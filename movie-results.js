@@ -111,7 +111,9 @@
     } else if (posterFrame && poster) {
       posterFrame.classList.add("is-empty");
       poster.remove();
-      posterFrame.innerHTML = `<span>${movie.title}</span>`;
+      const fallbackTitle = document.createElement("span");
+      fallbackTitle.textContent = movie.title;
+      posterFrame.replaceChildren(fallbackTitle);
     }
 
     const watchlistButton = fragment.querySelector(".watchlist-button");
@@ -178,7 +180,11 @@
     if (!movies.length) {
       const emptyState = document.createElement("div");
       emptyState.className = "empty-state";
-      emptyState.innerHTML = `<h3>${emptyTitle}</h3><p>${emptyMessage}</p>`;
+      const heading = document.createElement("h3");
+      const message = document.createElement("p");
+      heading.textContent = emptyTitle;
+      message.textContent = emptyMessage;
+      emptyState.append(heading, message);
       container.append(emptyState);
       return;
     }

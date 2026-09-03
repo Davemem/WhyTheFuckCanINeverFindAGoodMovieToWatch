@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="./styles.css?v=20260421b" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
         <nav class="title-bar-nav" aria-label="Primary">
@@ -28,7 +29,7 @@
           <a href="/people.html?department=studios">Studios</a>
           <a href="/saved.html">Saved People</a>
           <a href="/saved-titles.html">Saved Titles</a>
-          <a class="is-active" href="/account.html">Account</a>
+          <a class="is-active" href="/account.html" aria-current="page">Account</a>
         </nav>
         <div class="title-bar-account" data-auth-root aria-live="polite"></div>
       </div>
@@ -67,7 +68,7 @@
         </section>
       </header>
 
-      <main class="account-page-main">
+      <main id="main-content" class="account-page-main" tabindex="-1">
         <section class="catalog-section account-summary-section" aria-labelledby="account-summary-heading">
           <div class="results-header">
             <div>

@@ -17,6 +17,13 @@ const {
   revokeUserSessionById,
 } = require("../lib/auth/session");
 const { getUserAccountOverview } = require("../lib/auth/account-store");
+const { clampNumber, server } = require("../server");
+
+test("clampNumber uses its fallback when a query parameter is absent", () => {
+  assert.equal(clampNumber(null, 25, 1, 50), 25);
+  assert.equal(clampNumber("", 10, 1, 50), 10);
+  assert.equal(clampNumber("100", 10, 1, 50), 50);
+});
 
 test("createCsrfToken derives a stable token from the session", () => {
   const token = createCsrfToken("session-token", "super-secret");
@@ -211,4 +218,42 @@ test("getUserAccountOverview normalizes numeric summary counts", async () => {
     savedPeopleCount: 5,
     activeSessionsCount: 3,
   });
+});
+
+test("server exposes only public assets and rejects catalog writes", async () => {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const publicResponse = await fetch(`${baseUrl}/index.html`);
+    assert.equal(publicResponse.status, 200);
+    assert.match(publicResponse.headers.get("content-type") || "", /^text\/html/);
+    assert.equal(publicResponse.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(publicResponse.headers.get("x-frame-options"), "SAMEORIGIN");
+    assert.equal(publicResponse.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    assert.equal(publicResponse.headers.get("cross-origin-opener-policy"), "same-origin-allow-popups");
+    assert.match(publicResponse.headers.get("permissions-policy") || "", /camera=\(\)/);
+
+    for (const privatePath of ["/.env", "/.git/config", "/server.js", "/package.json"]) {
+      const response = await fetch(`${baseUrl}${privatePath}`);
+      assert.equal(response.status, 404, `${privatePath} should not be public`);
+    }
+
+    const writeResponse = await fetch(`${baseUrl}/api/index-status`, { method: "POST" });
+    assert.equal(writeResponse.status, 405);
+    assert.equal(writeResponse.headers.get("allow"), "GET, HEAD");
+    assert.deepEqual(await writeResponse.json(), { error: "Method not allowed" });
+
+    const staticWriteResponse = await fetch(`${baseUrl}/index.html`, { method: "POST" });
+    assert.equal(staticWriteResponse.status, 405);
+    assert.equal(staticWriteResponse.headers.get("allow"), "GET, HEAD");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });

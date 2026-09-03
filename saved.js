@@ -89,6 +89,7 @@ elements.savedTabButtons.forEach((button) => {
   button.addEventListener("click", () =>
     setActiveTab(button.dataset.savedTab || "actors", { clearSelection: true }),
   );
+  button.addEventListener("keydown", handleSavedTabKeydown);
 });
 window.addEventListener("resize", debounce(syncAllRails, 120));
 window.addEventListener(
@@ -242,7 +243,9 @@ function buildSavedPersonCard(person, isSelected) {
   } else {
     portraitFrame.classList.add("is-empty");
     portrait.remove();
-    portraitFrame.innerHTML = `<span>${person.name}</span>`;
+    const fallbackName = document.createElement("span");
+    fallbackName.textContent = person.name;
+    portraitFrame.replaceChildren(fallbackName);
   }
   return fragment;
 }
@@ -298,11 +301,37 @@ function setActiveTab(tab, options = {}) {
     const isActive = button.dataset.savedTab === uiState.activeTab;
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
   });
 
   updateSelectedPersonCards();
   renderActiveCatalogRail();
   window.requestAnimationFrame(syncAllRails);
+}
+
+function handleSavedTabKeydown(event) {
+  const currentIndex = elements.savedTabButtons.indexOf(event.currentTarget);
+  if (currentIndex < 0) {
+    return;
+  }
+
+  let nextIndex = currentIndex;
+  if (event.key === "ArrowRight") {
+    nextIndex = (currentIndex + 1) % elements.savedTabButtons.length;
+  } else if (event.key === "ArrowLeft") {
+    nextIndex = (currentIndex - 1 + elements.savedTabButtons.length) % elements.savedTabButtons.length;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = elements.savedTabButtons.length - 1;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  const nextButton = elements.savedTabButtons[nextIndex];
+  nextButton.focus();
+  setActiveTab(nextButton.dataset.savedTab || "actors", { clearSelection: true });
 }
 
 function handleWindowScroll() {

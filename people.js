@@ -11,6 +11,8 @@ const elements = {
   directoryResultsSummary: document.querySelector("#directory-results-summary"),
   directoryRefresh: document.querySelector("#directory-refresh"),
   directoryHeading: document.querySelector("#directory-grid-heading"),
+  pageHeading: document.querySelector("#directory-page-heading"),
+  pageDescription: document.querySelector("#directory-page-description"),
   directoryGrid: document.querySelector("#directory-grid"),
   cardTemplate: document.querySelector("#person-card-template"),
   movieCardTemplate: document.querySelector("#movie-card-template"),
@@ -174,7 +176,7 @@ function buildPersonCard(person) {
   } else {
     portraitFrame.classList.add("is-empty");
     portrait.remove();
-    portraitFrame.innerHTML = `<span>${person.name}</span>`;
+    appendTextFallback(portraitFrame, person.name);
   }
 
   return fragment;
@@ -303,18 +305,28 @@ function applyDepartmentCopy() {
   const labels = {
     actors: {
       title: "Suggested 50 actors",
+      pageTitle: "Actors directory",
+      description: "Browse ranked actors, then open a filmography or refine the catalog filters.",
     },
     directors: {
       title: "Suggested 50 directors",
+      pageTitle: "Directors directory",
+      description: "Browse ranked directors, then open a filmography or refine the catalog filters.",
     },
     producers: {
       title: "Suggested 50 producers",
+      pageTitle: "Producers directory",
+      description: "Browse ranked producers, then open a filmography or refine the catalog filters.",
     },
     writers: {
       title: "Suggested 50 writers",
+      pageTitle: "Writers directory",
+      description: "Browse ranked writers, then open a filmography or refine the catalog filters.",
     },
     studios: {
       title: "Suggested studios",
+      pageTitle: "Studios directory",
+      description: "Browse notable studios, then open a catalog or refine the movie filters.",
     },
   };
 
@@ -322,6 +334,13 @@ function applyDepartmentCopy() {
   if (elements.directoryHeading) {
     elements.directoryHeading.textContent = current.title;
   }
+  if (elements.pageHeading) {
+    elements.pageHeading.textContent = current.pageTitle;
+  }
+  if (elements.pageDescription) {
+    elements.pageDescription.textContent = current.description;
+  }
+  document.title = `${current.pageTitle} | Movie Selector`;
 }
 
 function syncCatalogRoleChoices() {
@@ -348,6 +367,7 @@ function syncCatalogRoleChoices() {
     button.className = `segment${currentState.role === value || (!currentState.role && index === 0) ? " is-active" : ""}`;
     button.dataset.roleChoice = value;
     button.textContent = label;
+    button.setAttribute("aria-pressed", String(currentState.role === value || (!currentState.role && index === 0)));
     roleSegments.append(button);
   });
 
@@ -362,11 +382,21 @@ function syncCatalogRoleChoices() {
 }
 
 function updateActiveTab() {
-  elements.navActors.classList.toggle("is-active", pageState.department === "actors");
-  elements.navWriters.classList.toggle("is-active", pageState.department === "writers");
-  elements.navDirectors.classList.toggle("is-active", pageState.department === "directors");
-  elements.navProducers.classList.toggle("is-active", pageState.department === "producers");
-  elements.navStudios.classList.toggle("is-active", pageState.department === "studios");
+  [
+    [elements.navActors, "actors"],
+    [elements.navWriters, "writers"],
+    [elements.navDirectors, "directors"],
+    [elements.navProducers, "producers"],
+    [elements.navStudios, "studios"],
+  ].forEach(([link, department]) => {
+    const isActive = pageState.department === department;
+    link.classList.toggle("is-active", isActive);
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
 }
 
 function readDepartmentFromUrl() {
@@ -464,6 +494,9 @@ async function refreshResults() {
       setSearchMode(true);
       return;
     } catch (error) {
+      if (requestId !== pageState.requestId) {
+        return;
+      }
       renderErrorState(error.message);
       setSearchMode(true);
       return;
@@ -642,8 +675,22 @@ function renderErrorState(message) {
   elements.resultsSummary.textContent = "Search failed.";
   const errorState = document.createElement("div");
   errorState.className = "empty-state";
-  errorState.innerHTML = `<h3>Live fetch failed.</h3><p>${message}</p>`;
+  appendMessageState(errorState, "Live fetch failed.", message);
   elements.resultsGrid.append(errorState);
+}
+
+function appendTextFallback(container, value) {
+  const fallback = document.createElement("span");
+  fallback.textContent = value;
+  container.replaceChildren(fallback);
+}
+
+function appendMessageState(container, title, message) {
+  const heading = document.createElement("h3");
+  const copy = document.createElement("p");
+  heading.textContent = title;
+  copy.textContent = message;
+  container.append(heading, copy);
 }
 
 function setSearchMode(isSearchMode) {
