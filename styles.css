@@ -2329,9 +2329,22 @@ a.watch-provider-item:hover {
   object-fit: cover;
 }
 
-.watch-provider-item span {
+.watch-provider-item-copy {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.watch-provider-item-copy strong {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.watch-provider-item-copy small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .watch-provider-open-all {

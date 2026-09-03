@@ -603,7 +603,7 @@
       let payload = watchProviderCache.get(cacheKey);
       if (!payload) {
         const response = await global.fetch(
-          `/api/watch-providers?movieId=${encodeURIComponent(String(movieId))}&region=${encodeURIComponent(region)}`,
+          `/api/watch-providers?movieId=${encodeURIComponent(String(movieId))}&region=${encodeURIComponent(region)}&title=${encodeURIComponent(movieTitle)}`,
           { credentials: "same-origin", headers: { Accept: "application/json" } },
         );
         payload = await response.json().catch(() => ({}));
@@ -637,7 +637,7 @@
 
     const intro = document.createElement("p");
     intro.className = "watch-provider-location";
-    intro.textContent = `Current options for ${getRegionLabel(region)}.`;
+    intro.textContent = `Current options for ${getRegionLabel(region)}. Select a service to search for this title.`;
     container.append(intro);
 
     const groups = document.createElement("div");
@@ -661,16 +661,28 @@
       list.className = "watch-provider-list";
 
       providers.forEach((provider) => {
-        const item = watchLink ? document.createElement("a") : document.createElement("span");
+        const providerLink = normalizeProviderOutboundLink(provider.link);
+        const item = providerLink ? document.createElement("a") : document.createElement("span");
         item.className = "watch-provider-item";
-        if (watchLink) {
-          item.href = watchLink;
+        if (providerLink) {
+          const usesAvailabilityFallback = provider.linkType === "availability";
+          const opensProviderHome = provider.linkType === "provider-home";
+          item.href = providerLink;
           item.target = "_blank";
           item.rel = "noopener noreferrer";
           item.setAttribute(
             "aria-label",
-            `View ${provider.name} options for ${movieTitle} on TMDB (opens in a new tab)`,
+            usesAvailabilityFallback
+              ? `Find ${movieTitle} from ${provider.name} on JustWatch (opens in a new tab)`
+              : opensProviderHome
+                ? `Open ${provider.name} to look for ${movieTitle} (opens in a new tab)`
+                : `Search for ${movieTitle} on ${provider.name} (opens in a new tab)`,
           );
+          item.title = usesAvailabilityFallback
+            ? "Check this option on JustWatch"
+            : opensProviderHome
+              ? `Open ${provider.name}`
+              : `Search ${provider.name}`;
         }
 
         const logoUrl = normalizeProviderLogoUrl(provider.logoUrl);
@@ -685,9 +697,18 @@
           item.append(logo);
         }
 
-        const name = document.createElement("span");
+        const copy = document.createElement("span");
+        const name = document.createElement("strong");
+        const destination = document.createElement("small");
+        copy.className = "watch-provider-item-copy";
         name.textContent = String(provider.name || "Provider");
-        item.append(name);
+        destination.textContent = provider.linkType === "availability"
+          ? "Check on JustWatch ↗"
+          : provider.linkType === "provider-home"
+            ? "Open provider ↗"
+            : "Search provider ↗";
+        copy.append(name, destination);
+        item.append(copy);
         list.append(item);
         renderedProviderCount += 1;
       });
@@ -801,6 +822,39 @@
       }
     } catch {
       // Ignore malformed upstream links.
+    }
+    return "";
+  }
+
+  function normalizeProviderOutboundLink(value) {
+    const allowedHosts = new Set([
+      "binge.com.au",
+      "play.google.com",
+      "tubitv.com",
+      "tv.apple.com",
+      "watch.plex.tv",
+      "www.crunchyroll.com",
+      "www.disneyplus.com",
+      "www.fetchtv.com.au",
+      "www.foxtel.com.au",
+      "www.hulu.com",
+      "www.justwatch.com",
+      "www.kanopy.com",
+      "www.max.com",
+      "www.netflix.com",
+      "www.paramountplus.com",
+      "www.peacocktv.com",
+      "www.primevideo.com",
+      "www.stan.com.au",
+      "www.youtube.com",
+    ]);
+    try {
+      const url = new URL(String(value || ""));
+      if (url.protocol === "https:" && allowedHosts.has(url.hostname)) {
+        return url.toString();
+      }
+    } catch {
+      // Ignore malformed or untrusted provider links.
     }
     return "";
   }

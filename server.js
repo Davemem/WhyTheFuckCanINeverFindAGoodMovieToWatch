@@ -1052,6 +1052,7 @@ async function handleApi(req, requestUrl, res) {
   if (requestUrl.pathname === "/api/watch-providers") {
     const movieId = Number(requestUrl.searchParams.get("movieId"));
     const region = String(requestUrl.searchParams.get("region") || "US").trim().toUpperCase();
+    const title = String(requestUrl.searchParams.get("title") || "").trim().slice(0, 160);
 
     if (!Number.isInteger(movieId) || movieId <= 0) {
       sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
@@ -1068,7 +1069,7 @@ async function handleApi(req, requestUrl, res) {
     sendJson(
       res,
       200,
-      normalizeWatchProviderPayload(upstreamPayload, { movieId, region }),
+      normalizeWatchProviderPayload(upstreamPayload, { movieId, region, title }),
       { "Cache-Control": `public, max-age=${WATCH_PROVIDER_CACHE_TTL_SECONDS}` },
     );
     return;
@@ -2695,15 +2696,16 @@ async function tmdb(endpoint, params = {}) {
 function normalizeWatchProviderPayload(payload, options = {}) {
   const movieId = Number(options.movieId);
   const region = String(options.region || "US").trim().toUpperCase();
+  const title = String(options.title || "").trim().slice(0, 160);
   const regionalAvailability = payload?.results?.[region] || null;
   const providerGroups = {
-    stream: normalizeWatchProviderGroup(regionalAvailability?.flatrate),
+    stream: normalizeWatchProviderGroup(regionalAvailability?.flatrate, { region, title }),
     free: normalizeWatchProviderGroup([
       ...(Array.isArray(regionalAvailability?.free) ? regionalAvailability.free : []),
       ...(Array.isArray(regionalAvailability?.ads) ? regionalAvailability.ads : []),
-    ]),
-    rent: normalizeWatchProviderGroup(regionalAvailability?.rent),
-    buy: normalizeWatchProviderGroup(regionalAvailability?.buy),
+    ], { region, title }),
+    rent: normalizeWatchProviderGroup(regionalAvailability?.rent, { region, title }),
+    buy: normalizeWatchProviderGroup(regionalAvailability?.buy, { region, title }),
   };
 
   return {
@@ -2721,7 +2723,7 @@ function normalizeWatchProviderPayload(payload, options = {}) {
   };
 }
 
-function normalizeWatchProviderGroup(rawProviders) {
+function normalizeWatchProviderGroup(rawProviders, options = {}) {
   const providers = Array.isArray(rawProviders) ? rawProviders : [];
   const seenProviderIds = new Set();
 
@@ -2735,6 +2737,7 @@ function normalizeWatchProviderGroup(rawProviders) {
       seenProviderIds.add(providerId);
 
       const logoPath = String(provider?.logo_path || "").trim();
+      const destination = buildWatchProviderDestination(providerName, options.title, options.region);
       return {
         id: providerId,
         name: providerName.slice(0, 160),
@@ -2744,11 +2747,120 @@ function normalizeWatchProviderGroup(rawProviders) {
         priority: Number.isFinite(Number(provider?.display_priority))
           ? Number(provider.display_priority)
           : Number.MAX_SAFE_INTEGER,
+        link: destination.url,
+        linkType: destination.type,
       };
     })
     .filter(Boolean)
     .sort((left, right) => left.priority - right.priority || left.name.localeCompare(right.name))
     .slice(0, 30);
+}
+
+function buildWatchProviderDestination(providerName, title, region = "US") {
+  const normalizedProvider = String(providerName || "").trim().toLowerCase();
+  const normalizedTitle = String(title || "").trim().slice(0, 160);
+  const normalizedRegion = /^[A-Z]{2}$/.test(String(region || "").toUpperCase())
+    ? String(region).toUpperCase()
+    : "US";
+
+  if (!normalizedProvider || !normalizedTitle) {
+    return { url: "", type: "" };
+  }
+
+  const query = encodeURIComponent(normalizedTitle);
+  const regionSlug = normalizedRegion.toLowerCase();
+  const directRules = [
+    {
+      matches: ["apple tv", "itunes"],
+      url: `https://tv.apple.com/${regionSlug}/search?term=${query}`,
+    },
+    {
+      matches: ["amazon", "prime video", "freevee"],
+      url: `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${query}`,
+    },
+    {
+      matches: ["netflix"],
+      url: `https://www.netflix.com/search?q=${query}`,
+    },
+    {
+      matches: ["google play"],
+      url: `https://play.google.com/store/search?q=${query}&c=movies`,
+    },
+    {
+      matches: ["youtube"],
+      url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${normalizedTitle} movie`)}`,
+    },
+    {
+      matches: ["fetch tv"],
+      url: `https://www.fetchtv.com.au/search?query=${query}`,
+    },
+    {
+      matches: ["disney"],
+      url: "https://www.disneyplus.com/browse/search",
+    },
+    {
+      matches: ["stan"],
+      url: "https://www.stan.com.au/",
+      type: "provider-home",
+    },
+    {
+      matches: ["foxtel"],
+      url: "https://www.foxtel.com.au/now/index.html",
+      type: "provider-home",
+    },
+    {
+      matches: ["binge"],
+      url: "https://binge.com.au/",
+      type: "provider-home",
+    },
+    {
+      matches: ["paramount"],
+      url: "https://www.paramountplus.com/",
+      type: "provider-home",
+    },
+    {
+      matches: ["hbo max", "max amazon", "max apple", "max"],
+      url: "https://www.max.com/",
+      type: "provider-home",
+    },
+    {
+      matches: ["hulu"],
+      url: `https://www.hulu.com/search?q=${query}`,
+    },
+    {
+      matches: ["peacock"],
+      url: "https://www.peacocktv.com/watch/home",
+      type: "provider-home",
+    },
+    {
+      matches: ["tubi"],
+      url: `https://tubitv.com/search/${query}`,
+    },
+    {
+      matches: ["crunchyroll"],
+      url: `https://www.crunchyroll.com/search?q=${query}`,
+    },
+    {
+      matches: ["kanopy"],
+      url: `https://www.kanopy.com/en/search?query=${query}`,
+    },
+    {
+      matches: ["plex"],
+      url: `https://watch.plex.tv/search?q=${query}`,
+    },
+  ];
+  const directMatch = directRules.find((rule) => (
+    rule.matches.some((providerToken) => normalizedProvider.includes(providerToken))
+  ));
+
+  if (directMatch) {
+    return { url: directMatch.url, type: directMatch.type || "provider" };
+  }
+
+  return {
+    url: `https://www.justwatch.com/${regionSlug}/search?q=${query}`,
+    type: "availability",
+  };
 }
 
 function normalizeWatchProviderLink(value) {
@@ -3854,6 +3966,7 @@ function sendPlain(res, statusCode, text, headers = {}) {
 module.exports = {
   PUBLIC_API_GET_PATHS,
   PUBLIC_STATIC_FILES,
+  buildWatchProviderDestination,
   clampNumber,
   normalizeWatchProviderPayload,
   server,

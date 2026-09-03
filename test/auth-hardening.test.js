@@ -17,7 +17,12 @@ const {
   revokeUserSessionById,
 } = require("../lib/auth/session");
 const { getUserAccountOverview } = require("../lib/auth/account-store");
-const { clampNumber, normalizeWatchProviderPayload, server } = require("../server");
+const {
+  buildWatchProviderDestination,
+  clampNumber,
+  normalizeWatchProviderPayload,
+  server,
+} = require("../server");
 
 test("clampNumber uses its fallback when a query parameter is absent", () => {
   assert.equal(clampNumber(null, 25, 1, 50), 25);
@@ -234,7 +239,7 @@ test("watch provider payloads are grouped, deduplicated, and restricted to trust
         rent: [{ provider_id: 3, provider_name: "Rental Store", display_priority: 1, logo_path: "/rent.jpg" }],
       },
     },
-  }, { movieId: 550, region: "AU" });
+  }, { movieId: 550, region: "AU", title: "Fight Club" });
 
   assert.equal(payload.movieId, 550);
   assert.equal(payload.region, "AU");
@@ -243,12 +248,52 @@ test("watch provider payloads are grouped, deduplicated, and restricted to trust
   assert.deepEqual(payload.providers.stream.map((provider) => provider.name), ["First Stream", "Second Stream"]);
   assert.deepEqual(payload.providers.free.map((provider) => provider.name), ["Free TV"]);
   assert.equal(payload.providers.rent[0].logoUrl, "https://image.tmdb.org/t/p/w92/rent.jpg");
+  assert.match(payload.providers.rent[0].link, /^https:\/\/www\.justwatch\.com\/au\/search\?q=Fight%20Club$/);
+  assert.equal(payload.providers.rent[0].linkType, "availability");
   assert.equal(payload.attribution.name, "JustWatch");
 
   const unsafePayload = normalizeWatchProviderPayload({
     results: { AU: { link: "https://example.com/not-tmdb" } },
   }, { movieId: 550, region: "AU" });
   assert.equal(unsafePayload.link, "");
+});
+
+test("watch provider destinations open the service rather than TMDB", () => {
+  assert.deepEqual(
+    buildWatchProviderDestination("Netflix", "The Social Network", "AU"),
+    {
+      url: "https://www.netflix.com/search?q=The%20Social%20Network",
+      type: "provider",
+    },
+  );
+  assert.deepEqual(
+    buildWatchProviderDestination("Paramount+ Amazon Channel", "Arrival", "AU"),
+    {
+      url: "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=Arrival",
+      type: "provider",
+    },
+  );
+  assert.deepEqual(
+    buildWatchProviderDestination("Apple TV Store", "Poor Things", "GB"),
+    {
+      url: "https://tv.apple.com/gb/search?term=Poor%20Things",
+      type: "provider",
+    },
+  );
+  assert.deepEqual(
+    buildWatchProviderDestination("Stan", "Whiplash", "AU"),
+    {
+      url: "https://www.stan.com.au/",
+      type: "provider-home",
+    },
+  );
+  assert.deepEqual(
+    buildWatchProviderDestination("A Provider Without Public Search", "Whiplash", "AU"),
+    {
+      url: "https://www.justwatch.com/au/search?q=Whiplash",
+      type: "availability",
+    },
+  );
 });
 
 test("server exposes only public assets and rejects catalog writes", async () => {
