@@ -1,3 +1,4 @@
 .env
 .cache
+.firecrawl/
 node_modules

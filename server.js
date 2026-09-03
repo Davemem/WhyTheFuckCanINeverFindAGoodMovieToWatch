@@ -43,6 +43,7 @@ const PUBLIC_API_GET_PATHS = new Set([
   "/api/studios",
   "/api/discover",
   "/api/enrich",
+  "/api/watch-providers",
 ]);
 const PUBLIC_STATIC_FILES = new Set([
   "account.html",
@@ -134,6 +135,7 @@ const PEOPLE_SEARCH_KNOWN_FOR_LIMIT = 3;
 const DB_SNAPSHOT_CACHE_TTL_MS = 1000 * 60 * 2;
 const DISCOVER_CACHE_TTL_MS = 1000 * 60 * 2;
 const STATIC_ASSET_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
+const WATCH_PROVIDER_CACHE_TTL_SECONDS = 60 * 15;
 const demoGenres = [
   { id: 18, name: "Drama" },
   { id: 35, name: "Comedy" },
@@ -1044,6 +1046,31 @@ async function handleApi(req, requestUrl, res) {
       });
       throw error;
     }
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/watch-providers") {
+    const movieId = Number(requestUrl.searchParams.get("movieId"));
+    const region = String(requestUrl.searchParams.get("region") || "US").trim().toUpperCase();
+
+    if (!Number.isInteger(movieId) || movieId <= 0) {
+      sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+    if (!/^[A-Z]{2}$/.test(region)) {
+      sendJson(res, 400, { error: "A valid two-letter region is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    const upstreamPayload = tmdbToken || tmdbApiKey
+      ? await tmdb(`/movie/${movieId}/watch/providers`)
+      : null;
+    sendJson(
+      res,
+      200,
+      normalizeWatchProviderPayload(upstreamPayload, { movieId, region }),
+      { "Cache-Control": `public, max-age=${WATCH_PROVIDER_CACHE_TTL_SECONDS}` },
+    );
     return;
   }
 
@@ -2665,6 +2692,80 @@ async function tmdb(endpoint, params = {}) {
   }
 }
 
+function normalizeWatchProviderPayload(payload, options = {}) {
+  const movieId = Number(options.movieId);
+  const region = String(options.region || "US").trim().toUpperCase();
+  const regionalAvailability = payload?.results?.[region] || null;
+  const providerGroups = {
+    stream: normalizeWatchProviderGroup(regionalAvailability?.flatrate),
+    free: normalizeWatchProviderGroup([
+      ...(Array.isArray(regionalAvailability?.free) ? regionalAvailability.free : []),
+      ...(Array.isArray(regionalAvailability?.ads) ? regionalAvailability.ads : []),
+    ]),
+    rent: normalizeWatchProviderGroup(regionalAvailability?.rent),
+    buy: normalizeWatchProviderGroup(regionalAvailability?.buy),
+  };
+
+  return {
+    movieId: Number.isInteger(movieId) && movieId > 0 ? movieId : null,
+    region: /^[A-Z]{2}$/.test(region) ? region : "US",
+    available: Object.values(providerGroups).some((providers) => providers.length > 0),
+    link: normalizeWatchProviderLink(regionalAvailability?.link),
+    providers: providerGroups,
+    attribution: {
+      name: "JustWatch",
+      url: "https://www.justwatch.com/",
+      via: "TMDB",
+      viaUrl: "https://www.themoviedb.org/",
+    },
+  };
+}
+
+function normalizeWatchProviderGroup(rawProviders) {
+  const providers = Array.isArray(rawProviders) ? rawProviders : [];
+  const seenProviderIds = new Set();
+
+  return providers
+    .map((provider) => {
+      const providerId = Number(provider?.provider_id);
+      const providerName = String(provider?.provider_name || "").trim();
+      if (!Number.isInteger(providerId) || providerId <= 0 || !providerName || seenProviderIds.has(providerId)) {
+        return null;
+      }
+      seenProviderIds.add(providerId);
+
+      const logoPath = String(provider?.logo_path || "").trim();
+      return {
+        id: providerId,
+        name: providerName.slice(0, 160),
+        logoUrl: logoPath.startsWith("/") && logoPath.length <= 500
+          ? `https://image.tmdb.org/t/p/w92${logoPath}`
+          : "",
+        priority: Number.isFinite(Number(provider?.display_priority))
+          ? Number(provider.display_priority)
+          : Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.priority - right.priority || left.name.localeCompare(right.name))
+    .slice(0, 30);
+}
+
+function normalizeWatchProviderLink(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (
+      url.protocol === "https:"
+      && (url.hostname === "www.themoviedb.org" || url.hostname === "themoviedb.org")
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // Ignore missing or malformed upstream links.
+  }
+  return "";
+}
+
 async function cachedJson(key, url, options = {}) {
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
@@ -3754,6 +3855,7 @@ module.exports = {
   PUBLIC_API_GET_PATHS,
   PUBLIC_STATIC_FILES,
   clampNumber,
+  normalizeWatchProviderPayload,
   server,
 };
 

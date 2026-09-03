@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260414a" />
+    <link rel="stylesheet" href="./styles.css?v=20260903b" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -252,7 +252,12 @@
               <strong class="rating-tmdb"></strong>
             </div>
           </div>
-          <button type="button" class="watchlist-button"></button>
+          <div class="movie-card-actions">
+            <button type="button" class="watchlist-button"></button>
+            <button type="button" class="ghost-button watch-providers-button" data-watch-providers-button>
+              Where to watch
+            </button>
+          </div>
           <dl class="credit-list">
             <div>
               <dt>Starring</dt>
@@ -281,7 +286,7 @@
 
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260422b" defer></script>
+    <script src="./movie-results.js?v=20260903b" defer></script>
     <script src="./people.js?v=20260421a" defer></script>
     <script src="./catalog-search.js?v=20260414a" defer></script>
   </body>

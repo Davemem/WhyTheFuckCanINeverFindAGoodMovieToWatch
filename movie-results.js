@@ -1,4 +1,27 @@
 (function bootstrapMovieResults(global) {
+  const watchProviderGroups = [
+    { key: "stream", label: "Stream" },
+    { key: "free", label: "Free or ad-supported" },
+    { key: "rent", label: "Rent" },
+    { key: "buy", label: "Buy" },
+  ];
+  const watchRegionOptions = [
+    "AU", "NZ", "US", "CA", "GB", "IE", "DE", "FR", "ES", "IT", "NL", "BE",
+    "SE", "NO", "DK", "FI", "AT", "CH", "BR", "MX", "AR", "IN", "JP", "KR",
+    "SG", "HK", "ID", "MY", "PH", "TH", "ZA",
+  ];
+  const watchProviderCache = new Map();
+  const watchProviderState = {
+    movieId: null,
+    movieTitle: "",
+    region: resolveDefaultWatchRegion(),
+    requestToken: 0,
+    trigger: null,
+  };
+  let watchProviderDialog = null;
+
+  document.addEventListener("click", handleWatchProviderClick);
+
   function formatRating(value, decimals) {
     return value === null || value === undefined ? "N/A" : Number(value).toFixed(decimals);
   }
@@ -128,6 +151,22 @@
       }
       if (options.allowToggleSave) {
         watchlistButton.dataset.watchlistMovie = JSON.stringify(movie);
+      }
+    }
+
+    const watchProvidersButton = fragment.querySelector("[data-watch-providers-button]");
+    if (watchProvidersButton) {
+      const movieId = Number(movie.id);
+      if (Number.isInteger(movieId) && movieId > 0) {
+        watchProvidersButton.dataset.watchProviderMovieId = String(movieId);
+        watchProvidersButton.dataset.watchProviderMovieTitle = String(movie.title || "This title");
+        watchProvidersButton.setAttribute(
+          "aria-label",
+          `Find where to watch ${movie.title || "this title"}`,
+        );
+      } else {
+        watchProvidersButton.disabled = true;
+        watchProvidersButton.title = "Viewing availability is unavailable for this title.";
       }
     }
 
@@ -420,6 +459,362 @@
         }
       }, retryDelayMs);
     }
+  }
+
+  function handleWatchProviderClick(event) {
+    const button = event.target.closest("[data-watch-providers-button]");
+    if (!button || button.disabled) {
+      return;
+    }
+
+    const movieId = Number(button.dataset.watchProviderMovieId);
+    if (!Number.isInteger(movieId) || movieId <= 0) {
+      return;
+    }
+
+    watchProviderState.movieId = movieId;
+    watchProviderState.movieTitle = button.dataset.watchProviderMovieTitle || "This title";
+    watchProviderState.trigger = button;
+    openWatchProviderDialog();
+  }
+
+  function openWatchProviderDialog() {
+    const dialog = ensureWatchProviderDialog();
+    const title = dialog.querySelector("[data-watch-provider-title]");
+    const regionSelect = dialog.querySelector("[data-watch-provider-region]");
+    if (title) {
+      title.textContent = watchProviderState.movieTitle;
+    }
+    if (regionSelect) {
+      ensureRegionOption(regionSelect, watchProviderState.region);
+      regionSelect.value = watchProviderState.region;
+    }
+
+    if (!dialog.open) {
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+    }
+    loadWatchProviders();
+  }
+
+  function ensureWatchProviderDialog() {
+    if (watchProviderDialog) {
+      return watchProviderDialog;
+    }
+
+    const dialog = document.createElement("dialog");
+    dialog.className = "watch-provider-dialog";
+    dialog.setAttribute("aria-labelledby", "watch-provider-dialog-title");
+    dialog.innerHTML = `
+      <div class="watch-provider-dialog-shell">
+        <header class="watch-provider-dialog-header">
+          <div>
+            <p class="section-label">Where to watch</p>
+            <h2 id="watch-provider-dialog-title" data-watch-provider-title></h2>
+          </div>
+          <button type="button" class="ghost-button watch-provider-dialog-close" data-watch-provider-close aria-label="Close where to watch">Close</button>
+        </header>
+        <div class="watch-provider-toolbar">
+          <label class="watch-provider-region-control">
+            <span>Availability in</span>
+            <select data-watch-provider-region aria-label="Viewing availability country"></select>
+          </label>
+          <p>Choose your country to see current streaming, rental, and purchase options.</p>
+        </div>
+        <div class="watch-provider-results" data-watch-provider-results aria-live="polite"></div>
+        <footer class="watch-provider-attribution">
+          Availability data supplied by
+          <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a>
+          via
+          <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDB</a>.
+        </footer>
+      </div>
+    `;
+
+    const regionSelect = dialog.querySelector("[data-watch-provider-region]");
+    watchRegionOptions.forEach((region) => ensureRegionOption(regionSelect, region));
+    ensureRegionOption(regionSelect, watchProviderState.region);
+    regionSelect.value = watchProviderState.region;
+    regionSelect.addEventListener("change", () => {
+      watchProviderState.region = regionSelect.value;
+      loadWatchProviders();
+    });
+
+    dialog.querySelector("[data-watch-provider-close]")?.addEventListener("click", () => {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    });
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) {
+        if (typeof dialog.close === "function") {
+          dialog.close();
+        } else {
+          dialog.removeAttribute("open");
+        }
+      }
+    });
+    dialog.addEventListener("close", () => {
+      watchProviderState.requestToken += 1;
+      watchProviderState.trigger?.focus();
+    });
+
+    document.body.append(dialog);
+    watchProviderDialog = dialog;
+    return dialog;
+  }
+
+  function ensureRegionOption(select, region) {
+    if (!select || !/^[A-Z]{2}$/.test(region) || select.querySelector(`option[value="${region}"]`)) {
+      return;
+    }
+    const option = document.createElement("option");
+    option.value = region;
+    option.textContent = `${getRegionLabel(region)} (${region})`;
+    select.append(option);
+  }
+
+  async function loadWatchProviders() {
+    const dialog = ensureWatchProviderDialog();
+    const results = dialog.querySelector("[data-watch-provider-results]");
+    const movieId = watchProviderState.movieId;
+    const region = watchProviderState.region;
+    const movieTitle = watchProviderState.movieTitle;
+    const requestToken = ++watchProviderState.requestToken;
+
+    if (!results || !Number.isInteger(movieId)) {
+      return;
+    }
+
+    renderWatchProviderMessage(
+      results,
+      `Checking ${getRegionLabel(region)}…`,
+      "Looking for current streaming, rental, and purchase options.",
+    );
+    dialog.setAttribute("aria-busy", "true");
+
+    try {
+      const cacheKey = `${movieId}:${region}`;
+      let payload = watchProviderCache.get(cacheKey);
+      if (!payload) {
+        const response = await global.fetch(
+          `/api/watch-providers?movieId=${encodeURIComponent(String(movieId))}&region=${encodeURIComponent(region)}`,
+          { credentials: "same-origin", headers: { Accept: "application/json" } },
+        );
+        payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Viewing options are unavailable right now.");
+        }
+        watchProviderCache.set(cacheKey, payload);
+      }
+
+      if (requestToken !== watchProviderState.requestToken) {
+        return;
+      }
+      renderWatchProviderResults(results, payload, movieTitle, region);
+    } catch (error) {
+      if (requestToken !== watchProviderState.requestToken) {
+        return;
+      }
+      renderWatchProviderError(
+        results,
+        error instanceof Error ? error.message : "Viewing options are unavailable right now.",
+      );
+    } finally {
+      if (requestToken === watchProviderState.requestToken) {
+        dialog.removeAttribute("aria-busy");
+      }
+    }
+  }
+
+  function renderWatchProviderResults(container, payload, movieTitle, region) {
+    container.replaceChildren();
+
+    const intro = document.createElement("p");
+    intro.className = "watch-provider-location";
+    intro.textContent = `Current options for ${getRegionLabel(region)}.`;
+    container.append(intro);
+
+    const groups = document.createElement("div");
+    groups.className = "watch-provider-groups";
+    let renderedProviderCount = 0;
+    const watchLink = normalizeExternalWatchLink(payload?.link);
+
+    watchProviderGroups.forEach((groupConfig) => {
+      const providers = Array.isArray(payload?.providers?.[groupConfig.key])
+        ? payload.providers[groupConfig.key]
+        : [];
+      if (!providers.length) {
+        return;
+      }
+
+      const section = document.createElement("section");
+      const heading = document.createElement("h3");
+      const list = document.createElement("div");
+      section.className = "watch-provider-group";
+      heading.textContent = groupConfig.label;
+      list.className = "watch-provider-list";
+
+      providers.forEach((provider) => {
+        const item = watchLink ? document.createElement("a") : document.createElement("span");
+        item.className = "watch-provider-item";
+        if (watchLink) {
+          item.href = watchLink;
+          item.target = "_blank";
+          item.rel = "noopener noreferrer";
+          item.setAttribute(
+            "aria-label",
+            `View ${provider.name} options for ${movieTitle} on TMDB (opens in a new tab)`,
+          );
+        }
+
+        const logoUrl = normalizeProviderLogoUrl(provider.logoUrl);
+        if (logoUrl) {
+          const logo = document.createElement("img");
+          logo.src = logoUrl;
+          logo.alt = "";
+          logo.loading = "lazy";
+          logo.width = 38;
+          logo.height = 38;
+          logo.addEventListener("error", () => logo.remove(), { once: true });
+          item.append(logo);
+        }
+
+        const name = document.createElement("span");
+        name.textContent = String(provider.name || "Provider");
+        item.append(name);
+        list.append(item);
+        renderedProviderCount += 1;
+      });
+
+      section.append(heading, list);
+      groups.append(section);
+    });
+
+    if (!renderedProviderCount) {
+      renderWatchProviderMessage(
+        container,
+        `No options found in ${getRegionLabel(region)}`,
+        "Availability changes regularly. Try another country or check again later.",
+        { preserveExisting: true },
+      );
+      return;
+    }
+
+    container.append(groups);
+    if (watchLink) {
+      const openAllLink = document.createElement("a");
+      openAllLink.className = "ghost-button watch-provider-open-all";
+      openAllLink.href = watchLink;
+      openAllLink.target = "_blank";
+      openAllLink.rel = "noopener noreferrer";
+      openAllLink.textContent = "Open all viewing options on TMDB";
+      openAllLink.setAttribute("aria-label", `Open all viewing options for ${movieTitle} on TMDB (opens in a new tab)`);
+      container.append(openAllLink);
+    }
+  }
+
+  function renderWatchProviderMessage(container, title, message, options = {}) {
+    if (!options.preserveExisting) {
+      container.replaceChildren();
+    }
+    const state = document.createElement("div");
+    const heading = document.createElement("strong");
+    const copy = document.createElement("p");
+    state.className = "watch-provider-state";
+    heading.textContent = title;
+    copy.textContent = message;
+    state.append(heading, copy);
+    container.append(state);
+  }
+
+  function renderWatchProviderError(container, message) {
+    container.replaceChildren();
+    const state = document.createElement("div");
+    const heading = document.createElement("strong");
+    const copy = document.createElement("p");
+    const retry = document.createElement("button");
+    state.className = "watch-provider-state is-error";
+    heading.textContent = "Couldn’t load viewing options";
+    copy.textContent = message;
+    retry.type = "button";
+    retry.className = "ghost-button";
+    retry.textContent = "Try again";
+    retry.addEventListener("click", loadWatchProviders);
+    state.append(heading, copy, retry);
+    container.append(state);
+  }
+
+  function resolveDefaultWatchRegion() {
+    try {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      if (timeZone.startsWith("Australia/")) {
+        return "AU";
+      }
+      if (timeZone === "Pacific/Auckland" || timeZone === "Pacific/Chatham") {
+        return "NZ";
+      }
+    } catch {
+      // Fall back to the browser locale.
+    }
+
+    const locales = Array.isArray(global.navigator?.languages) && global.navigator.languages.length
+      ? global.navigator.languages
+      : [global.navigator?.language || "en-US"];
+    for (const locale of locales) {
+      try {
+        const region = typeof Intl.Locale === "function" ? new Intl.Locale(locale).region : "";
+        if (/^[A-Z]{2}$/.test(region || "")) {
+          return region;
+        }
+      } catch {
+        // Try the next browser locale.
+      }
+    }
+    return "US";
+  }
+
+  function getRegionLabel(region) {
+    try {
+      if (typeof Intl.DisplayNames === "function") {
+        return new Intl.DisplayNames([global.navigator?.language || "en"], { type: "region" }).of(region) || region;
+      }
+    } catch {
+      // Fall back to the two-letter region code.
+    }
+    return region;
+  }
+
+  function normalizeExternalWatchLink(value) {
+    try {
+      const url = new URL(String(value || ""));
+      if (
+        url.protocol === "https:"
+        && (url.hostname === "www.themoviedb.org" || url.hostname === "themoviedb.org")
+      ) {
+        return url.toString();
+      }
+    } catch {
+      // Ignore malformed upstream links.
+    }
+    return "";
+  }
+
+  function normalizeProviderLogoUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      if (url.protocol === "https:" && url.hostname === "image.tmdb.org") {
+        return url.toString();
+      }
+    } catch {
+      // Ignore malformed upstream image URLs.
+    }
+    return "";
   }
 
   global.MovieResults = {

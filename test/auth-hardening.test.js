@@ -17,7 +17,7 @@ const {
   revokeUserSessionById,
 } = require("../lib/auth/session");
 const { getUserAccountOverview } = require("../lib/auth/account-store");
-const { clampNumber, server } = require("../server");
+const { clampNumber, normalizeWatchProviderPayload, server } = require("../server");
 
 test("clampNumber uses its fallback when a query parameter is absent", () => {
   assert.equal(clampNumber(null, 25, 1, 50), 25);
@@ -220,6 +220,37 @@ test("getUserAccountOverview normalizes numeric summary counts", async () => {
   });
 });
 
+test("watch provider payloads are grouped, deduplicated, and restricted to trusted links", () => {
+  const payload = normalizeWatchProviderPayload({
+    results: {
+      AU: {
+        link: "https://www.themoviedb.org/movie/550/watch?locale=AU",
+        flatrate: [
+          { provider_id: 2, provider_name: "Second Stream", display_priority: 20, logo_path: "/second.jpg" },
+          { provider_id: 1, provider_name: "First Stream", display_priority: 10, logo_path: "/first.jpg" },
+        ],
+        free: [{ provider_id: 7, provider_name: "Free TV", display_priority: 4, logo_path: "/free.jpg" }],
+        ads: [{ provider_id: 7, provider_name: "Free TV", display_priority: 4, logo_path: "/free.jpg" }],
+        rent: [{ provider_id: 3, provider_name: "Rental Store", display_priority: 1, logo_path: "/rent.jpg" }],
+      },
+    },
+  }, { movieId: 550, region: "AU" });
+
+  assert.equal(payload.movieId, 550);
+  assert.equal(payload.region, "AU");
+  assert.equal(payload.available, true);
+  assert.equal(payload.link, "https://www.themoviedb.org/movie/550/watch?locale=AU");
+  assert.deepEqual(payload.providers.stream.map((provider) => provider.name), ["First Stream", "Second Stream"]);
+  assert.deepEqual(payload.providers.free.map((provider) => provider.name), ["Free TV"]);
+  assert.equal(payload.providers.rent[0].logoUrl, "https://image.tmdb.org/t/p/w92/rent.jpg");
+  assert.equal(payload.attribution.name, "JustWatch");
+
+  const unsafePayload = normalizeWatchProviderPayload({
+    results: { AU: { link: "https://example.com/not-tmdb" } },
+  }, { movieId: 550, region: "AU" });
+  assert.equal(unsafePayload.link, "");
+});
+
 test("server exposes only public assets and rejects catalog writes", async () => {
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -247,6 +278,14 @@ test("server exposes only public assets and rejects catalog writes", async () =>
     assert.equal(writeResponse.status, 405);
     assert.equal(writeResponse.headers.get("allow"), "GET, HEAD");
     assert.deepEqual(await writeResponse.json(), { error: "Method not allowed" });
+
+    const invalidProviderResponse = await fetch(`${baseUrl}/api/watch-providers?movieId=nope&region=AU`);
+    assert.equal(invalidProviderResponse.status, 400);
+    assert.deepEqual(await invalidProviderResponse.json(), { error: "A valid movie id is required." });
+
+    const providerWriteResponse = await fetch(`${baseUrl}/api/watch-providers`, { method: "POST" });
+    assert.equal(providerWriteResponse.status, 405);
+    assert.equal(providerWriteResponse.headers.get("allow"), "GET, HEAD");
 
     const staticWriteResponse = await fetch(`${baseUrl}/index.html`, { method: "POST" });
     assert.equal(staticWriteResponse.status, 405);
