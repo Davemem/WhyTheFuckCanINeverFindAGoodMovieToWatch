@@ -21,8 +21,10 @@ const {
   buildLegacyDirectoryRedirect,
   buildWatchProviderDestination,
   clampNumber,
+  mapCandidateSort,
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
+  passesAwardFilter,
   server,
 } = require("../server");
 
@@ -76,6 +78,19 @@ test("movie title search results are normalized into saveable watchlist records"
       isEnriched: false,
     },
   );
+});
+
+test("award nomination filters recognise the plural summaries returned by OMDb", () => {
+  const nominatedMovie = { awards: "Nominated for 2 Oscars. 22 wins & 73 nominations total" };
+  assert.equal(passesAwardFilter(nominatedMovie, "nominee:any"), true);
+  assert.equal(passesAwardFilter(nominatedMovie, "nominee:oscar"), true);
+  assert.equal(passesAwardFilter(nominatedMovie, "winner:oscar"), false);
+});
+
+test("award discovery samples established films before applying the selected result sort", () => {
+  assert.equal(mapCandidateSort({ award: "winner:any", sort: "match" }), "vote_count.desc");
+  assert.equal(mapCandidateSort({ award: "nominee:oscar", sort: "year-desc" }), "vote_count.desc");
+  assert.equal(mapCandidateSort({ award: "all", sort: "year-desc" }), "primary_release_date.desc");
 });
 
 test("createCsrfToken derives a stable token from the session", () => {

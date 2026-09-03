@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260903e" />
+    <link rel="stylesheet" href="./styles.css?v=20260903f" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -108,18 +108,30 @@
               Directors / Producers
             </button>
           </div>
-          <section
+          <dialog
             id="saved-person-catalog"
-            class="saved-person-rail saved-people-catalog movie-rail"
-            data-saved-person-rail
-            data-movie-rail
-            data-rail-status="idle"
-            hidden
+            class="saved-person-catalog-dialog"
+            aria-labelledby="saved-person-catalog-name"
           >
-            <div class="saved-person-rail-header movie-rail-header">
-              <div>
-                <p class="saved-person-titles-label">Full catalog</p>
-                <h3 id="saved-person-catalog-name" class="saved-people-catalog-name"></h3>
+            <section
+              class="saved-person-rail saved-people-catalog movie-rail"
+              data-saved-person-rail
+              data-movie-rail
+              data-rail-status="idle"
+            >
+              <div class="saved-person-rail-header movie-rail-header">
+                <div>
+                  <p class="saved-person-titles-label">Full movie catalog</p>
+                  <h3 id="saved-person-catalog-name" class="saved-people-catalog-name"></h3>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button saved-person-catalog-close"
+                  data-close-saved-person-catalog
+                  aria-label="Close movie catalog"
+                >
+                  Close
+                </button>
               </div>
               <div class="saved-person-rail-meta movie-rail-meta">
                 <span class="saved-person-rail-count movie-rail-count" data-saved-person-visible-count data-movie-rail-count></span>
@@ -132,11 +144,11 @@
                   </button>
                 </div>
               </div>
-            </div>
-            <div class="saved-person-titles-viewport movie-rail-viewport" data-saved-person-titles-viewport data-movie-rail-viewport>
-              <div class="saved-person-titles-track movie-rail-track" data-saved-person-titles data-movie-rail-track></div>
-            </div>
-          </section>
+              <div class="saved-person-titles-viewport movie-rail-viewport" data-saved-person-titles-viewport data-movie-rail-viewport>
+                <div class="saved-person-titles-track movie-rail-track" data-saved-person-titles data-movie-rail-track></div>
+              </div>
+            </section>
+          </dialog>
           <div
             id="saved-actors-panel"
             class="saved-people-panel"
@@ -244,6 +256,15 @@
             <p class="person-card-count"></p>
           </div>
           <div class="person-card-actions saved-person-actions">
+            <button
+              type="button"
+              class="person-card-button ghost-button"
+              data-open-saved-person-catalog
+              aria-haspopup="dialog"
+              aria-controls="saved-person-catalog"
+            >
+              View movies
+            </button>
             <button type="button" class="person-save-button ghost-button is-saved" data-saved-person-id>
               Remove person
             </button>
@@ -255,6 +276,6 @@
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
     <script src="./movie-results.js?v=20260903c" defer></script>
-    <script src="./saved.js?v=20260421a" defer></script>
+    <script src="./saved.js?v=20260903b" defer></script>
   </body>
 </html>

@@ -59,6 +59,7 @@ const PUBLIC_STATIC_FILES = new Set([
   "saved.html",
   "saved.js",
   "styles.css",
+  "title-quick-add.js",
 ]);
 const SECURITY_HEADERS = {
   "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
@@ -1602,7 +1603,7 @@ async function discoverBroad(filters) {
     include_video: "false",
     language: "en-US",
     page: "1",
-    sort_by: mapSort(filters.sort),
+    sort_by: mapCandidateSort(filters),
     vote_count_gte: "200",
   };
 
@@ -1627,14 +1628,16 @@ async function discoverBroad(filters) {
   const movies = needsDetails
     ? await hydrateMovies(baseResults.slice(0, determineHydrateLimit(filters)), filters)
     : baseResults.map(normalizeDiscoverMovie);
+  const filteredMovies = movies
+    .filter((movie) => passesMovieFilters(movie, filters))
+    .map((movie) => annotateAwardMatch(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
 
   return {
     matchedEntity: null,
     matchedPerson: null,
-    totalMatches: pages[0]?.total_results ?? movies.length,
-    movies: movies
-      .filter((movie) => passesMovieFilters(movie, filters))
-      .sort((left, right) => sortMovies(left, right, filters.sort)),
+    totalMatches: needsDetails ? filteredMovies.length : pages[0]?.total_results ?? filteredMovies.length,
+    movies: filteredMovies,
   };
 }
 
@@ -1664,7 +1667,8 @@ async function discoverByPerson(filters) {
     return discoverByPersonFromTmdb(filters);
   }
 
-  const movies = discoverNeedsHydration(filters)
+  const needsDetails = discoverNeedsHydration(filters);
+  const movies = needsDetails
     ? await hydrateMovies(
       allCredits.slice(0, determineHydrateLimit(filters)).map((row) => ({
         id: Number(row.id),
@@ -1673,14 +1677,16 @@ async function discoverByPerson(filters) {
       filters,
     )
     : allCredits.map(normalizeDbCreditMovie);
+  const filteredMovies = movies
+    .filter((movie) => passesMovieFilters(movie, filters))
+    .map((movie) => annotateAwardMatch(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
 
   return {
     matchedEntity: { id: person.id, name: person.name, type: "person" },
     matchedPerson: person,
-    totalMatches: allCredits.length,
-    movies: movies
-      .filter((movie) => passesMovieFilters(movie, filters))
-      .sort((left, right) => sortMovies(left, right, filters.sort)),
+    totalMatches: needsDetails ? filteredMovies.length : allCredits.length,
+    movies: filteredMovies,
   };
 }
 
@@ -1705,19 +1711,22 @@ async function discoverByPersonFromTmdb(filters) {
 
   const allCredits = [...creditMap.values()]
     .filter((credit) => matchesGenreAndDecade(credit, filters))
-    .sort((left, right) => sortCreditCandidates(left, right, filters.sort))
+    .sort((left, right) => sortCreditCandidatesForFilters(left, right, filters))
     .slice(0, PERSON_RESULT_LIMIT);
-  const movies = discoverNeedsHydration(filters)
+  const needsDetails = discoverNeedsHydration(filters);
+  const movies = needsDetails
     ? await hydrateMovies(allCredits.slice(0, determineHydrateLimit(filters)), filters)
     : allCredits.map(normalizeCreditMovie);
+  const filteredMovies = movies
+    .filter((movie) => passesMovieFilters(movie, filters))
+    .map((movie) => annotateAwardMatch(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
 
   return {
     matchedEntity: { id: person.id, name: person.name, type: "person" },
     matchedPerson: person,
-    totalMatches: allCredits.length,
-    movies: movies
-      .filter((movie) => passesMovieFilters(movie, filters))
-      .sort((left, right) => sortMovies(left, right, filters.sort)),
+    totalMatches: needsDetails ? filteredMovies.length : allCredits.length,
+    movies: filteredMovies,
   };
 }
 
@@ -1735,7 +1744,7 @@ async function discoverByStudio(filters) {
     include_video: "false",
     language: "en-US",
     page: "1",
-    sort_by: mapSort(filters.sort),
+    sort_by: mapCandidateSort(filters),
     vote_count_gte: "200",
     with_companies: String(studio.id),
   };
@@ -1762,17 +1771,20 @@ async function discoverByStudio(filters) {
       ...movie,
       reasons: [`Studio: ${studio.name}`],
     }));
-  const movies = discoverNeedsHydration(filters)
+  const needsDetails = discoverNeedsHydration(filters);
+  const movies = needsDetails
     ? await hydrateMovies(baseResults.slice(0, determineHydrateLimit(filters)), filters)
     : baseResults.map((movie) => normalizeDiscoverMovie(movie, movie.reasons));
+  const filteredMovies = movies
+    .filter((movie) => passesMovieFilters(movie, filters))
+    .map((movie) => annotateAwardMatch(movie, filters))
+    .sort((left, right) => sortMovies(left, right, filters.sort));
 
   return {
     matchedEntity: { id: studio.id, name: studio.name, type: "studio" },
     matchedPerson: null,
-    totalMatches: pages[0]?.total_results ?? movies.length,
-    movies: movies
-      .filter((movie) => passesMovieFilters(movie, filters))
-      .sort((left, right) => sortMovies(left, right, filters.sort)),
+    totalMatches: needsDetails ? filteredMovies.length : pages[0]?.total_results ?? filteredMovies.length,
+    movies: filteredMovies,
   };
 }
 
@@ -1830,7 +1842,9 @@ async function fetchPersonMoviesFromPostgres(personId, filters, limit) {
       m.vote_count,
       m.genre_ids_json,
       m.tmdb_json
-    ORDER BY ${buildMovieSortSql(filters.sort)}
+    ORDER BY ${buildMovieSortSql(
+      normalizeAwardFilterValue(filters.award) === "all" ? filters.sort : "match",
+    )}
     LIMIT $${params.length}
   `;
 
@@ -2647,7 +2661,7 @@ function buildDiscoverCacheKey(filters) {
     award: normalizeAwardFilterValue(filters.award),
   };
 
-  return `discover:v1:${JSON.stringify(normalized)}`;
+  return `discover:v2:${JSON.stringify(normalized)}`;
 }
 
 function normalizeDiscoverMovie(movie, reasons = []) {
@@ -3086,6 +3100,13 @@ function mapSort(sort) {
   }
 }
 
+function mapCandidateSort(filters = {}) {
+  if (normalizeAwardFilterValue(filters.award) !== "all") {
+    return "vote_count.desc";
+  }
+  return mapSort(filters.sort);
+}
+
 function matchesGenreAndDecade(credit, filters) {
   const genreOk =
     filters.genreId === "all" || (credit.genre_ids || []).includes(Number(filters.genreId));
@@ -3147,7 +3168,7 @@ function passesAwardFilter(movie, awardFilter) {
 
   if (resultType === "nominee") {
     return awardType === "any"
-      ? /\bnominated\b|\bnomination\b/.test(awardsText)
+      ? /\bnominat(?:ed|ions?)\b/.test(awardsText)
       : matchesSpecificAwardOutcome(awardsText, awardType, "nominee");
   }
 
@@ -3155,10 +3176,26 @@ function passesAwardFilter(movie, awardFilter) {
 }
 
 function matchesSpecificAwardOutcome(awardsText, awardType, outcome) {
-  const verbPattern = outcome === "winner" ? "\\bwon\\b" : "\\bnominated\\b";
+  const verbPattern = outcome === "winner"
+    ? "\\b(?:won|wins?)\\b"
+    : "\\bnominat(?:ed|ions?)\\b";
   const awardPattern = awardTypeSearchToken(awardType);
   const regex = new RegExp(`${verbPattern}[^.]*${awardPattern}|${awardPattern}[^.]*${verbPattern}`, "i");
   return regex.test(awardsText);
+}
+
+function annotateAwardMatch(movie, filters = {}) {
+  if (normalizeAwardFilterValue(filters.award) === "all" || !movie.awards) {
+    return movie;
+  }
+
+  const awardReason = `Awards: ${movie.awards}`;
+  const existingReason = String(movie.matchReason || "").trim();
+  const genericReason = existingReason === "Live discovery result.";
+  return {
+    ...movie,
+    matchReason: !existingReason || genericReason ? awardReason : `${existingReason} / ${awardReason}`,
+  };
 }
 
 function awardTypeSearchToken(awardType) {
@@ -3217,6 +3254,17 @@ function sortCreditCandidates(left, right, sortBy) {
         compareYears(right.release_date, left.release_date)
       );
   }
+}
+
+function sortCreditCandidatesForFilters(left, right, filters = {}) {
+  if (normalizeAwardFilterValue(filters.award) !== "all") {
+    return (
+      (right.vote_count || 0) - (left.vote_count || 0) ||
+      (right.vote_average || 0) - (left.vote_average || 0) ||
+      (right.popularity || 0) - (left.popularity || 0)
+    );
+  }
+  return sortCreditCandidates(left, right, filters.sort);
 }
 
 function compareYears(leftDate, rightDate) {
@@ -4139,8 +4187,10 @@ module.exports = {
   buildWatchProviderDestination,
   buildLegacyDirectoryRedirect,
   clampNumber,
+  mapCandidateSort,
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
+  passesAwardFilter,
   server,
 };
 

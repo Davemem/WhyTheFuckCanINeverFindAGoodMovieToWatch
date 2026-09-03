@@ -18,6 +18,7 @@ const elements = {
   savedWritersPanel: document.querySelector("#saved-writers-panel"),
   savedFilmmakersPanel: document.querySelector("#saved-filmmakers-panel"),
   savedPersonCatalog: document.querySelector("#saved-person-catalog"),
+  savedPersonRail: document.querySelector("[data-saved-person-rail]"),
   savedPersonCatalogName: document.querySelector("#saved-person-catalog-name"),
   savedTabButtons: [...document.querySelectorAll("[data-saved-tab]")],
   movieTemplate: document.querySelector("#movie-card-template"),
@@ -32,6 +33,7 @@ const personCatalogCache = new Map();
 const personCatalogEnrichment = new Map();
 let savedStateSource = "local";
 let savedStateError = "";
+let lastCatalogTrigger = null;
 const uiState = {
   activeTab: "actors",
   visiblePeopleCounts: {
@@ -69,8 +71,9 @@ elements.savedActorsGrid?.addEventListener("click", handleSavedAction);
 elements.savedWritersGrid?.addEventListener("click", handleSavedAction);
 elements.savedFilmmakersGrid?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("click", handleSavedAction);
-if (elements.savedPersonCatalog) {
-  window.MovieResults.bindRail(elements.savedPersonCatalog, {
+elements.savedPersonCatalog?.addEventListener("close", handleCatalogClose);
+if (elements.savedPersonRail) {
+  window.MovieResults.bindRail(elements.savedPersonRail, {
     cardWidth: savedTitleRailCardWidth,
     gap: savedTitleRailGap,
     statusText: {
@@ -95,8 +98,8 @@ window.addEventListener("resize", debounce(syncAllRails, 120));
 window.addEventListener(
   "resize",
   debounce(() => {
-    if (elements.savedPersonCatalog) {
-      refreshSynopsisToggles(elements.savedPersonCatalog);
+    if (elements.savedPersonRail) {
+      refreshSynopsisToggles(elements.savedPersonRail);
     }
   }, 120),
 );
@@ -227,6 +230,7 @@ function buildSavedPersonCard(person, isSelected) {
   const portraitFrame = fragment.querySelector(".person-card-visual");
   if (article) {
     article.dataset.selectPersonId = String(person.id);
+    article.tabIndex = -1;
     article.classList.toggle("is-selected", Boolean(isSelected));
   }
 
@@ -260,8 +264,8 @@ function buildSavedPersonTitleCard(movie, personId) {
 }
 
 function syncAllRails() {
-  if (elements.savedPersonCatalog && !elements.savedPersonCatalog.hidden) {
-    syncRail(elements.savedPersonCatalog);
+  if (elements.savedPersonCatalog?.open && elements.savedPersonRail) {
+    syncRail(elements.savedPersonRail);
   }
 }
 
@@ -360,6 +364,14 @@ function handleWindowScroll() {
 }
 
 function handleSavedAction(event) {
+  if (
+    event.target.closest("[data-close-saved-person-catalog]")
+    || event.target === elements.savedPersonCatalog
+  ) {
+    elements.savedPersonCatalog?.close();
+    return;
+  }
+
   const synopsisButton = event.target.closest("[data-synopsis-toggle]");
   if (synopsisButton) {
     const card = synopsisButton.closest(".movie-card");
@@ -449,9 +461,23 @@ function handleSavedAction(event) {
       return;
     }
     uiState.selectedPeople[uiState.activeTab] = personId;
+    lastCatalogTrigger = event.target.closest("[data-open-saved-person-catalog]") || personCard;
     updateSelectedPersonCards();
     renderActiveCatalogRail();
+    if (elements.savedPersonCatalog && !elements.savedPersonCatalog.open) {
+      elements.savedPersonCatalog.showModal();
+    }
+    window.requestAnimationFrame(syncAllRails);
   }
+}
+
+function handleCatalogClose() {
+  uiState.selectedPeople[uiState.activeTab] = "";
+  updateSelectedPersonCards();
+  if (lastCatalogTrigger instanceof HTMLElement && document.contains(lastCatalogTrigger)) {
+    lastCatalogTrigger.focus({ preventScroll: true });
+  }
+  lastCatalogTrigger = null;
 }
 
 function buildEmptyState(title, message) {
@@ -673,7 +699,7 @@ function inferCatalogRole(person) {
 }
 
 function captureScrollState() {
-  const rail = elements.savedPersonCatalog;
+  const rail = elements.savedPersonRail;
   const personId = rail?.dataset.personId || "";
   const viewport = rail?.querySelector("[data-saved-person-titles-viewport]");
   if (personId && viewport) {
@@ -683,7 +709,7 @@ function captureScrollState() {
 }
 
 function restoreScrollState() {
-  const rail = elements.savedPersonCatalog;
+  const rail = elements.savedPersonRail;
   const personId = rail?.dataset.personId || "";
   const viewport = rail?.querySelector("[data-saved-person-titles-viewport]");
   if (personId && viewport) {
@@ -723,8 +749,8 @@ function scheduleRailEnrichment(rail) {
 }
 
 function updatePersonRails(personId) {
-  if (elements.savedPersonCatalog?.dataset.personId === String(personId)) {
-    renderPersonRail(elements.savedPersonCatalog, personId);
+  if (elements.savedPersonRail?.dataset.personId === String(personId)) {
+    renderPersonRail(elements.savedPersonRail, personId);
   }
 }
 
@@ -733,15 +759,17 @@ function renderActiveCatalogRail() {
   const selectedPersonId = resolveSelectedPersonId(uiState.activeTab, activePeople);
   uiState.selectedPeople[uiState.activeTab] = selectedPersonId;
 
-  if (!elements.savedPersonCatalog) {
+  if (!elements.savedPersonCatalog || !elements.savedPersonRail) {
     return;
   }
 
   if (!selectedPersonId) {
-    elements.savedPersonCatalog.hidden = true;
-    elements.savedPersonCatalog.removeAttribute("data-person-id");
-    elements.savedPersonCatalog.dataset.catalogStatus = "idle";
-    const track = elements.savedPersonCatalog.querySelector("[data-saved-person-titles]");
+    if (elements.savedPersonCatalog.open) {
+      elements.savedPersonCatalog.close();
+    }
+    elements.savedPersonRail.removeAttribute("data-person-id");
+    elements.savedPersonRail.dataset.catalogStatus = "idle";
+    const track = elements.savedPersonRail.querySelector("[data-saved-person-titles]");
     track?.replaceChildren();
     if (elements.savedPersonCatalogName) {
       elements.savedPersonCatalogName.textContent = "";
@@ -753,8 +781,7 @@ function renderActiveCatalogRail() {
   if (elements.savedPersonCatalogName) {
     elements.savedPersonCatalogName.textContent = person?.name || "";
   }
-  elements.savedPersonCatalog.hidden = false;
-  renderPersonRail(elements.savedPersonCatalog, selectedPersonId);
+  renderPersonRail(elements.savedPersonRail, selectedPersonId);
   if (person) {
     ensurePersonCatalog(person);
   }
@@ -782,6 +809,7 @@ function renderPersonRail(rail, personId) {
   }
 
   titlesTrack.replaceChildren();
+  delete rail.dataset.renderError;
   const row = rail.closest(".saved-person-row");
   row?.classList.toggle("is-empty-rail", catalogState.status !== "loaded" || !catalogState.movies.length);
 
@@ -814,8 +842,22 @@ function renderPersonRail(rail, personId) {
     titlesTrack.append(empty);
   } else {
     catalogState.movies.forEach((movie) => {
-      titlesTrack.append(buildSavedPersonTitleCard(movie, personId));
+      try {
+        titlesTrack.append(buildSavedPersonTitleCard(movie, personId));
+      } catch (error) {
+        rail.dataset.renderError = error instanceof Error ? error.message : "Unable to render movie card";
+      }
     });
+    if (!titlesTrack.children.length) {
+      const error = document.createElement("div");
+      error.className = "saved-person-title-card is-placeholder";
+      error.innerHTML = `
+        <p class="saved-person-title-card-label">Catalog unavailable</p>
+        <h4>${escapeHtml(person?.name || "Saved person")}</h4>
+        <p class="saved-person-title-card-copy">The movie cards could not be displayed right now.</p>
+      `;
+      titlesTrack.append(error);
+    }
   }
 
   if (viewport) {

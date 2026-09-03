@@ -14,11 +14,6 @@ const elements = {
   notice: document.querySelector("[data-saved-title-notice]"),
   noticeText: document.querySelector("[data-saved-title-notice-text]"),
   undoButton: document.querySelector("[data-undo-title-removal]"),
-  catalogForm: document.querySelector("#title-catalog-search-form"),
-  catalogSearch: document.querySelector("#title-catalog-search"),
-  catalogSearchButton: document.querySelector("#title-catalog-search-form button[type='submit']"),
-  catalogStatus: document.querySelector("#title-catalog-search-status"),
-  catalogResults: document.querySelector("#title-catalog-search-results"),
 };
 
 const savedDataClient = window.savedDataClient || null;
@@ -28,16 +23,6 @@ const viewState = {
   query: "",
   sort: "recent",
 };
-const titleSearchState = {
-  query: "",
-  results: [],
-  total: 0,
-  requestId: 0,
-  hasSearched: false,
-  isLoading: false,
-  savingId: null,
-};
-
 let savedStateSource = "local";
 let savedStateError = "";
 let lastRemovedMovie = null;
@@ -53,18 +38,6 @@ elements.sort?.addEventListener("change", () => {
   renderSavedTitlesPage();
 });
 elements.undoButton?.addEventListener("click", handleUndoRemoval);
-elements.catalogForm?.addEventListener("submit", handleTitleCatalogSearch);
-elements.catalogResults?.addEventListener("click", handleTitleCatalogResultClick);
-elements.catalogSearch?.addEventListener("input", debounce(() => {
-  const query = elements.catalogSearch.value.trim();
-  if (!query) {
-    clearTitleCatalogSearch();
-    return;
-  }
-  if (query.length >= 2 && query !== titleSearchState.query) {
-    searchTitleCatalog(query);
-  }
-}, 350));
 window.addEventListener("resize", debounce(() => refreshSynopsisToggles(elements.grid), 120));
 
 if (savedDataClient) {
@@ -98,8 +71,8 @@ function renderSavedTitlesPage() {
   if (!allMovies.length) {
     elements.grid.append(buildEmptyState(
       "No saved titles yet",
-      "Save a title from the catalog and it will appear here, ready for your next movie night.",
-      { linkHref: "/", linkLabel: "Browse the catalog" },
+      "Quick-add a title from Home or save one from discovery and it will appear here.",
+      { linkHref: "/", linkLabel: "Find a movie" },
     ));
     return;
   }
@@ -119,221 +92,6 @@ function renderSavedTitlesPage() {
   });
   elements.grid.append(fragment);
   window.requestAnimationFrame(() => refreshSynopsisToggles(elements.grid));
-}
-
-function handleTitleCatalogSearch(event) {
-  event.preventDefault();
-  const query = elements.catalogSearch?.value.trim() || "";
-  if (!query) {
-    clearTitleCatalogSearch();
-    elements.catalogSearch?.focus();
-    return;
-  }
-  searchTitleCatalog(query);
-}
-
-async function searchTitleCatalog(query) {
-  const normalizedQuery = String(query || "").trim();
-  if (!normalizedQuery) {
-    clearTitleCatalogSearch();
-    return;
-  }
-
-  const requestId = titleSearchState.requestId + 1;
-  titleSearchState.requestId = requestId;
-  titleSearchState.query = normalizedQuery;
-  titleSearchState.hasSearched = true;
-  titleSearchState.isLoading = true;
-  setTitleCatalogStatus(`Searching for “${normalizedQuery}”…`);
-  if (elements.catalogSearchButton) {
-    elements.catalogSearchButton.disabled = true;
-    elements.catalogSearchButton.textContent = "Searching…";
-  }
-
-  try {
-    const payload = await fetchJson(`/api/movie-search?query=${encodeURIComponent(normalizedQuery)}&limit=8`);
-    if (requestId !== titleSearchState.requestId) {
-      return;
-    }
-    titleSearchState.results = Array.isArray(payload.results) ? payload.results : [];
-    titleSearchState.total = Number(payload.total || titleSearchState.results.length);
-    titleSearchState.isLoading = false;
-    renderTitleCatalogResults();
-
-    if (!titleSearchState.results.length) {
-      setTitleCatalogStatus(`No movies found for “${normalizedQuery}”. Try including the release year or checking the spelling.`);
-      return;
-    }
-
-    const resultNoun = titleSearchState.results.length === 1 ? "match" : "matches";
-    setTitleCatalogStatus(
-      `Showing ${titleSearchState.results.length} ${resultNoun} for “${normalizedQuery}”. Choose Save title to add one.`,
-    );
-  } catch (error) {
-    if (requestId !== titleSearchState.requestId) {
-      return;
-    }
-    titleSearchState.results = [];
-    titleSearchState.total = 0;
-    titleSearchState.isLoading = false;
-    renderTitleCatalogResults();
-    setTitleCatalogStatus(
-      error instanceof Error ? error.message : "Movie search is unavailable right now.",
-      true,
-    );
-  } finally {
-    if (requestId === titleSearchState.requestId && elements.catalogSearchButton) {
-      elements.catalogSearchButton.disabled = false;
-      elements.catalogSearchButton.textContent = "Search";
-    }
-  }
-}
-
-function clearTitleCatalogSearch() {
-  titleSearchState.requestId += 1;
-  titleSearchState.query = "";
-  titleSearchState.results = [];
-  titleSearchState.total = 0;
-  titleSearchState.hasSearched = false;
-  titleSearchState.isLoading = false;
-  titleSearchState.savingId = null;
-  if (elements.catalogSearchButton) {
-    elements.catalogSearchButton.disabled = false;
-    elements.catalogSearchButton.textContent = "Search";
-  }
-  renderTitleCatalogResults();
-  setTitleCatalogStatus("Enter a movie title to add it without building a discovery search.");
-}
-
-function renderTitleCatalogResults() {
-  if (!elements.catalogResults) {
-    return;
-  }
-
-  elements.catalogResults.replaceChildren();
-  elements.catalogResults.hidden = !titleSearchState.results.length;
-  if (!titleSearchState.results.length) {
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  titleSearchState.results.forEach((movie) => {
-    fragment.append(buildTitleSearchResult(movie));
-  });
-  elements.catalogResults.append(fragment);
-}
-
-function buildTitleSearchResult(movie) {
-  const article = document.createElement("article");
-  const posterFrame = document.createElement("div");
-  const body = document.createElement("div");
-  const headingRow = document.createElement("div");
-  const heading = document.createElement("h3");
-  const year = document.createElement("span");
-  const overview = document.createElement("p");
-  const saveButton = document.createElement("button");
-  const isSaved = watchlist.has(Number(movie.id));
-  const isSaving = titleSearchState.savingId === Number(movie.id);
-
-  article.className = "title-search-result";
-  posterFrame.className = "title-search-result-poster";
-  body.className = "title-search-result-body";
-  headingRow.className = "title-search-result-heading";
-  year.className = "title-search-result-year";
-  overview.className = "title-search-result-overview";
-  saveButton.className = "title-search-result-save";
-
-  if (movie.posterUrl) {
-    const poster = document.createElement("img");
-    poster.src = movie.posterUrl;
-    poster.alt = "";
-    poster.loading = "lazy";
-    poster.width = 148;
-    poster.height = 222;
-    posterFrame.append(poster);
-  } else {
-    posterFrame.textContent = String(movie.title || "Movie").slice(0, 2);
-    posterFrame.setAttribute("aria-hidden", "true");
-  }
-
-  heading.textContent = movie.title || "Untitled movie";
-  year.textContent = movie.year || "Year unknown";
-  overview.textContent = movie.logline || "No overview available yet.";
-  saveButton.type = "button";
-  saveButton.dataset.addMovieId = String(movie.id);
-  saveButton.textContent = isSaved ? "Saved" : isSaving ? "Saving…" : "Save title";
-  saveButton.disabled = isSaved || isSaving;
-  saveButton.classList.toggle("is-saved", isSaved);
-  saveButton.setAttribute(
-    "aria-label",
-    isSaved ? `${movie.title} is already saved` : `Save ${movie.title} to your watchlist`,
-  );
-
-  headingRow.append(heading, year);
-  body.append(headingRow, overview, saveButton);
-  article.append(posterFrame, body);
-  return article;
-}
-
-async function handleTitleCatalogResultClick(event) {
-  const button = event.target.closest("[data-add-movie-id]");
-  if (!button || button.disabled) {
-    return;
-  }
-
-  const movieId = Number(button.dataset.addMovieId);
-  const movie = titleSearchState.results.find((entry) => Number(entry.id) === movieId);
-  if (!movie || watchlist.has(movieId)) {
-    return;
-  }
-
-  titleSearchState.savingId = movieId;
-  renderTitleCatalogResults();
-  setTitleCatalogStatus(`Saving “${movie.title}”…`);
-
-  try {
-    let movieToSave = movie;
-    if (!movie.isEnriched) {
-      const payload = await fetchJson(`/api/enrich?ids=${encodeURIComponent(String(movieId))}`);
-      const enrichedMovie = Array.isArray(payload.movies) ? payload.movies[0] : null;
-      if (enrichedMovie) {
-        movieToSave = { ...movie, ...enrichedMovie };
-      }
-    }
-    movieToSave = { ...movieToSave, savedAt: new Date().toISOString() };
-
-    if (watchlist.has(movieId)) {
-      setTitleCatalogStatus(`“${movie.title}” is already in your watchlist.`);
-      return;
-    }
-
-    if (savedDataClient) {
-      await savedDataClient.toggleTitle(movieToSave);
-    } else {
-      watchlist.add(movieId);
-      watchlistMovies.set(movieId, movieToSave);
-      persistWatchlist();
-      persistWatchlistMovies();
-      renderSavedTitlesPage();
-    }
-    setTitleCatalogStatus(`“${movie.title}” is saved to your watchlist.`);
-  } catch (error) {
-    setTitleCatalogStatus(
-      error instanceof Error ? error.message : "Unable to save that movie right now.",
-      true,
-    );
-  } finally {
-    titleSearchState.savingId = null;
-    renderTitleCatalogResults();
-  }
-}
-
-function setTitleCatalogStatus(message, isError = false) {
-  if (!elements.catalogStatus) {
-    return;
-  }
-  elements.catalogStatus.textContent = message;
-  elements.catalogStatus.classList.toggle("is-error", isError);
 }
 
 function getSavedMovies() {
@@ -686,9 +444,6 @@ function persistWatchlistMovies() {
 function handleSavedDataUpdate(snapshot) {
   syncSavedCollections(snapshot);
   renderSavedTitlesPage();
-  if (titleSearchState.hasSearched) {
-    renderTitleCatalogResults();
-  }
 }
 
 function syncSavedCollections(snapshot) {

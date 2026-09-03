@@ -323,7 +323,7 @@ async function refreshMovies() {
   liveState.lastQueryKey = queryKey;
   syncRangeLabels();
   syncMovieFilterState(state);
-  renderLoadingState();
+  renderLoadingState(state);
 
   try {
     if (state.personQuery && !state.exactMatch) {
@@ -826,7 +826,7 @@ function syncWatchlistMovieDetails(enrichedById) {
   }
 }
 
-function renderLoadingState() {
+function renderLoadingState(state = getFilterState()) {
   liveState.renderToken += 1;
   setSearchMode(true);
   elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
@@ -837,7 +837,9 @@ function renderLoadingState() {
   elements.resultsGrid.replaceChildren();
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
-  loadingState.innerHTML = "<h3>Loading live results...</h3><p>Fetching fresh credits and ratings.</p>";
+  loadingState.innerHTML = state.award !== "all"
+    ? "<h3>Checking award records...</h3><p>Comparing established films with verified award summaries.</p>"
+    : "<h3>Loading live results...</h3><p>Fetching fresh credits and ratings.</p>";
   elements.resultsGrid.append(loadingState);
 }
 
@@ -1216,12 +1218,31 @@ function syncMovieFilterState(state = getFilterState()) {
 function buildResultsTitle(payload) {
   const matchedEntity = payload.matchedEntity || payload.matchedPerson || null;
   if (!matchedEntity) {
+    const award = elements.awardFilter?.value || "all";
+    if (award !== "all") {
+      return awardResultsTitle(award);
+    }
     return "Movies selected by the people behind them";
   }
   if (matchedEntity.type === "studio") {
     return `Movies from "${matchedEntity.name}"`;
   }
   return `Movies connected to "${matchedEntity.name}"`;
+}
+
+function awardResultsTitle(award) {
+  return {
+    "winner:any": "Award-winning movies",
+    "nominee:any": "Award-nominated movies",
+    "winner:oscar": "Oscar-winning movies",
+    "nominee:oscar": "Oscar-nominated movies",
+    "winner:emmy": "Emmy-winning movies",
+    "nominee:emmy": "Emmy-nominated movies",
+    "winner:golden-globe": "Golden Globe-winning movies",
+    "nominee:golden-globe": "Golden Globe-nominated movies",
+    "winner:bafta": "BAFTA-winning movies",
+    "nominee:bafta": "BAFTA-nominated movies",
+  }[award] || "Award-recognised movies";
 }
 
 async function fetchJson(url, options = {}) {

@@ -740,6 +740,12 @@ input[type="search"] {
   font-weight: 700;
 }
 
+.field-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 select,
 input[type="search"],
 input[type="range"] {
@@ -1055,8 +1061,44 @@ main {
   box-shadow: var(--shadow);
 }
 
-.saved-people-catalog[hidden] {
-  display: none !important;
+.saved-person-catalog-dialog {
+  width: min(1180px, calc(100% - 28px));
+  max-width: none;
+  max-height: 90dvh;
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid rgba(25, 21, 19, 0.12);
+  border-radius: 28px;
+  background: #fff9f0;
+  box-shadow: 0 28px 90px rgba(25, 21, 19, 0.34);
+  color: var(--text);
+}
+
+.saved-person-catalog-dialog:not([open]) {
+  display: none;
+}
+
+.saved-person-catalog-dialog::backdrop {
+  background: rgba(25, 21, 19, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.saved-person-catalog-dialog .saved-people-catalog {
+  width: 100%;
+  margin: 0;
+  padding: 22px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(248, 197, 143, 0.42), transparent 32%),
+    #fff9f0;
+}
+
+.saved-person-catalog-close {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .saved-people-catalog-name {
@@ -2428,6 +2470,20 @@ dd {
 
   .saved-person-title-card {
     flex-basis: min(80vw, 216px);
+  }
+
+  .saved-person-catalog-dialog {
+    width: calc(100% - 14px);
+    max-height: 94dvh;
+    border-radius: 22px;
+  }
+
+  .saved-person-catalog-dialog .saved-people-catalog {
+    padding: 14px;
+  }
+
+  .saved-person-catalog-dialog .saved-person-rail-header {
+    align-items: flex-start;
   }
 
   .saved-titles-section {

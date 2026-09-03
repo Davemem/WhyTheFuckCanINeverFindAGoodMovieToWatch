@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260903e" />
+    <link rel="stylesheet" href="./styles.css?v=20260903f" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -109,18 +109,19 @@
               <label class="field">
                 <span>Award recognition</span>
                 <select id="award-filter" name="award-filter">
-                  <option value="all">Any awards</option>
+                  <option value="all">All award records</option>
                   <option value="winner:any">Any award winner</option>
-                  <option value="nominee:any">Any award nominee</option>
+                  <option value="nominee:any">Any award nomination</option>
                   <option value="winner:oscar">Oscar winner</option>
-                  <option value="nominee:oscar">Oscar nominee</option>
+                  <option value="nominee:oscar">Oscar nominated</option>
                   <option value="winner:emmy">Emmy winner</option>
-                  <option value="nominee:emmy">Emmy nominee</option>
+                  <option value="nominee:emmy">Emmy nominated</option>
                   <option value="winner:golden-globe">Golden Globe winner</option>
-                  <option value="nominee:golden-globe">Golden Globe nominee</option>
+                  <option value="nominee:golden-globe">Golden Globe nominated</option>
                   <option value="winner:bafta">BAFTA winner</option>
-                  <option value="nominee:bafta">BAFTA nominee</option>
+                  <option value="nominee:bafta">BAFTA nominated</option>
                 </select>
+                <small class="field-note">Searches verified award summaries and favours established films.</small>
               </label>
 
               <div class="field-grid">
@@ -191,6 +192,31 @@
 
         <section class="status-strip index-status-strip" aria-live="polite" hidden>
           <p id="index-status">Local people index not built yet.</p>
+        </section>
+
+        <section class="catalog-section title-quick-add home-quick-add" aria-labelledby="title-quick-add-heading">
+          <div class="title-quick-add-copy">
+            <p class="section-label">Quick add</p>
+            <h2 id="title-quick-add-heading">Already know the movie?</h2>
+            <p>Search by title and save it straight to your watchlist.</p>
+          </div>
+          <form id="title-catalog-search-form" class="title-catalog-search-form" role="search">
+            <label for="title-catalog-search">Movie title</label>
+            <div class="title-catalog-search-controls">
+              <input
+                id="title-catalog-search"
+                type="search"
+                placeholder="Try: The Godfather, Past Lives, Jaws"
+                autocomplete="off"
+                enterkeyhint="search"
+              />
+              <button type="submit" class="title-catalog-search-button">Search</button>
+            </div>
+          </form>
+          <p id="title-catalog-search-status" class="title-catalog-search-status" aria-live="polite">
+            Enter a movie title to add it without building a discovery search.
+          </p>
+          <div id="title-catalog-search-results" class="title-catalog-search-results" hidden></div>
         </section>
 
         <section
@@ -329,6 +355,7 @@
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
     <script src="./movie-results.js?v=20260903c" defer></script>
-    <script src="./app.js?v=20260903e" defer></script>
+    <script src="./app.js?v=20260903f" defer></script>
+    <script src="./title-quick-add.js?v=20260903a" defer></script>
   </body>
 </html>

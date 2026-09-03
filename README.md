@@ -2,7 +2,7 @@
 
 Movie discovery app with a browser UI and a small Node server that serves the frontend and `/api/*` endpoints.
 
-The home page is the single discovery surface: choose actors, writers, directors, producers, or studios to swap in that category's top 50 cards, then search a name and refine the resulting movies. Older `/people.html` directory links redirect into the equivalent home-page state.
+The home page is the single discovery surface: quick-add a known title, choose actors, writers, directors, producers, or studios to swap in that category's top 50 cards, then search a name and refine the resulting movies. Award searches verify OMDb summaries against established TMDb candidates. Older `/people.html` directory links redirect into the equivalent home-page state, while saved-person filmographies open in a focused modal rail.
 
 ## Run locally
 
