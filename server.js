@@ -51,11 +51,8 @@ const PUBLIC_STATIC_FILES = new Set([
   "account.js",
   "app.js",
   "auth-client.js",
-  "catalog-search.js",
   "index.html",
   "movie-results.js",
-  "people.html",
-  "people.js",
   "saved-data-client.js",
   "saved-titles.html",
   "saved-titles.js",
@@ -360,6 +357,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       sendPlain(res, 405, "Method not allowed", { Allow: "GET, HEAD" });
+      return;
+    }
+
+    if (requestUrl.pathname === "/people.html") {
+      sendRedirect(res, buildLegacyDirectoryRedirect(requestUrl), req.method === "HEAD");
       return;
     }
 
@@ -1130,6 +1132,9 @@ async function handleApi(req, requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people") {
     const query = requestUrl.searchParams.get("query")?.trim();
+    const department = requestUrl.searchParams.has("department")
+      ? normalizePeopleDepartment(requestUrl.searchParams.get("department"))
+      : null;
     const page = clampNumber(requestUrl.searchParams.get("page"), 1, 1, 200);
     const limit = clampNumber(
       requestUrl.searchParams.get("limit"),
@@ -1144,12 +1149,12 @@ async function handleApi(req, requestUrl, res) {
 
     const localPeopleIndex = readPeopleIndex();
     const localIndexResults = localPeopleIndex
-      ? searchLocalPeopleIndex(localPeopleIndex, query, { page, limit })
+      ? searchLocalPeopleIndex(localPeopleIndex, query, { page, limit, department })
       : null;
     const snapshotResults = searchPeopleFromSnapshot(
       await getSiteSnapshotFromPostgres(),
       query,
-      { page, limit },
+      { page, limit, department },
     );
     const localResults = mergePeopleSearchResults(localIndexResults, snapshotResults, { page, limit });
     if (localResults.results.length) {
@@ -1157,13 +1162,13 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    const dbResults = await searchPeopleFromPostgres(query, { page, limit });
+    const dbResults = await searchPeopleFromPostgres(query, { page, limit, department });
     if (dbResults.results.length || !tmdbApiKey && !tmdbToken) {
       sendJson(res, 200, dbResults);
       return;
     }
 
-    const tmdbResults = await searchPeopleFromTmdb(query, { page, limit });
+    const tmdbResults = await searchPeopleFromTmdb(query, { page, limit, department });
     sendJson(res, 200, tmdbResults);
     return;
   }
@@ -1316,6 +1321,9 @@ function handleDemoApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/people") {
     const query = requestUrl.searchParams.get("query")?.trim().toLowerCase() || "";
+    const department = requestUrl.searchParams.has("department")
+      ? normalizePeopleDepartment(requestUrl.searchParams.get("department"))
+      : null;
     const page = clampNumber(requestUrl.searchParams.get("page"), 1, 1, 200);
     const limit = clampNumber(
       requestUrl.searchParams.get("limit"),
@@ -1324,7 +1332,9 @@ function handleDemoApi(requestUrl, res) {
       PEOPLE_SEARCH_MAX_LIMIT,
     );
     const results = query
-      ? demoPeople.filter((person) => person.name.toLowerCase().includes(query))
+      ? demoPeople
+        .filter((person) => personMatchesDepartment(person, department))
+        .filter((person) => person.name.toLowerCase().includes(query))
       : [];
     const startIndex = (page - 1) * limit;
     const pagedResults = results.slice(startIndex, startIndex + limit);
@@ -2230,6 +2240,22 @@ function isWriterDepartment(department) {
   return normalized.includes("writ") || normalized.includes("screenplay") || normalized.includes("story");
 }
 
+function personMatchesDepartment(person, department) {
+  if (!department) {
+    return true;
+  }
+  if (department === "directors") {
+    return isDirectorDepartment(person?.department);
+  }
+  if (department === "producers") {
+    return isProducerDepartment(person?.department);
+  }
+  if (department === "writers") {
+    return isWriterDepartment(person?.department);
+  }
+  return isActingDepartment(person?.department);
+}
+
 function buildIndexStatus(index) {
   return {
     ready: Boolean(index),
@@ -2351,12 +2377,14 @@ function searchLocalPeopleIndex(index, query, options = {}) {
   const normalizedQuery = normalizeName(query);
   const page = clampNumber(options.page, 1, 1, 200);
   const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
-  const combined = dedupePeople([
-    ...(index.actors || []),
-    ...(index.directors || []),
-    ...(index.producers || []),
-    ...(index.writers || []),
-  ]);
+  const combined = dedupePeople(options.department
+    ? peopleDirectorySlice(index, options.department)
+    : [
+        ...(index.actors || []),
+        ...(index.directors || []),
+        ...(index.producers || []),
+        ...(index.writers || []),
+      ]);
 
   const ranked = dedupePeopleByName(combined
     .filter((person) => {
@@ -2488,8 +2516,9 @@ async function searchPeopleFromTmdb(query, options = {}) {
   });
 
   const results = dedupePeople((response.results || []).map(normalizePerson))
-    .filter((person) => person && person.name);
-  const total = Number(response.total_results || results.length);
+    .filter((person) => person && person.name)
+    .filter((person) => personMatchesDepartment(person, options.department));
+  const total = options.department ? results.length : Number(response.total_results || results.length);
   return {
     results: results.slice(0, limit),
     total,
@@ -3537,12 +3566,13 @@ async function searchPeopleFromPostgres(query, options = {}) {
   const normalizedQuery = String(query || "").trim().toLowerCase();
   const page = clampNumber(options.page, 1, 1, 200);
   const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  const department = options.department ? normalizePeopleDepartment(options.department) : null;
   const offset = (page - 1) * limit;
   if (!normalizedQuery) {
     return { results: [], total: 0, page, limit, hasMore: false };
   }
 
-  const cacheKey = `pg:people-search:v3:${normalizedQuery}:${page}:${limit}`;
+  const cacheKey = `pg:people-search:v4:${department || "all"}:${normalizedQuery}:${page}:${limit}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -3569,6 +3599,12 @@ async function searchPeopleFromPostgres(query, options = {}) {
           FROM people p
           LEFT JOIN person_recognition pr ON pr.person_id = p.person_id
           WHERE p.name ILIKE $1
+          ${department ? `AND EXISTS (
+            SELECT 1
+            FROM person_movie_credits pmc_search
+            WHERE pmc_search.person_id = p.person_id
+              AND ${roleToSqlFilter(department, "pmc_search")}
+          )` : ""}
         ),
         counted_people AS (
           SELECT COUNT(*)::int AS total
@@ -4041,10 +4077,67 @@ function sendPlain(res, statusCode, text, headers = {}) {
   res.end(text);
 }
 
+function sendRedirect(res, location, isHeadRequest = false) {
+  res.writeHead(308, {
+    ...SECURITY_HEADERS,
+    Location: location,
+    "Cache-Control": "public, max-age=3600",
+    "Content-Type": "text/plain; charset=utf-8",
+  });
+  res.end(isHeadRequest ? undefined : `Moved to ${location}`);
+}
+
+function buildLegacyDirectoryRedirect(requestUrl) {
+  const legacyParams = requestUrl.searchParams;
+  const department = normalizePeopleDepartment(
+    legacyParams.get("department")
+      || legacyDepartmentFromFilters(legacyParams),
+  );
+  const params = new URLSearchParams();
+  const query = legacyParams.get("query") || legacyParams.get("person") || "";
+
+  if (department !== "actors") {
+    params.set("category", department);
+  }
+  if (query) {
+    params.set("query", query);
+  }
+  if (legacyParams.get("exactPerson") === "1" || legacyParams.get("exactMatch") === "1") {
+    params.set("exactMatch", "1");
+  }
+  for (const key of ["genre", "decade", "sort", "imdbMin", "rtMin", "award"]) {
+    const value = legacyParams.get(key);
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  return `/${params.toString() ? `?${params.toString()}` : ""}`;
+}
+
+function legacyDepartmentFromFilters(params) {
+  if (params.get("searchType") === "studio") {
+    return "studios";
+  }
+  return {
+    cast: "actors",
+    writer: "writers",
+    director: "directors",
+    producer: "producers",
+  }[params.get("role")] || "actors";
+}
+
+function normalizePeopleDepartment(value) {
+  return ["actors", "writers", "directors", "producers", "studios"].includes(value)
+    ? value
+    : "actors";
+}
+
 module.exports = {
   PUBLIC_API_GET_PATHS,
   PUBLIC_STATIC_FILES,
   buildWatchProviderDestination,
+  buildLegacyDirectoryRedirect,
   clampNumber,
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,

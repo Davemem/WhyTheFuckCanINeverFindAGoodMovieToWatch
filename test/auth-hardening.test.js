@@ -18,12 +18,23 @@ const {
 } = require("../lib/auth/session");
 const { getUserAccountOverview } = require("../lib/auth/account-store");
 const {
+  buildLegacyDirectoryRedirect,
   buildWatchProviderDestination,
   clampNumber,
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
   server,
 } = require("../server");
+
+test("legacy directory URLs move their category and filters onto the home page", () => {
+  const legacyUrl = new URL(
+    "http://localhost/people.html?department=directors&query=Greta+Gerwig&exactPerson=1&genre=18&role=any",
+  );
+  assert.equal(
+    buildLegacyDirectoryRedirect(legacyUrl),
+    "/?category=directors&query=Greta+Gerwig&exactMatch=1&genre=18",
+  );
+});
 
 test("clampNumber uses its fallback when a query parameter is absent", () => {
   assert.equal(clampNumber(null, 25, 1, 50), 25);
@@ -350,6 +361,16 @@ test("server exposes only public assets and rejects catalog writes", async () =>
     assert.equal(publicResponse.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
     assert.equal(publicResponse.headers.get("cross-origin-opener-policy"), "same-origin-allow-popups");
     assert.match(publicResponse.headers.get("permissions-policy") || "", /camera=\(\)/);
+
+    const legacyDirectoryResponse = await fetch(
+      `${baseUrl}/people.html?department=producers&query=Emma%20Thomas&exactPerson=1`,
+      { redirect: "manual" },
+    );
+    assert.equal(legacyDirectoryResponse.status, 308);
+    assert.equal(
+      legacyDirectoryResponse.headers.get("location"),
+      "/?category=producers&query=Emma+Thomas&exactMatch=1",
+    );
 
     for (const privatePath of ["/.env", "/.git/config", "/server.js", "/package.json"]) {
       const response = await fetch(`${baseUrl}${privatePath}`);

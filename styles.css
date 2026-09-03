@@ -754,28 +754,6 @@ input[type="search"] {
   background: rgba(255, 255, 255, 0.8);
 }
 
-.segmented-control {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.segment {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-}
-
-.segment.is-active {
-  background: var(--accent);
-  color: #fff8f1;
-  border-color: transparent;
-}
-
 input[type="range"] {
   accent-color: var(--accent);
 }
@@ -801,137 +779,6 @@ main {
 
 .status-strip p.is-error {
   color: #a02710;
-}
-
-.discovery-strip {
-  padding: 24px;
-  border-radius: 28px;
-  border: 1px solid var(--line);
-  background: rgba(255, 250, 241, 0.68);
-  box-shadow: var(--shadow);
-}
-
-.rotating-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.compact-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.spotlight-card {
-  padding: 12px;
-  display: grid;
-  gap: 6px;
-  border: 1px solid rgba(25, 21, 19, 0.08);
-  border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 239, 230, 0.92));
-  box-shadow: 0 12px 34px rgba(83, 39, 20, 0.08);
-}
-
-.spotlight-card-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.spotlight-role,
-.spotlight-score,
-.spotlight-credits {
-  margin: 0;
-}
-
-.spotlight-role,
-.spotlight-rank,
-.ranked-person-role {
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent-deep);
-  font-weight: 700;
-}
-
-.spotlight-rank {
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: rgba(216, 79, 49, 0.11);
-}
-
-.spotlight-score {
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 1.15rem;
-  line-height: 0.95;
-  color: var(--text);
-}
-
-.spotlight-credits {
-  color: var(--muted);
-  line-height: 1.4;
-  font-size: 0.82rem;
-  min-height: 3.3em;
-}
-
-.spotlight-button {
-  width: 100%;
-  padding: 7px 10px;
-  font-size: 0.8rem;
-}
-
-.ranked-list {
-  display: grid;
-  gap: 10px;
-}
-
-.ranked-person {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: center;
-  padding: 16px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(25, 21, 19, 0.08);
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.ranked-person-main,
-.ranked-person-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.ranked-person-main > div,
-.ranked-person-meta {
-  min-width: 0;
-}
-
-.ranked-person-index {
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 2rem;
-  line-height: 0.9;
-  color: var(--accent);
-  min-width: 1.8ch;
-}
-
-.ranked-person h3 {
-  font-size: 1.8rem;
-}
-
-.ranked-person-credits {
-  margin: 6px 0 0;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.ranked-person-score {
-  font-size: 0.92rem;
-  color: var(--accent-deep);
-  min-width: 10ch;
 }
 
 .index-status-strip {
@@ -969,19 +816,6 @@ main {
   border: 1px solid var(--line);
   background: rgba(255, 250, 241, 0.56);
   box-shadow: var(--shadow);
-}
-
-.directory-page-header {
-  gap: 8px;
-}
-
-.directory-page-header .section-label,
-.directory-page-header .results-summary {
-  margin: 0;
-}
-
-.directory-page-header h1 {
-  max-width: none;
 }
 
 .saved-people-list {
@@ -1969,155 +1803,19 @@ main {
   border-color: rgba(216, 79, 49, 0.24);
 }
 
-.suggested-panels {
-  display: grid;
-  gap: 18px;
+.discovery-directory[hidden],
+.results-section[hidden] {
+  display: none !important;
+}
+
+.discovery-directory .results-summary {
+  max-width: 42ch;
+  text-align: right;
 }
 
 .results-section {
   background:
     linear-gradient(180deg, rgba(255, 248, 236, 0.7), rgba(244, 239, 230, 0.86));
-}
-
-body:not(.people-has-search-results) #people-results-section {
-  display: none !important;
-}
-
-.catalog-launch-panel {
-  display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.catalog-launch-button {
-  justify-self: flex-start;
-}
-
-.catalog-launch-form {
-  display: grid;
-  gap: 10px;
-}
-
-.catalog-launch-panel .filter-panel-header {
-  margin-bottom: 8px;
-}
-
-.catalog-launch-panel select,
-.catalog-launch-panel input[type="search"] {
-  padding: 8px 10px;
-  border-radius: 12px;
-}
-
-.catalog-launch-panel .ghost-button {
-  padding: 7px 11px;
-  font-size: 0.82rem;
-}
-
-.catalog-launch-form .field {
-  gap: 4px;
-}
-
-.catalog-launch-form .field span {
-  font-size: 0.78rem;
-}
-
-.catalog-launch-form .field-grid {
-  gap: 10px;
-}
-
-.catalog-launch-form .segmented-control {
-  gap: 5px;
-}
-
-.catalog-launch-form .segment {
-  padding: 7px 9px;
-}
-
-.catalog-launch-form .field-helper {
-  font-size: 0.72rem;
-}
-
-.catalog-launch-form strong[data-search-imdb-value],
-.catalog-launch-form strong[data-search-rt-value] {
-  font-size: 0.82rem;
-}
-
-.directory-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.7fr);
-  gap: 10px;
-}
-
-.directory-links,
-.people-page-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.directory-link-card,
-.people-page-tabs a {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.people-page-tabs {
-  margin-top: 10px;
-}
-
-.people-page-tabs a {
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.people-page-tabs a.is-active {
-  background: var(--text);
-  color: #fff8f1;
-  border-color: transparent;
-}
-
-.directory-header {
-  align-items: flex-start;
-}
-
-.directory-page-title {
-  font-size: clamp(2rem, 4vw, 3.1rem);
-}
-
-.directory-copy {
-  margin-top: 6px;
-  max-width: 56ch;
-}
-
-.directory-inline-status {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.directory-link-card {
-  flex: 1 1 220px;
-  border-radius: 22px;
-  padding: 18px;
-  display: grid;
-  gap: 8px;
-  box-shadow: var(--shadow);
-}
-
-.directory-link-card strong {
-  font-family: "Bebas Neue", sans-serif;
-  letter-spacing: 0.03em;
-  font-size: 1.8rem;
-  line-height: 0.95;
-}
-
-.directory-link-card span {
-  color: var(--muted);
-  line-height: 1.5;
 }
 
 .people-page-hero {
@@ -2639,8 +2337,7 @@ dd {
   .hero,
   .results-grid,
   .field-grid,
-  .people-grid,
-  .directory-toolbar {
+  .people-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2654,21 +2351,6 @@ dd {
 
   .saved-person-rail {
     width: 100%;
-  }
-
-  .rotating-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ranked-person,
-  .ranked-person-main,
-  .ranked-person-meta {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .segmented-control {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hero-stats {
@@ -2709,7 +2391,6 @@ dd {
   .filter-panel,
   .movie-card,
   .person-card,
-  .discovery-strip,
   .catalog-section,
   .title-bar {
     border-radius: 22px;
@@ -2737,8 +2418,8 @@ dd {
     flex-direction: column;
   }
 
-  .rotating-grid {
-    grid-template-columns: 1fr;
+  .discovery-directory .results-summary {
+    text-align: left;
   }
 
   .saved-people-tabs {

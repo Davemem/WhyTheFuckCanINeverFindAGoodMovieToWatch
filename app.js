@@ -2,7 +2,6 @@ const watchlistStorageKey = "wtfcineverfind-watchlist";
 const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
 const devStatusFlagKey = "wtfcineverfind-debug";
-const refreshHistoryStorageKey = "wtfcineverfind-refresh-history";
 const decadeOptions = buildDecadeOptions();
 const studioPlaceholderPool = [
   "A24",
@@ -22,9 +21,6 @@ const elements = {
   peopleSuggestions: document.querySelector("#people-suggestions"),
   movieFilterGroup: document.querySelector("#movie-filter-group"),
   movieFilterHelper: document.querySelector("#movie-filter-helper"),
-  roleField: document.querySelector("#role-field"),
-  roleFilter: document.querySelector("#role-filter"),
-  roleDescription: document.querySelector("#role-description"),
   imdbMin: document.querySelector("#imdb-min"),
   rtMin: document.querySelector("#rt-min"),
   imdbValue: document.querySelector("#imdb-value"),
@@ -42,27 +38,14 @@ const elements = {
   watchlistCount: document.querySelector("#watchlist-count"),
   resultsTitle: document.querySelector("#results-title"),
   cardTemplate: document.querySelector("#movie-card-template"),
-  actorsGrid: document.querySelector("#actors-grid"),
-  actorsSummary: document.querySelector("#actors-summary"),
-  actorsRefresh: document.querySelector("#actors-refresh"),
-  writersGrid: document.querySelector("#writers-grid"),
-  writersSummary: document.querySelector("#writers-summary"),
-  writersRefresh: document.querySelector("#writers-refresh"),
-  directorsGrid: document.querySelector("#directors-grid"),
-  directorsSummary: document.querySelector("#directors-summary"),
-  directorsRefresh: document.querySelector("#directors-refresh"),
-  producersGrid: document.querySelector("#producers-grid"),
-  producersSummary: document.querySelector("#producers-summary"),
-  producersRefresh: document.querySelector("#producers-refresh"),
-  studiosGrid: document.querySelector("#studios-grid"),
-  studiosSummary: document.querySelector("#studios-summary"),
-  studiosRefresh: document.querySelector("#studios-refresh"),
+  directorySection: document.querySelector("#discovery-directory"),
+  directoryLabel: document.querySelector("#directory-label"),
+  directoryHeading: document.querySelector("#directory-heading"),
+  directorySummary: document.querySelector("#directory-summary"),
+  directoryGrid: document.querySelector("#directory-grid"),
   indexStatus: document.querySelector("#index-status"),
   peopleTemplate: document.querySelector("#person-card-template"),
-  rotatingPersonTemplate: document.querySelector("#rotating-person-template"),
-  rankedPersonTemplate: document.querySelector("#ranked-person-template"),
   watchlistGrid: document.querySelector("#watchlist-grid"),
-  suggestedPanels: document.querySelector("#suggested-panels"),
 };
 
 const savedDataClient = window.savedDataClient || null;
@@ -76,23 +59,21 @@ let savedStateError = "";
 let bootstrapComplete = false;
 const liveState = {
   genres: [],
-  featuredActors: [],
-  featuredWriters: [],
-  featuredDirectors: [],
-  featuredProducers: [],
-  featuredStudios: [],
   movies: [],
   entities: [],
+  directoryCache: new Map(),
+  directoryRequestId: 0,
+  suggestionNames: new Set(),
   entitySearch: {
     query: "",
     searchType: "person",
+    category: "actors",
     page: 1,
     limit: 25,
     total: 0,
     hasMore: false,
     isLoadingMore: false,
   },
-  activeRole: "any",
   exactMatch: false,
   imageBaseUrl: "",
   hasOmdb: false,
@@ -102,13 +83,6 @@ const liveState = {
   enrichAttempts: new Map(),
   totalMatches: 0,
   placeholderPools: null,
-  refreshTokens: {
-    actors: 0,
-    writers: 0,
-    directors: 0,
-    producers: 0,
-    studios: 0,
-  },
   renderToken: 0,
 };
 
@@ -131,6 +105,12 @@ bootstrap().catch((error) => {
 async function bootstrap() {
   applyDevStatusVisibility();
   setStatus("Connecting to TMDb and OMDb...", false);
+  const initialCategory = discoveryCategoryFromParams(new URLSearchParams(window.location.search));
+  if (elements.searchType) {
+    elements.searchType.value = initialCategory;
+  }
+  syncSearchModeUi();
+  const directoryPromise = loadDiscoveryDirectory(initialCategory);
 
   const payload = await fetchJson("/api/bootstrap?mode=lite");
   liveState.genres = payload.genres || [];
@@ -138,11 +118,6 @@ async function bootstrap() {
   liveState.hasOmdb = Boolean(payload.config?.hasOmdb);
   liveState.hasLocalPeopleIndex = Boolean(payload.config?.hasLocalPeopleIndex);
   liveState.placeholderPools = payload.config?.placeholderPools || null;
-  liveState.featuredActors = payload.featuredActors || [];
-  liveState.featuredWriters = payload.featuredWriters || [];
-  liveState.featuredDirectors = payload.featuredDirectors || [];
-  liveState.featuredProducers = payload.featuredProducers || [];
-  liveState.featuredStudios = payload.featuredStudios || [];
   const mode = payload.config?.mode || "live";
   const peopleCounts = payload.config?.peopleCounts || { actors: 0, directors: 0, producers: 0, writers: 0 };
   const totalPeopleCount =
@@ -169,7 +144,7 @@ async function bootstrap() {
     elements.movieCount.textContent = "Live";
   }
 
-  elements.peopleCount.textContent = String(totalPeopleCount || liveState.featuredActors.length || 0);
+  elements.peopleCount.textContent = String(totalPeopleCount || 0);
 
   populateGenres();
   populateDecades();
@@ -180,17 +155,9 @@ async function bootstrap() {
   if (elements.resultsRail) {
     window.MovieResults.bindRail(elements.resultsRail);
   }
-  renderActorPreview();
-  renderRolePreview("writers");
-  renderRolePreview("directors");
-  renderRolePreview("producers");
-  renderRolePreview("studios");
   renderWatchlist();
   renderIdleState();
-  const startupTasks = [];
-  if (!liveState.featuredActors.length || liveState.featuredActors.length <= 10) {
-    startupTasks.push(loadFeaturedPeople());
-  }
+  const startupTasks = [directoryPromise];
   startupTasks.push(loadIndexStatus(payload.config));
   if (shouldFetchOnLoad()) {
     startupTasks.push(refreshMovies());
@@ -200,36 +167,6 @@ async function bootstrap() {
   syncRenderedSavedPeopleButtons();
   setStatus(mode === "demo" ? "Demo catalog connected." : "Live catalog connected.", false);
   Promise.allSettled(startupTasks);
-}
-
-async function loadFeaturedPeople() {
-  try {
-    const payload = await fetchJson("/api/featured-people");
-    liveState.featuredActors = payload.featuredActors || payload.featuredPeople || [];
-    liveState.featuredWriters = payload.featuredWriters || [];
-    liveState.featuredDirectors = payload.featuredDirectors || payload.featuredFilmmakers || [];
-    liveState.featuredProducers = payload.featuredProducers || [];
-    liveState.featuredStudios = payload.featuredStudios || [];
-
-    if (!Number(elements.peopleCount.textContent || "0")) {
-      elements.peopleCount.textContent = String(
-        dedupePeopleById([
-          ...liveState.featuredActors,
-          ...liveState.featuredWriters,
-          ...liveState.featuredDirectors,
-          ...liveState.featuredProducers,
-          ...liveState.featuredStudios,
-        ]).length,
-      );
-    }
-    renderActorPreview();
-    renderRolePreview("writers");
-    renderRolePreview("directors");
-    renderRolePreview("producers");
-    renderRolePreview("studios");
-  } catch {
-    // Keep page usable even when featured people cannot be loaded.
-  }
 }
 
 function populateGenres() {
@@ -274,11 +211,20 @@ function bindEvents() {
     elements.sortFilter.addEventListener("change", () => handleMovieFilterIntent({ sortOnly: true }));
   }
   if (elements.searchType) {
-    elements.searchType.addEventListener("change", () => {
+    elements.searchType.addEventListener("change", async () => {
       liveState.exactMatch = false;
+      liveState.lastQueryKey = "";
       syncSearchModeUi();
       elements.peopleSuggestions.replaceChildren();
-      refreshMovies();
+      liveState.suggestionNames.clear();
+      updateUrlFromState(getFilterState());
+      const directoryPromise = loadDiscoveryDirectory(currentDiscoveryCategory());
+      if (hasMovieDiscoveryCriteria()) {
+        await refreshMovies();
+      } else {
+        await directoryPromise;
+        renderIdleState();
+      }
     });
   }
   if (elements.awardFilter) {
@@ -295,43 +241,13 @@ function bindEvents() {
       liveState.exactMatch = false;
       syncMovieFilterState();
     });
-    elements.personSearch.addEventListener("change", refreshMovies);
+    elements.personSearch.addEventListener("change", () => {
+      liveState.exactMatch = liveState.suggestionNames.has(normalizeName(elements.personSearch.value));
+      refreshMovies();
+    });
     elements.personSearch.addEventListener("keydown", handlePersonSearchKeydown);
   }
-
-  if (elements.roleFilter) {
-    elements.roleFilter.addEventListener("click", async (event) => {
-      const button = event.target.closest(".segment");
-      if (!button) {
-        return;
-      }
-
-      setActiveRole(button.dataset.role);
-      await handleMovieFilterIntent();
-    });
-  }
-
-  if (elements.actorsGrid) {
-    elements.actorsGrid.addEventListener("click", handlePersonSelection);
-  }
-  [elements.writersGrid, elements.directorsGrid, elements.producersGrid, elements.studiosGrid].forEach((grid) => {
-    grid?.addEventListener("click", handlePersonSelection);
-  });
-  if (elements.actorsRefresh) {
-    elements.actorsRefresh.addEventListener("click", () => refreshRotatingSection("actors"));
-  }
-  if (elements.writersRefresh) {
-    elements.writersRefresh.addEventListener("click", () => refreshRotatingSection("writers"));
-  }
-  if (elements.directorsRefresh) {
-    elements.directorsRefresh.addEventListener("click", () => refreshRotatingSection("directors"));
-  }
-  if (elements.producersRefresh) {
-    elements.producersRefresh.addEventListener("click", () => refreshRotatingSection("producers"));
-  }
-  if (elements.studiosRefresh) {
-    elements.studiosRefresh.addEventListener("click", () => refreshRotatingSection("studios"));
-  }
+  elements.directoryGrid?.addEventListener("click", handlePersonSelection);
   if (elements.resultsGrid) {
     elements.resultsGrid.addEventListener("click", handlePersonSelection);
     elements.resultsGrid.addEventListener("click", handleWatchlistAction);
@@ -369,20 +285,28 @@ async function updatePersonSuggestions() {
   const query = elements.personSearch.value.trim();
   if (query.length < 2) {
     elements.peopleSuggestions.replaceChildren();
+    liveState.suggestionNames.clear();
     return;
   }
 
   try {
     const endpoint = currentSearchType() === "studio" ? "/api/studios" : "/api/people";
-    const payload = await fetchJson(`${endpoint}?query=${encodeURIComponent(query)}`);
+    const params = new URLSearchParams({ query });
+    if (currentSearchType() === "person") {
+      params.set("department", currentDiscoveryCategory());
+    }
+    const payload = await fetchJson(`${endpoint}?${params.toString()}`);
     elements.peopleSuggestions.replaceChildren();
+    liveState.suggestionNames.clear();
     (payload.results || []).forEach((person) => {
       const option = document.createElement("option");
       option.value = person.name;
       elements.peopleSuggestions.append(option);
+      liveState.suggestionNames.add(normalizeName(person.name));
     });
   } catch (error) {
     elements.peopleSuggestions.replaceChildren();
+    liveState.suggestionNames.clear();
   }
 }
 
@@ -399,13 +323,6 @@ async function refreshMovies() {
   liveState.lastQueryKey = queryKey;
   syncRangeLabels();
   syncMovieFilterState(state);
-  elements.roleDescription.textContent =
-    state.searchType === "studio"
-      ? "Studios ignore role matching"
-      : state.role === "any"
-        ? "Any role"
-        : `Only ${state.role} matches`;
-
   renderLoadingState();
 
   try {
@@ -413,6 +330,7 @@ async function refreshMovies() {
       const payload = await fetchEntityPage({
         query: state.personQuery,
         searchType: state.searchType,
+        category: state.category,
         page: 1,
       });
       if (requestId !== liveState.requestId) {
@@ -425,6 +343,7 @@ async function refreshMovies() {
       liveState.entitySearch = {
         query: state.personQuery,
         searchType: state.searchType,
+        category: state.category,
         page: payload.page || 1,
         limit: payload.limit || liveState.entitySearch.limit,
         total: payload.total || liveState.entities.length,
@@ -434,8 +353,8 @@ async function refreshMovies() {
       elements.resultsTitle.textContent =
         state.searchType === "studio"
           ? `Studios matching "${state.personQuery}"`
-          : `People matching "${state.personQuery}"`;
-      renderEntityResults(liveState.entities, state.searchType);
+          : `${categoryCopy(state.category).plural} matching "${state.personQuery}"`;
+      renderEntityResults(liveState.entities, state.searchType, state.category);
       prefetchNextEntityPage();
       renderWatchlist();
       return;
@@ -481,8 +400,8 @@ async function refreshMovies() {
   }
 }
 
-async function fetchEntityPage({ query, searchType, page, limit = liveState.entitySearch.limit || 25 }) {
-  const cacheKey = `${searchType}:${query.toLowerCase()}:${page}:${limit}`;
+async function fetchEntityPage({ query, searchType, category, page, limit = liveState.entitySearch.limit || 25 }) {
+  const cacheKey = `${category || searchType}:${query.toLowerCase()}:${page}:${limit}`;
   if (entityPageCache.has(cacheKey)) {
     return entityPageCache.get(cacheKey);
   }
@@ -493,6 +412,7 @@ async function fetchEntityPage({ query, searchType, page, limit = liveState.enti
   if (searchType !== "studio") {
     params.set("page", String(page));
     params.set("limit", String(limit));
+    params.set("department", category || "actors");
   }
   const payload = await fetchJson(`${endpoint}?${params.toString()}`);
   const result = {
@@ -513,7 +433,7 @@ async function prefetchNextEntityPage() {
   }
 
   const nextPage = entityState.page + 1;
-  const cacheKey = `${entityState.searchType}:${entityState.query.toLowerCase()}:${nextPage}:${entityState.limit}`;
+  const cacheKey = `${entityState.category || entityState.searchType}:${entityState.query.toLowerCase()}:${nextPage}:${entityState.limit}`;
   if (entityPageCache.has(cacheKey)) {
     return;
   }
@@ -522,6 +442,7 @@ async function prefetchNextEntityPage() {
     await fetchEntityPage({
       query: entityState.query,
       searchType: entityState.searchType,
+      category: entityState.category,
       page: nextPage,
       limit: entityState.limit,
     });
@@ -561,7 +482,7 @@ function renderMovies(movies) {
   });
 }
 
-function renderEntityResults(entities, searchType) {
+function renderEntityResults(entities, searchType, category) {
   liveState.renderToken += 1;
   setSearchMode(true);
   if (elements.resultsRail) {
@@ -572,16 +493,16 @@ function renderEntityResults(entities, searchType) {
   const total = liveState.entitySearch.total || entities.length;
   const selectionPrompt = searchType === "studio"
     ? "Choose a studio to apply the movie filters below."
-    : "Choose a person to apply the movie filters below.";
+    : `Choose ${categoryCopy(category).article} ${categoryCopy(category).singular.toLowerCase()} to apply the movie filters below.`;
   elements.resultsSummary.textContent = searchType === "studio"
     ? `${entities.length} of ${total} studios matched your search. ${selectionPrompt}`
-    : `${entities.length} of ${total} people matched your search. ${selectionPrompt}`;
+    : `${entities.length} of ${total} ${categoryCopy(category).plural.toLowerCase()} matched your search. ${selectionPrompt}`;
 
   if (!entities.length) {
     const emptyState = document.createElement("div");
     emptyState.className = "empty-state";
     emptyState.innerHTML =
-      `<h3>No ${searchType === "studio" ? "studios" : "people"} matched.</h3><p>Try a broader search or a different name.</p>`;
+      `<h3>No ${searchType === "studio" ? "studios" : categoryCopy(category).plural.toLowerCase()} matched.</h3><p>Try a broader search or a different name.</p>`;
     elements.resultsGrid.append(emptyState);
     return;
   }
@@ -589,7 +510,11 @@ function renderEntityResults(entities, searchType) {
   const grid = document.createElement("div");
   grid.className = "people-grid";
   entities.forEach((entity) => {
-    grid.append(buildDirectoryPersonCard(entity, searchType === "studio" ? "Show studio movies" : "Show matching movies"));
+    const categoryEntity = { ...entity, department: categoryCopy(category).department };
+    grid.append(buildDirectoryPersonCard(
+      categoryEntity,
+      searchType === "studio" ? "Show studio movies" : `Show ${categoryCopy(category).singular.toLowerCase()} movies`,
+    ));
   });
   elements.resultsGrid.append(grid);
 }
@@ -611,6 +536,7 @@ function resetEntityPagination() {
     ...liveState.entitySearch,
     query: "",
     searchType: "person",
+    category: currentDiscoveryCategory(),
     page: 1,
     total: 0,
     hasMore: false,
@@ -628,40 +554,84 @@ function buildMovieCard(movie) {
   });
 }
 
-function renderRolePreview(role) {
-  const config = {
-    writers: { grid: elements.writersGrid, summary: elements.writersSummary, label: "writers" },
-    directors: { grid: elements.directorsGrid, summary: elements.directorsSummary, label: "directors" },
-    producers: { grid: elements.producersGrid, summary: elements.producersSummary, label: "producers" },
-    studios: { grid: elements.studiosGrid, summary: elements.studiosSummary, label: "studios" },
-  }[role];
-  if (!config?.grid || !config.summary) {
+async function loadDiscoveryDirectory(category) {
+  const copy = categoryCopy(category);
+  const cachedPeople = liveState.directoryCache.get(category);
+  const requestId = ++liveState.directoryRequestId;
+  updateDirectoryCopy(category);
+
+  if (cachedPeople) {
+    renderDiscoveryDirectory(cachedPeople, category);
     return;
   }
-  config.grid.replaceChildren();
-  const picks = pickRotatingPeopleForRole(role);
 
-  picks.forEach((person, index) => {
-    config.grid.append(buildRotatingPersonCard(person, index + 1));
-  });
-  config.summary.textContent = picks.length
-    ? `${picks.length} ${config.label} shown here. Refresh to reshuffle this set for yourself.`
-    : `${config.label.charAt(0).toUpperCase() + config.label.slice(1)} preview unavailable right now.`;
+  elements.directoryGrid?.setAttribute("aria-busy", "true");
+  if (elements.directorySummary) {
+    elements.directorySummary.textContent = `Loading the ranked ${copy.singular.toLowerCase()} directory.`;
+  }
+
+  try {
+    const params = new URLSearchParams({ department: category, limit: "50" });
+    const payload = await fetchJson(`/api/people-directory?${params.toString()}`);
+    if (requestId !== liveState.directoryRequestId || category !== currentDiscoveryCategory()) {
+      return;
+    }
+    const people = (payload.people || []).slice(0, 50);
+    liveState.directoryCache.set(category, people);
+    renderDiscoveryDirectory(people, category);
+  } catch (error) {
+    if (requestId !== liveState.directoryRequestId) {
+      return;
+    }
+    elements.directoryGrid?.replaceChildren();
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    appendMessageState(emptyState, `${copy.plural} are unavailable right now.`, error.message);
+    elements.directoryGrid?.append(emptyState);
+    if (elements.directorySummary) {
+      elements.directorySummary.textContent = "The rest of movie discovery is still available.";
+    }
+  } finally {
+    if (requestId === liveState.directoryRequestId) {
+      elements.directoryGrid?.removeAttribute("aria-busy");
+    }
+  }
 }
 
-function renderActorPreview() {
-  if (!elements.actorsGrid || !elements.actorsSummary) {
-    return;
+function renderDiscoveryDirectory(people, category) {
+  const copy = categoryCopy(category);
+  elements.directoryGrid?.replaceChildren();
+  if (!people.length) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    appendMessageState(emptyState, `No ${copy.plural.toLowerCase()} are ranked yet.`, "Try another discovery category.");
+    elements.directoryGrid?.append(emptyState);
+  } else {
+    const fragment = document.createDocumentFragment();
+    people.forEach((person) => {
+      const categoryPerson = { ...person, department: copy.department };
+      fragment.append(buildDirectoryPersonCard(
+        categoryPerson,
+        category === "studios" ? "Show studio movies" : `Show ${copy.singular.toLowerCase()} movies`,
+      ));
+    });
+    elements.directoryGrid?.append(fragment);
   }
+  if (elements.directorySummary) {
+    elements.directorySummary.textContent = people.length >= 50
+      ? `The top 50 ${copy.plural.toLowerCase()} from the ranked catalog.`
+      : `${people.length} ${copy.plural.toLowerCase()} are currently available.`;
+  }
+}
 
-  const preview = pickRotatingPeopleForRole("actors", 10);
-  elements.actorsGrid.replaceChildren();
-  preview.forEach((person, index) => {
-    elements.actorsGrid.append(buildRotatingPersonCard(person, index + 1));
-  });
-  elements.actorsSummary.textContent = preview.length
-    ? `${preview.length} actors shown here. Refresh to reshuffle this set for yourself.`
-    : "Actor preview unavailable right now.";
+function updateDirectoryCopy(category) {
+  const copy = categoryCopy(category);
+  if (elements.directoryLabel) {
+    elements.directoryLabel.textContent = copy.plural;
+  }
+  if (elements.directoryHeading) {
+    elements.directoryHeading.textContent = `Top 50 ${copy.plural.toLowerCase()}`;
+  }
 }
 
 function applyDevStatusVisibility() {
@@ -678,30 +648,27 @@ function applyDevStatusVisibility() {
   });
 }
 
-function applyRandomPlaceholder(input, pools) {
-  if (!input || !pools) {
+function applyCategoryPlaceholder(input, pools, category) {
+  if (!input) {
     return;
   }
 
-  const profile = input.dataset.placeholderProfile || "mixed";
-  const parts =
-    profile === "producer"
-      ? [
-          pickRandomName(pools.producers, `producer-a:${window.location.pathname}`),
-          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
-          pickRandomName(pools.directors, `director:${window.location.pathname}`),
-        ]
-      : [
-          pickRandomName(pools.actors, `actor:${window.location.pathname}`),
-          pickRandomName(pools.writers, `writer:${window.location.pathname}`),
-          pickRandomName(pools.producers, `producer:${window.location.pathname}`),
-          pickRandomName(pools.directors, `director:${window.location.pathname}`),
-        ];
-
-  const names = parts.filter(Boolean);
-  if (names.length) {
-    input.placeholder = `Try: ${names.join(", ")}`;
-  }
+  const fallbackNames = {
+    actors: ["Cate Blanchett", "Denzel Washington", "Emma Stone"],
+    writers: ["Greta Gerwig", "Jordan Peele", "Aaron Sorkin"],
+    directors: ["Denis Villeneuve", "Bong Joon Ho", "Sofia Coppola"],
+    producers: ["Kevin Feige", "Kathleen Kennedy", "Emma Thomas"],
+  };
+  const source = Array.isArray(pools?.[category]) && pools[category].length
+    ? pools[category]
+    : fallbackNames[category] || fallbackNames.actors;
+  const uniqueNames = [...new Set(source.filter(Boolean))];
+  const start = hashString(`${category}:${window.location.pathname}:${new Date().toISOString().slice(0, 10)}`)
+    % Math.max(uniqueNames.length, 1);
+  const names = [0, 1, 2]
+    .map((offset) => uniqueNames[(start + offset) % uniqueNames.length])
+    .filter(Boolean);
+  input.placeholder = `Try: ${names.join(", ")}`;
 }
 
 function applyStudioPlaceholder(input) {
@@ -730,28 +697,6 @@ function pickRandomName(list, key, salt = 0) {
   return list[start] || list[0] || "";
 }
 
-function refreshRotatingSection(role) {
-  liveState.refreshTokens[role] = Math.floor(Math.random() * 1000000);
-  if (role === "actors") {
-    renderActorPreview();
-    return;
-  }
-  renderRolePreview(role);
-}
-
-function buildRotatingPersonCard(person, rank) {
-  const fragment = elements.rotatingPersonTemplate.content.cloneNode(true);
-  fragment.querySelector(".spotlight-role").textContent = person.department;
-  fragment.querySelector(".spotlight-rank").textContent = `Pick ${rank}`;
-  fragment.querySelector("h3").textContent = person.name;
-  fragment.querySelector(".spotlight-score").textContent = person.ratingLabel || "Career score unavailable";
-  fragment.querySelector(".spotlight-credits").textContent = person.knownFor?.length
-    ? person.knownFor.join(", ")
-    : "Known-for titles unavailable.";
-  applyPersonActionButtons(fragment, person, "Show matching movies");
-  return fragment;
-}
-
 function buildDirectoryPersonCard(person, openLabel = "Show matching movies") {
   const fragment = elements.peopleTemplate.content.cloneNode(true);
   const portrait = fragment.querySelector(".person-card-portrait");
@@ -776,49 +721,6 @@ function buildDirectoryPersonCard(person, openLabel = "Show matching movies") {
   }
 
   return fragment;
-}
-
-function buildRankedPersonRow(person, rank) {
-  const fragment = elements.rankedPersonTemplate.content.cloneNode(true);
-  fragment.querySelector(".ranked-person-index").textContent = String(rank).padStart(2, "0");
-  fragment.querySelector(".ranked-person-role").textContent = person.department;
-  fragment.querySelector("h3").textContent = person.name;
-  fragment.querySelector(".ranked-person-credits").textContent = person.knownFor?.length
-    ? person.knownFor.join(", ")
-    : "Known-for titles unavailable.";
-  fragment.querySelector(".ranked-person-score").textContent = person.ratingLabel || "Career score unavailable";
-  applyPersonActionButtons(fragment, person, "Show matching movies");
-  return fragment;
-}
-
-function renderPeopleDirectory(container, people) {
-  container.replaceChildren();
-
-  people.forEach((person) => {
-    const fragment = elements.peopleTemplate.content.cloneNode(true);
-    const portrait = fragment.querySelector(".person-card-portrait");
-    const portraitFrame = fragment.querySelector(".person-card-visual");
-
-    fragment.querySelector("h3").textContent = person.name;
-    fragment.querySelector(".person-card-role").textContent = person.department;
-    fragment.querySelector(".person-card-count").textContent =
-      person.ratingLabel || (person.knownFor.length ? `Known for ${person.knownFor.length} titles` : "Known for credits not available");
-    fragment.querySelector(".person-card-credits").textContent = person.knownFor.length
-      ? person.knownFor.join(", ")
-      : "No featured titles returned by TMDb.";
-    applyPersonActionButtons(fragment, person, "Show matching movies");
-
-    if (person.profileUrl) {
-      portrait.src = person.profileUrl;
-      portrait.alt = person.name;
-    } else {
-      portraitFrame.classList.add("is-empty");
-      portrait.remove();
-      appendTextFallback(portraitFrame, person.name);
-    }
-
-    container.append(fragment);
-  });
 }
 
 async function loadIndexStatus(config = null) {
@@ -987,9 +889,6 @@ function handlePersonSelection(event) {
   }
 
   elements.personSearch.value = button.dataset.person;
-  if (elements.searchType && button.dataset.searchType) {
-    elements.searchType.value = button.dataset.searchType;
-  }
   liveState.exactMatch = true;
   syncSearchModeUi();
   updatePersonSuggestions();
@@ -1002,6 +901,7 @@ function handlePersonSearchKeydown(event) {
   }
 
   event.preventDefault();
+  liveState.exactMatch = Boolean(elements.personSearch.value.trim());
   refreshMovies();
 }
 
@@ -1051,8 +951,9 @@ function handleWatchlistAction(event) {
 function resetFilters() {
   elements.personSearch.value = "";
   elements.peopleSuggestions.replaceChildren();
+  liveState.suggestionNames.clear();
   if (elements.searchType) {
-    elements.searchType.value = "person";
+    elements.searchType.value = "actors";
   }
   if (elements.awardFilter) {
     elements.awardFilter.value = "all";
@@ -1062,30 +963,23 @@ function resetFilters() {
   elements.genreFilter.value = "all";
   elements.decadeFilter.value = "all";
   elements.sortFilter.value = "match";
-  setActiveRole("any");
   liveState.exactMatch = false;
   syncSearchModeUi();
   liveState.totalMatches = 0;
   liveState.lastQueryKey = "";
   updateUrlFromState(getFilterState());
   renderIdleState();
-}
-
-function setActiveRole(role) {
-  liveState.activeRole = role;
-  elements.roleFilter.querySelectorAll(".segment").forEach((button) => {
-    const isActive = button.dataset.role === role;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-pressed", String(isActive));
-  });
+  loadDiscoveryDirectory("actors");
 }
 
 function getFilterState() {
+  const category = currentDiscoveryCategory();
   return {
     personQuery: elements.personSearch.value.trim(),
-    searchType: currentSearchType(),
+    category,
+    searchType: category === "studios" ? "studio" : "person",
     exactMatch: liveState.exactMatch,
-    role: liveState.activeRole,
+    role: categoryRole(category),
     imdbMin: Number(elements.imdbMin.value),
     rtMin: Number(elements.rtMin.value),
     genre: elements.genreFilter.value,
@@ -1098,6 +992,7 @@ function getFilterState() {
 function buildFetchKey(state) {
   const entitySelectionMode = isEntitySelectionMode(state);
   return JSON.stringify({
+    category: state.category,
     personQuery: state.personQuery,
     searchType: state.searchType,
     exactMatch: state.exactMatch,
@@ -1113,9 +1008,8 @@ function buildFetchKey(state) {
 function applyStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const personQuery = params.get("query") || params.get("person") || "";
-  const searchType = params.get("searchType") || "person";
+  const category = discoveryCategoryFromParams(params);
   const exactMatch = params.get("exactMatch") === "1";
-  const role = params.get("role") || "any";
   const genre = params.get("genre") || "all";
   const decade = params.get("decade") || "all";
   const sort = params.get("sort") || "match";
@@ -1125,7 +1019,7 @@ function applyStateFromUrl() {
 
   elements.personSearch.value = personQuery;
   if (elements.searchType) {
-    elements.searchType.value = searchType;
+    elements.searchType.value = category;
   }
   liveState.exactMatch = exactMatch;
   if (elements.awardFilter) {
@@ -1140,7 +1034,6 @@ function applyStateFromUrl() {
   if (rtMin !== null) {
     elements.rtMin.value = rtMin;
   }
-  setActiveRole(role);
   elements.imdbValue.textContent = `${Number(elements.imdbMin.value).toFixed(1)}+`;
   elements.rtValue.textContent = `${Number(elements.rtMin.value)}%+`;
 }
@@ -1148,17 +1041,14 @@ function applyStateFromUrl() {
 function updateUrlFromState(state) {
   const params = new URLSearchParams();
 
+  if (state.category !== "actors") {
+    params.set("category", state.category);
+  }
   if (state.personQuery) {
     params.set("query", state.personQuery);
   }
-  if (state.searchType !== "person") {
-    params.set("searchType", state.searchType);
-  }
   if (state.exactMatch) {
     params.set("exactMatch", "1");
-  }
-  if (state.searchType === "person" && state.role !== "any") {
-    params.set("role", state.role);
   }
   if (state.genre !== "all") {
     params.set("genre", state.genre);
@@ -1187,21 +1077,23 @@ function updateUrlFromState(state) {
 }
 
 function shouldFetchOnLoad() {
-  return new URLSearchParams(window.location.search).toString().length > 0;
+  return hasMovieDiscoveryCriteria();
 }
 
-function handlePopState() {
+async function handlePopState() {
   liveState.lastQueryKey = "";
   applyStateFromUrl();
   syncSearchModeUi();
+  const directoryPromise = loadDiscoveryDirectory(currentDiscoveryCategory());
   if (liveState.movies.length) {
     liveState.movies = sortMoviesClient(liveState.movies, elements.sortFilter.value);
   }
   if (shouldFetchOnLoad()) {
-    refreshMovies();
+    await refreshMovies();
     return;
   }
 
+  await directoryPromise;
   renderIdleState();
 }
 
@@ -1210,10 +1102,78 @@ function setSearchMode(isSearchMode) {
   if (elements.resultsSection) {
     elements.resultsSection.hidden = !isSearchMode;
   }
+  if (elements.directorySection) {
+    elements.directorySection.hidden = Boolean(isSearchMode);
+  }
 }
 
 function currentSearchType() {
-  return elements.searchType?.value || "person";
+  return currentDiscoveryCategory() === "studios" ? "studio" : "person";
+}
+
+function currentDiscoveryCategory() {
+  return normalizeDiscoveryCategory(elements.searchType?.value);
+}
+
+function normalizeDiscoveryCategory(value) {
+  return ["actors", "writers", "directors", "producers", "studios"].includes(value)
+    ? value
+    : "actors";
+}
+
+function discoveryCategoryFromParams(params) {
+  return normalizeDiscoveryCategory(
+    params.get("category")
+      || params.get("department")
+      || legacyCategoryFromParams(params),
+  );
+}
+
+function legacyCategoryFromParams(params) {
+  if (params.get("searchType") === "studio") {
+    return "studios";
+  }
+  return {
+    cast: "actors",
+    writer: "writers",
+    director: "directors",
+    producer: "producers",
+  }[params.get("role")] || "actors";
+}
+
+function categoryRole(category) {
+  return {
+    actors: "cast",
+    writers: "writer",
+    directors: "director",
+    producers: "producer",
+    studios: "any",
+  }[normalizeDiscoveryCategory(category)];
+}
+
+function categoryCopy(category) {
+  return {
+    actors: { singular: "Actor", plural: "Actors", article: "an", department: "Acting" },
+    writers: { singular: "Writer", plural: "Writers", article: "a", department: "Writing" },
+    directors: { singular: "Director", plural: "Directors", article: "a", department: "Directing" },
+    producers: { singular: "Producer", plural: "Producers", article: "a", department: "Production" },
+    studios: { singular: "Studio", plural: "Studios", article: "a", department: "Studio" },
+  }[normalizeDiscoveryCategory(category)];
+}
+
+function hasMovieDiscoveryCriteria(state = getFilterState()) {
+  return Boolean(
+    state.personQuery
+      || state.genre !== "all"
+      || state.decade !== "all"
+      || state.imdbMin > 0
+      || state.rtMin > 0
+      || state.award !== "all",
+  );
+}
+
+function normalizeName(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function isEntitySelectionMode(state = getFilterState()) {
@@ -1221,37 +1181,34 @@ function isEntitySelectionMode(state = getFilterState()) {
 }
 
 function syncSearchModeUi() {
-  const searchType = currentSearchType();
-  const isStudio = searchType === "studio";
+  const category = currentDiscoveryCategory();
+  const copy = categoryCopy(category);
+  const isStudio = category === "studios";
 
   if (elements.searchLabel) {
-    elements.searchLabel.textContent = isStudio ? "Studio" : "Person";
-  }
-  if (elements.roleField) {
-    elements.roleField.hidden = isStudio;
-  }
-  if (elements.roleFilter) {
-    elements.roleFilter.style.gridTemplateColumns = "repeat(5, minmax(0, 1fr))";
+    elements.searchLabel.textContent = copy.singular;
   }
   if (isStudio) {
-    setActiveRole("any");
     applyStudioPlaceholder(elements.personSearch);
     syncMovieFilterState();
+    updateDirectoryCopy(category);
     return;
   }
 
-  applyRandomPlaceholder(elements.personSearch, liveState.placeholderPools);
+  applyCategoryPlaceholder(elements.personSearch, liveState.placeholderPools, category);
   syncMovieFilterState();
+  updateDirectoryCopy(category);
 }
 
 function syncMovieFilterState(state = getFilterState()) {
   const pendingSelection = isEntitySelectionMode(state);
+  const copy = categoryCopy(state.category);
   if (elements.movieFilterGroup) {
     elements.movieFilterGroup.classList.toggle("is-pending", pendingSelection);
   }
   if (elements.movieFilterHelper) {
     elements.movieFilterHelper.textContent = pendingSelection
-      ? `These settings are queued and will apply after you choose a specific ${state.searchType === "studio" ? "studio" : "person"}.`
+      ? `These settings are queued and will apply after you choose ${copy.article} ${copy.singular.toLowerCase()}.`
       : "These filters are applied to the movie results below.";
   }
 }
@@ -1300,33 +1257,6 @@ function setStatus(message, isError) {
   elements.apiStatus.classList.toggle("is-error", Boolean(isError));
 }
 
-function formatRating(value, decimals) {
-  return value === null || value === undefined ? "N/A" : Number(value).toFixed(decimals);
-}
-
-function formatPercent(value) {
-  return value === null || value === undefined ? "N/A" : `${Math.round(value)}%`;
-}
-
-function formatInteger(value) {
-  return value === null || value === undefined ? "N/A" : String(Math.round(value));
-}
-
-function formatGenres(movie) {
-  if (movie.genres && movie.genres.length) {
-    return movie.genres.join(" / ");
-  }
-
-  if (movie.genreIds && movie.genreIds.length) {
-    const names = movie.genreIds
-      .map((genreId) => liveState.genres.find((genre) => genre.id === genreId)?.name)
-      .filter(Boolean);
-    return names.length ? names.join(" / ") : "Unknown";
-  }
-
-  return "Unknown";
-}
-
 function formatDateTime(value) {
   try {
     return new Intl.DateTimeFormat(undefined, {
@@ -1336,163 +1266,6 @@ function formatDateTime(value) {
   } catch {
     return String(value);
   }
-}
-
-function filterPeopleDirectory(people, query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) {
-    return [...people];
-  }
-
-  return people.filter((person) => {
-    const haystack = [person.name, person.department, ...(person.knownFor || [])]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(normalizedQuery);
-  });
-}
-
-function sortPeopleDirectory(people, sort) {
-  const sorted = [...people];
-  sorted.sort((left, right) => {
-    switch (sort) {
-      case "name":
-        return left.name.localeCompare(right.name);
-      case "popularity":
-        return (right.popularity ?? -1) - (left.popularity ?? -1) || left.name.localeCompare(right.name);
-      case "score":
-      default:
-        return (right.score ?? -1) - (left.score ?? -1) || left.name.localeCompare(right.name);
-    }
-  });
-  return sorted;
-}
-
-function pickRotatingPeopleForRole(role, count = 10) {
-  const people = getRotatingPool(role);
-  return pickFromRolePool(people, count, `${role}:${getDailySeed()}:${liveState.refreshTokens[role]}`);
-}
-
-function getRotatingPool(role) {
-  const pools = {
-    actors: liveState.featuredActors,
-    writers: liveState.featuredWriters,
-    directors: liveState.featuredDirectors,
-    producers: liveState.featuredProducers,
-    studios: liveState.featuredStudios,
-  };
-
-  return pools[role] || [];
-}
-
-function pickFromRolePool(people, count, seedKey) {
-  const ranked = [...dedupePeopleById(people)].sort(compareDiscoveryPeople);
-  if (ranked.length <= count) {
-    return shufflePeople(ranked, seedKey).slice(0, count);
-  }
-
-  const recentIds = loadRecentPickIds(seedKey.split(":")[0]);
-  const candidateWindow = ranked.slice(0, Math.min(ranked.length, 140));
-  const filteredWindow = candidateWindow.filter((person) => !recentIds.has(person.id));
-  const sourceWindow = filteredWindow.length >= count ? filteredWindow : candidateWindow;
-  const start = seededIndex(seedKey, sourceWindow.length);
-  const picks = [];
-
-  for (let offset = 0; picks.length < count && offset < sourceWindow.length; offset += 1) {
-    picks.push(sourceWindow[(start + offset * 11) % sourceWindow.length]);
-  }
-
-  const deduped = dedupePeopleById(picks);
-  saveRecentPickIds(seedKey.split(":")[0], deduped.map((person) => person.id));
-  return deduped;
-}
-
-function loadRecentPickIds(role) {
-  try {
-    const payload = JSON.parse(window.sessionStorage.getItem(refreshHistoryStorageKey) || "{}");
-    const ids = Array.isArray(payload?.[role]) ? payload[role] : [];
-    return new Set(ids);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveRecentPickIds(role, ids) {
-  try {
-    const payload = JSON.parse(window.sessionStorage.getItem(refreshHistoryStorageKey) || "{}");
-    const prior = Array.isArray(payload?.[role]) ? payload[role] : [];
-    const merged = [...prior, ...ids].slice(-80);
-    payload[role] = merged;
-    window.sessionStorage.setItem(refreshHistoryStorageKey, JSON.stringify(payload));
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-function shufflePeople(people, seedKey) {
-  return [...people].sort((left, right) => {
-    const leftHash = hashString(`${seedKey}:${left.id}`);
-    const rightHash = hashString(`${seedKey}:${right.id}`);
-    if (leftHash !== rightHash) {
-      return leftHash - rightHash;
-    }
-
-    return String(left.name || "").localeCompare(String(right.name || ""));
-  });
-}
-
-function dedupePeopleById(people) {
-  const byId = new Map();
-  people.forEach((person) => {
-    if (!person || byId.has(person.id)) {
-      return;
-    }
-    byId.set(person.id, person);
-  });
-  return [...byId.values()];
-}
-
-function getDailySeed() {
-  return hashString(new Date().toISOString().slice(0, 10));
-}
-
-function compareDiscoveryPeople(left, right) {
-  const leftScore = discoveryScore(left);
-  const rightScore = discoveryScore(right);
-  if (leftScore !== rightScore) {
-    return rightScore - leftScore;
-  }
-  return String(left.name || "").localeCompare(String(right.name || ""));
-}
-
-function discoveryScore(person) {
-  const score = Number(person.score ?? 0);
-  const popularity = Number(person.popularity ?? 0);
-  const recognitionScore = Number(person.recognitionScore ?? 0);
-  const creditCount = Number(person.creditCount ?? 0);
-  const totalVotes = Number(person.totalVotes ?? 0);
-  const inCoreBand =
-    score >= 7.4 && score <= 8.8 && creditCount >= 4 && totalVotes >= 5000 && recognitionScore >= 300;
-  const inPreferredBand =
-    score >= 7.0 && score <= 9.2 && creditCount >= 3 && totalVotes >= 1000 && recognitionScore >= 120;
-  const bandDistance = Math.abs(score - 8.1);
-  return (
-    (inCoreBand ? 220 : 0)
-    + (inPreferredBand ? 100 : 0)
-    + recognitionScore * 0.6
-    + Math.log10(totalVotes + 10) * 18
-    + Math.min(creditCount, 12) * 2
-    + Math.log10(popularity + 10) * 5
-    - bandDistance * 18
-    - Math.max(0, score - 9.0) * 36
-  );
-}
-
-function seededIndex(seedKey, size) {
-  if (size <= 1) {
-    return 0;
-  }
-  return hashString(`${seedKey}:${new Date().toISOString().slice(0, 10)}`) % size;
 }
 
 function hashString(value) {
@@ -1604,9 +1377,6 @@ function applyPersonActionButtons(fragment, person, openLabel) {
   const openButton = fragment.querySelector("[data-open-person]");
   if (openButton) {
     openButton.dataset.person = person.name;
-    openButton.dataset.searchType = String(person.department || "").toLowerCase().includes("studio")
-      ? "studio"
-      : "person";
     openButton.textContent = openLabel;
   }
 
