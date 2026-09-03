@@ -6,7 +6,7 @@
     <title>Saved Titles</title>
     <meta
       name="description"
-      content="Browse the movie titles you have saved locally in this browser."
+      content="Search, sort, and manage the movie titles saved to your watchlist."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,9 +14,9 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260414a" />
+    <link rel="stylesheet" href="./styles.css?v=20260903a" />
   </head>
-  <body>
+  <body class="saved-titles-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
@@ -45,46 +45,65 @@
           <p id="saved-titles-status" class="hero-subtext">Reading local saved titles.</p>
         </div>
 
-        <section class="filter-panel" aria-label="Saved titles summary">
+        <section class="filter-panel saved-titles-summary" aria-label="Saved titles summary">
           <div class="filter-panel-header">
-            <h2>Watchlist summary</h2>
+            <h2>Watchlist at a glance</h2>
           </div>
           <div class="hero-stats">
             <div>
               <span id="saved-titles-count" class="stat-number">0</span>
               <span class="stat-label">Saved titles</span>
             </div>
+            <div>
+              <span id="saved-titles-genres" class="stat-number">0</span>
+              <span class="stat-label">Genres</span>
+            </div>
+            <div>
+              <span id="saved-titles-rating" class="stat-number">—</span>
+              <span class="stat-label">Avg. IMDb</span>
+            </div>
           </div>
         </section>
       </header>
 
       <main id="main-content" tabindex="-1">
-        <section class="catalog-section" aria-labelledby="saved-titles-heading">
-          <div class="results-header">
+        <section class="catalog-section saved-titles-section" aria-labelledby="saved-titles-heading">
+          <div class="results-header saved-titles-results-header">
             <div>
               <p class="section-label">Titles</p>
               <h2 id="saved-titles-heading">Your watchlist</h2>
             </div>
+            <div class="saved-titles-toolbar" aria-label="Watchlist controls">
+              <label class="saved-title-control saved-title-search-control">
+                <span>Search watchlist</span>
+                <input
+                  id="saved-titles-search"
+                  type="search"
+                  placeholder="Title, genre, cast, or director"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="saved-title-control">
+                <span>Sort by</span>
+                <select id="saved-titles-sort">
+                  <option value="recent">Recently saved</option>
+                  <option value="title">Title A–Z</option>
+                  <option value="year">Newest release</option>
+                  <option value="rating">Highest IMDb</option>
+                </select>
+              </label>
+            </div>
           </div>
-          <section class="movie-rail movie-results-rail" data-movie-rail data-rail-status="idle">
-            <div class="movie-rail-meta">
-              <span class="movie-rail-count" data-movie-rail-count></span>
-              <div class="movie-rail-controls">
-                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
-                  &larr;
-                </button>
-                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
-                  &rarr;
-                </button>
-              </div>
-            </div>
-            <div class="movie-rail-viewport" data-movie-rail-viewport>
-              <div id="saved-titles-grid" class="movie-rail-track saved-title-page-grid" data-movie-rail-track></div>
-            </div>
-          </section>
+          <p id="saved-titles-view-status" class="results-summary saved-titles-view-status" aria-live="polite"></p>
+          <div id="saved-titles-grid" class="saved-title-page-grid"></div>
         </section>
       </main>
     </div>
+
+    <section class="saved-title-notice" data-saved-title-notice aria-live="polite" hidden>
+      <span data-saved-title-notice-text></span>
+      <button type="button" class="ghost-button" data-undo-title-removal>Undo</button>
+    </section>
 
     <template id="movie-card-template">
       <article class="movie-card">
@@ -119,29 +138,28 @@
               <strong class="rating-tmdb"></strong>
             </div>
           </div>
+          <div class="saved-title-genres">
+            <span class="rating-label">Genres</span>
+            <span class="genres"></span>
+          </div>
+          <details class="saved-title-details">
+            <summary>Cast &amp; crew</summary>
+            <dl class="credit-list">
+              <div>
+                <dt>Starring</dt>
+                <dd class="cast"></dd>
+              </div>
+              <div>
+                <dt>Directed by</dt>
+                <dd class="director"></dd>
+              </div>
+              <div>
+                <dt>Produced by</dt>
+                <dd class="producer"></dd>
+              </div>
+            </dl>
+          </details>
           <button type="button" class="watchlist-button"></button>
-          <dl class="credit-list">
-            <div>
-              <dt>Starring</dt>
-              <dd class="cast"></dd>
-            </div>
-            <div>
-              <dt>Directed by</dt>
-              <dd class="director"></dd>
-            </div>
-            <div>
-              <dt>Produced by</dt>
-              <dd class="producer"></dd>
-            </div>
-            <div>
-              <dt>Why this matched</dt>
-              <dd class="match-reason"></dd>
-            </div>
-            <div>
-              <dt>Genres</dt>
-              <dd class="genres"></dd>
-            </div>
-          </dl>
         </div>
       </article>
     </template>
@@ -149,6 +167,6 @@
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
     <script src="./movie-results.js?v=20260422b" defer></script>
-    <script src="./saved-titles.js?v=20260421a" defer></script>
+    <script src="./saved-titles.js?v=20260903a" defer></script>
   </body>
 </html>
