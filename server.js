@@ -41,6 +41,7 @@ const PUBLIC_API_GET_PATHS = new Set([
   "/api/people-directory",
   "/api/people",
   "/api/studios",
+  "/api/movie-search",
   "/api/discover",
   "/api/enrich",
   "/api/watch-providers",
@@ -118,6 +119,8 @@ const peopleIndexPath = path.join(cacheDir, "people-index-v1.json");
 const DISCOVER_RESULT_LIMIT = 60;
 const DISCOVER_HYDRATE_LIMIT = 6;
 const ENRICH_BATCH_LIMIT = 2;
+const MOVIE_SEARCH_DEFAULT_LIMIT = 8;
+const MOVIE_SEARCH_MAX_LIMIT = 12;
 const PERSON_RESULT_LIMIT = 200;
 const PEOPLE_SEARCH_DEFAULT_LIMIT = 25;
 const PEOPLE_SEARCH_MAX_LIMIT = 50;
@@ -1177,6 +1180,37 @@ async function handleApi(req, requestUrl, res) {
     return;
   }
 
+  if (requestUrl.pathname === "/api/movie-search") {
+    const query = String(requestUrl.searchParams.get("query") || "").trim().slice(0, 120);
+    const limit = clampNumber(
+      requestUrl.searchParams.get("limit"),
+      MOVIE_SEARCH_DEFAULT_LIMIT,
+      1,
+      MOVIE_SEARCH_MAX_LIMIT,
+    );
+    if (!query) {
+      sendJson(res, 200, { query: "", results: [], total: 0 });
+      return;
+    }
+
+    const payload = await tmdb("/search/movie", {
+      query,
+      include_adult: "false",
+      language: "en-US",
+      page: "1",
+    });
+    const results = (payload.results || [])
+      .map(normalizeMovieSearchResult)
+      .filter(Boolean)
+      .slice(0, limit);
+    sendJson(res, 200, {
+      query,
+      results,
+      total: Number(payload.total_results || results.length),
+    });
+    return;
+  }
+
   if (requestUrl.pathname === "/api/discover") {
     const filters = {
       searchType: requestUrl.searchParams.get("searchType") || "person",
@@ -1311,6 +1345,24 @@ function handleDemoApi(requestUrl, res) {
         .filter((studio) => studio.name.toLowerCase().includes(query))
       : [];
     sendJson(res, 200, { results });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/movie-search") {
+    const query = String(requestUrl.searchParams.get("query") || "").trim().toLowerCase().slice(0, 120);
+    const limit = clampNumber(
+      requestUrl.searchParams.get("limit"),
+      MOVIE_SEARCH_DEFAULT_LIMIT,
+      1,
+      MOVIE_SEARCH_MAX_LIMIT,
+    );
+    const results = query
+      ? demoMovies
+        .filter((movie) => movie.title.toLowerCase().includes(query))
+        .slice(0, limit)
+        .map((movie) => ({ ...movie, matchReason: "Direct title search.", isEnriched: true }))
+      : [];
+    sendJson(res, 200, { query, results, total: results.length });
     return;
   }
 
@@ -2588,6 +2640,32 @@ function normalizeDiscoverMovie(movie, reasons = []) {
     posterUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
     awards: null,
     matchReason: reasons.length ? reasons.join(" / ") : "Live discovery result.",
+    isEnriched: false,
+  };
+}
+
+function normalizeMovieSearchResult(movie) {
+  if (!movie || !Number.isInteger(Number(movie.id)) || !String(movie.title || "").trim()) {
+    return null;
+  }
+
+  return {
+    id: Number(movie.id),
+    title: String(movie.title).trim(),
+    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) || null : null,
+    runtime: "Runtime available after saving",
+    imdb: null,
+    rt: null,
+    metacritic: null,
+    tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    genres: [],
+    genreIds: Array.isArray(movie.genre_ids) ? movie.genre_ids : [],
+    cast: [],
+    director: "",
+    producers: [],
+    logline: movie.overview || "No overview available yet.",
+    posterUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
+    matchReason: "Direct title search.",
     isEnriched: false,
   };
 }
@@ -3968,6 +4046,7 @@ module.exports = {
   PUBLIC_STATIC_FILES,
   buildWatchProviderDestination,
   clampNumber,
+  normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
   server,
 };

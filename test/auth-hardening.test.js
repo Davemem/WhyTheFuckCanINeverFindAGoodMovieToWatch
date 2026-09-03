@@ -20,6 +20,7 @@ const { getUserAccountOverview } = require("../lib/auth/account-store");
 const {
   buildWatchProviderDestination,
   clampNumber,
+  normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
   server,
 } = require("../server");
@@ -28,6 +29,42 @@ test("clampNumber uses its fallback when a query parameter is absent", () => {
   assert.equal(clampNumber(null, 25, 1, 50), 25);
   assert.equal(clampNumber("", 10, 1, 50), 10);
   assert.equal(clampNumber("100", 10, 1, 50), 50);
+});
+
+test("movie title search results are normalized into saveable watchlist records", () => {
+  assert.equal(normalizeMovieSearchResult({ id: "nope", title: "Invalid" }), null);
+  assert.equal(normalizeMovieSearchResult({ id: 42, title: "" }), null);
+
+  assert.deepEqual(
+    normalizeMovieSearchResult({
+      id: 42,
+      title: "  The Answer  ",
+      release_date: "2026-04-17",
+      vote_average: 7.86,
+      genre_ids: [18],
+      overview: "A movie worth remembering.",
+      poster_path: "/answer.jpg",
+    }),
+    {
+      id: 42,
+      title: "The Answer",
+      year: 2026,
+      runtime: "Runtime available after saving",
+      imdb: null,
+      rt: null,
+      metacritic: null,
+      tmdb: 7.9,
+      genres: [],
+      genreIds: [18],
+      cast: [],
+      director: "",
+      producers: [],
+      logline: "A movie worth remembering.",
+      posterUrl: "https://image.tmdb.org/t/p/w500/answer.jpg",
+      matchReason: "Direct title search.",
+      isEnriched: false,
+    },
+  );
 });
 
 test("createCsrfToken derives a stable token from the session", () => {
@@ -331,6 +368,10 @@ test("server exposes only public assets and rejects catalog writes", async () =>
     const providerWriteResponse = await fetch(`${baseUrl}/api/watch-providers`, { method: "POST" });
     assert.equal(providerWriteResponse.status, 405);
     assert.equal(providerWriteResponse.headers.get("allow"), "GET, HEAD");
+
+    const movieSearchWriteResponse = await fetch(`${baseUrl}/api/movie-search`, { method: "POST" });
+    assert.equal(movieSearchWriteResponse.status, 405);
+    assert.equal(movieSearchWriteResponse.headers.get("allow"), "GET, HEAD");
 
     const staticWriteResponse = await fetch(`${baseUrl}/index.html`, { method: "POST" });
     assert.equal(staticWriteResponse.status, 405);

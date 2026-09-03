@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260903c" />
+    <link rel="stylesheet" href="./styles.css?v=20260903d" />
   </head>
   <body class="saved-titles-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -67,6 +67,31 @@
       </header>
 
       <main id="main-content" tabindex="-1">
+        <section class="catalog-section title-quick-add" aria-labelledby="title-quick-add-heading">
+          <div class="title-quick-add-copy">
+            <p class="section-label">Quick add</p>
+            <h2 id="title-quick-add-heading">Already know what you want to watch?</h2>
+            <p>Search for the movie and save it straight to your watchlist.</p>
+          </div>
+          <form id="title-catalog-search-form" class="title-catalog-search-form" role="search">
+            <label for="title-catalog-search">Movie title</label>
+            <div class="title-catalog-search-controls">
+              <input
+                id="title-catalog-search"
+                type="search"
+                placeholder="Try: The Godfather, Past Lives, Jaws"
+                autocomplete="off"
+                enterkeyhint="search"
+              />
+              <button type="submit" class="title-catalog-search-button">Search</button>
+            </div>
+          </form>
+          <p id="title-catalog-search-status" class="title-catalog-search-status" aria-live="polite">
+            Enter a movie title to add it without building a discovery search.
+          </p>
+          <div id="title-catalog-search-results" class="title-catalog-search-results" hidden></div>
+        </section>
+
         <section class="catalog-section saved-titles-section" aria-labelledby="saved-titles-heading">
           <div class="results-header saved-titles-results-header">
             <div>
@@ -172,6 +197,6 @@
     <script src="./auth-client.js?v=20260421c" defer></script>
     <script src="./saved-data-client.js?v=20260421a" defer></script>
     <script src="./movie-results.js?v=20260903c" defer></script>
-    <script src="./saved-titles.js?v=20260903a" defer></script>
+    <script src="./saved-titles.js?v=20260903b" defer></script>
   </body>
 </html>
