@@ -3850,6 +3850,23 @@ async function searchPeopleFuzzyFromPostgres(query, options = {}) {
     return { results: [], total: 0, page, limit, hasMore: false };
   }
 
+  const prefix = normalizedQuery.split(" ").find((token) => token.length >= 3)?.slice(0, 3) || "";
+  if (prefix && prefix !== normalizedQuery) {
+    const prefixMatches = await searchPeopleFromPostgres(prefix, {
+      page: 1,
+      limit: Math.min(PEOPLE_SEARCH_MAX_LIMIT, Math.max(limit * 5, 50)),
+      department,
+    });
+    if (prefixMatches.results.length) {
+      const candidates = prefixMatches.results;
+      const directory = { actors: candidates, directors: candidates, producers: candidates, writers: candidates };
+      const ranked = searchLocalPeopleIndex(directory, normalizedQuery, { page, limit, department });
+      if (ranked.results.length) {
+        return ranked;
+      }
+    }
+  }
+
   const patterns = [...new Set(normalizedQuery.split(" ").filter(Boolean).flatMap((token) => {
     if (token.length < 3) {
       return [`%${token}%`];
