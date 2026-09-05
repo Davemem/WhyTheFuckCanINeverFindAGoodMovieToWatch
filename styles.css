@@ -1846,6 +1846,7 @@ main {
 }
 
 .discovery-directory[hidden],
+.people-search-results[hidden],
 .results-section[hidden] {
   display: none !important;
 }
@@ -2344,6 +2345,15 @@ dd {
   padding: 12px;
   display: grid;
   gap: 8px;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.person-card:hover,
+.person-card:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(216, 79, 49, 0.34);
+  box-shadow: 0 24px 62px rgba(83, 39, 20, 0.18);
 }
 
 .person-card-role,
@@ -2659,5 +2669,324 @@ dd {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Unified discovery, watched state, and compact overlay refinements. */
+.hero-marquee {
+  position: relative;
+  isolation: isolate;
+  width: fit-content;
+  padding: 10px 18px 14px 12px;
+  transform: rotate(-1.2deg);
+}
+
+.hero-marquee::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 2px 0 0;
+  border: 3px solid var(--text);
+  border-radius: 18px 6px 20px 8px;
+  background: linear-gradient(135deg, #ffd29f, #ffad77 55%, #ef6b50);
+  box-shadow: 8px 9px 0 var(--text), 0 22px 45px rgba(141, 34, 15, 0.24);
+  transform: skewX(-2deg);
+}
+
+.hero-marquee span {
+  filter: drop-shadow(2px 3px 0 rgba(255, 249, 240, 0.7));
+}
+
+.hero-stats {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+}
+
+.account-panel {
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.account-panel .account-subtext {
+  max-width: 22ch;
+}
+
+.account-panel .account-action {
+  min-height: 34px;
+  padding-block: 6px;
+}
+
+.account-google-slot,
+.account-google-button {
+  min-height: 34px;
+}
+
+.watched-button,
+.title-search-result-watched {
+  border: 1px solid rgba(25, 21, 19, 0.16);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.watched-button.is-watched,
+.title-search-result-watched.is-watched {
+  border-color: rgba(35, 94, 49, 0.3);
+  background: #235e31;
+  color: #fff;
+}
+
+.movie-card-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.person-credit-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-deep);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(141, 34, 15, 0.3);
+  text-underline-offset: 2px;
+}
+
+.person-credit-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.people-search-results {
+  background: linear-gradient(135deg, rgba(255, 245, 230, 0.94), rgba(248, 197, 143, 0.35));
+}
+
+.people-search-results .people-grid {
+  grid-template-columns: repeat(auto-fill, minmax(176px, 210px));
+}
+
+.directory-refresh-button {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.72);
+  font-weight: 700;
+}
+
+.title-search-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-preview-dialog {
+  width: min(610px, calc(100% - 24px));
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 26px;
+  background: #fff9f0;
+  box-shadow: 0 30px 90px rgba(25, 21, 19, 0.36);
+}
+
+.person-preview-dialog::backdrop {
+  background: rgba(25, 21, 19, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.person-preview-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
+  padding: 22px;
+  background: radial-gradient(circle at top right, rgba(248, 197, 143, 0.5), transparent 45%);
+}
+
+.person-preview-portrait {
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent-soft), rgba(216, 79, 49, 0.18));
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 3rem;
+}
+
+.person-preview-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.person-preview-copy {
+  align-self: center;
+  display: grid;
+  gap: 10px;
+}
+
+.person-preview-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.person-preview-copy h2 {
+  font-size: 2.6rem;
+}
+
+.person-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-preview-actions a {
+  text-decoration: none;
+}
+
+.person-preview-close {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  font-size: 1.4rem;
+}
+
+.saved-person-catalog-dialog {
+  position: fixed;
+  inset: 14px;
+  width: min(1180px, calc(100vw - 28px));
+  height: min(760px, calc(100dvh - 28px));
+  max-height: calc(100dvh - 28px);
+  overflow: hidden;
+}
+
+.saved-person-catalog-dialog .saved-people-catalog {
+  height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.saved-person-titles-viewport {
+  min-height: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+}
+
+.saved-person-titles-track {
+  height: 100%;
+  align-items: stretch;
+}
+
+.saved-person-movie-card {
+  flex-basis: 270px;
+  min-width: 270px;
+  height: 100%;
+  max-height: 100%;
+  grid-template-rows: minmax(180px, 38%) auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.saved-person-movie-card .card-body {
+  grid-template-rows: auto minmax(0, auto) auto auto;
+  overflow: hidden;
+}
+
+.saved-person-movie-card .synopsis-block {
+  min-height: 0;
+}
+
+.saved-person-movie-card .logline {
+  min-height: 0;
+  -webkit-line-clamp: 3;
+}
+
+.saved-person-movie-card .movie-card-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.saved-person-movie-card .watched-button {
+  grid-column: auto;
+}
+
+.saved-person-movie-card .rating-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 0;
+}
+
+.saved-person-movie-card .rating-box {
+  min-height: 54px;
+  padding: 6px 3px;
+}
+
+.saved-person-movie-card .rating-label {
+  font-size: 0.56rem;
+  letter-spacing: 0.04em;
+}
+
+.saved-person-movie-card .movie-card-actions > button {
+  min-height: 34px;
+  padding: 5px 3px;
+  font-size: 0.68rem;
+}
+
+.saved-titles-toolbar {
+  grid-template-columns: minmax(220px, 1.4fr) repeat(2, minmax(150px, 0.7fr));
+}
+
+@media (max-width: 640px) {
+  .hero-marquee {
+    padding: 8px 12px 11px 8px;
+  }
+
+  .person-preview-shell {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 13px;
+    padding: 18px;
+  }
+
+  .person-preview-copy h2 {
+    font-size: 2rem;
+  }
+
+  .saved-person-catalog-dialog {
+    height: calc(100dvh - 14px);
+    max-height: calc(100dvh - 14px);
+  }
+
+  .saved-person-movie-card {
+    flex-basis: min(76vw, 252px);
+    min-width: min(76vw, 252px);
+  }
+
+  .movie-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-person-movie-card .movie-card-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .account-panel {
+    border-radius: 20px;
   }
 }

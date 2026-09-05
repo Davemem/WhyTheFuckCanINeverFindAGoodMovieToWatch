@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260903f" />
+    <link rel="stylesheet" href="./styles.css?v=20260905a" />
   </head>
   <body class="saved-titles-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -33,9 +33,9 @@
       <header class="hero people-page-hero">
         <div class="hero-copy">
           <p class="eyebrow">saved stacks</p>
-          <h1>Saved titles</h1>
+          <h1>Saved &amp; watched titles</h1>
           <p class="hero-text">
-            Keep your watchlist in one place, then open it whenever you want a fast shortlist of films already worth revisiting.
+            Keep your watchlist and watched history together, without mixing up what you still plan to see.
           </p>
           <p id="saved-titles-status" class="hero-subtext">Reading local saved titles.</p>
         </div>
@@ -57,6 +57,10 @@
               <span id="saved-titles-rating" class="stat-number">—</span>
               <span class="stat-label">Avg. IMDb</span>
             </div>
+            <div>
+              <span id="saved-titles-watched" class="stat-number">0</span>
+              <span class="stat-label">Watched</span>
+            </div>
           </div>
         </section>
       </header>
@@ -66,7 +70,7 @@
           <div class="results-header saved-titles-results-header">
             <div>
               <p class="section-label">Titles</p>
-              <h2 id="saved-titles-heading">Your watchlist</h2>
+              <h2 id="saved-titles-heading">Your movie library</h2>
             </div>
             <div class="saved-titles-toolbar" aria-label="Watchlist controls">
               <label class="saved-title-control saved-title-search-control">
@@ -77,6 +81,14 @@
                   placeholder="Title, genre, cast, or director"
                   autocomplete="off"
                 />
+              </label>
+              <label class="saved-title-control">
+                <span>Show</span>
+                <select id="saved-titles-watched-filter">
+                  <option value="all">All titles</option>
+                  <option value="unwatched">Not watched</option>
+                  <option value="watched">Watched</option>
+                </select>
               </label>
               <label class="saved-title-control">
                 <span>Sort by</span>
@@ -156,6 +168,7 @@
           </details>
           <div class="movie-card-actions">
             <button type="button" class="watchlist-button"></button>
+            <button type="button" class="watched-button"></button>
             <button type="button" class="ghost-button watch-providers-button" data-watch-providers-button>
               Where to watch
             </button>
@@ -164,9 +177,9 @@
       </article>
     </template>
 
-    <script src="./auth-client.js?v=20260421c" defer></script>
-    <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260903c" defer></script>
-    <script src="./saved-titles.js?v=20260903c" defer></script>
+    <script src="./auth-client.js?v=20260905a" defer></script>
+    <script src="./saved-data-client.js?v=20260905a" defer></script>
+    <script src="./movie-results.js?v=20260905a" defer></script>
+    <script src="./saved-titles.js?v=20260905a" defer></script>
   </body>
 </html>

@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260903f" />
+    <link rel="stylesheet" href="./styles.css?v=20260905a" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -39,7 +39,7 @@
             Can't find a movie after endlessly browsing? Find new (and old)
             movies by searching the filmographies of actors, directors,
             producers, and writers you already know and love. Pick one path,
-            browse its top 50, or search a name directly—then tighten the list
+            browse 50 fresh suggestions, or search a name directly—then tighten the list
             by ratings, genre, and release year.
           </p>
           <p id="data-source" class="hero-subtext">
@@ -57,6 +57,10 @@
             <div>
               <span class="stat-number" id="watchlist-count">0</span>
               <span class="stat-label">Saved to watchlist</span>
+            </div>
+            <div>
+              <span class="stat-number" id="watched-count">0</span>
+              <span class="stat-label">Marked watched</span>
             </div>
           </div>
         </div>
@@ -220,6 +224,23 @@
         </section>
 
         <section
+          class="catalog-section people-search-results"
+          id="people-results-section"
+          aria-live="polite"
+          aria-labelledby="people-results-title"
+          hidden
+        >
+          <div class="results-header">
+            <div>
+              <p class="section-label">People</p>
+              <h2 id="people-results-title">Potential matches</h2>
+            </div>
+            <p id="people-results-summary" class="results-summary"></p>
+          </div>
+          <div id="people-results-grid" class="people-grid"></div>
+        </section>
+
+        <section
           class="catalog-section results-section"
           id="results-section"
           aria-live="polite"
@@ -257,12 +278,15 @@
           <div class="results-header">
             <div>
               <p id="directory-label" class="section-label">Actors</p>
-              <h2 id="directory-heading">Top 50 actors</h2>
+              <h2 id="directory-heading">Suggested 50 actors</h2>
             </div>
             <div class="section-actions">
               <p id="directory-summary" class="results-summary" aria-live="polite">
                 Loading the ranked actor directory.
               </p>
+              <button id="directory-refresh" type="button" class="ghost-button directory-refresh-button">
+                ↻ Refresh suggestions
+              </button>
             </div>
           </div>
           <div id="directory-grid" class="people-grid" aria-live="polite"></div>
@@ -302,6 +326,7 @@
           </div>
           <div class="movie-card-actions">
             <button type="button" class="watchlist-button"></button>
+            <button type="button" class="watched-button"></button>
             <button type="button" class="ghost-button watch-providers-button" data-watch-providers-button>
               Where to watch
             </button>
@@ -352,10 +377,10 @@
       </article>
     </template>
 
-    <script src="./auth-client.js?v=20260421c" defer></script>
-    <script src="./saved-data-client.js?v=20260421a" defer></script>
-    <script src="./movie-results.js?v=20260903c" defer></script>
-    <script src="./app.js?v=20260903f" defer></script>
-    <script src="./title-quick-add.js?v=20260903a" defer></script>
+    <script src="./auth-client.js?v=20260905a" defer></script>
+    <script src="./saved-data-client.js?v=20260905a" defer></script>
+    <script src="./movie-results.js?v=20260905a" defer></script>
+    <script src="./app.js?v=20260905a" defer></script>
+    <script src="./title-quick-add.js?v=20260905a" defer></script>
   </body>
 </html>

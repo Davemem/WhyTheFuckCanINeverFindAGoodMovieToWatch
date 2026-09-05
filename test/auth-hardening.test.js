@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const { createCsrfToken, isValidCsrfToken } = require("../lib/auth/csrf");
 const { createAllowedOrigins, isTrustedOriginRequest } = require("../lib/auth/request-guards");
 const {
+  getUserSavedState,
   importUserSavedState,
   normalizeSavedMoviePayload,
   normalizeSavedPersonPayload,
@@ -25,6 +26,7 @@ const {
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
   passesAwardFilter,
+  searchLocalPeopleIndex,
   server,
 } = require("../server");
 
@@ -180,9 +182,28 @@ test("importUserSavedState deduplicates via store upserts and counts normalized 
     savedPeople: [{ id: "p1", name: "One" }, { id: "p1", name: "One Again" }],
   });
 
-  assert.deepEqual(result, { importedTitles: 3, importedPeople: 2 });
+  assert.deepEqual(result, { importedTitles: 3, importedPeople: 2, importedWatched: 0 });
   assert.deepEqual(savedTitles, [1, 1, 2]);
   assert.deepEqual(savedPeople, ["p1", "p1"]);
+});
+
+test("saved state keeps watchlist and watched history independent", async () => {
+  const queryDb = async (sql) => {
+    if (sql.includes("FROM user_saved_titles")) {
+      return {
+        rows: [
+          { movie_id: 1, movie_payload: { title: "Saved", savedToWatchlist: true }, created_at: "2026-01-01" },
+          { movie_id: 2, movie_payload: { title: "Watched", savedToWatchlist: false, watched: true }, created_at: "2026-01-02" },
+          { movie_id: 3, movie_payload: { title: "Both", savedToWatchlist: true, watched: true }, created_at: "2026-01-03" },
+        ],
+      };
+    }
+    return { rows: [] };
+  };
+
+  const state = await getUserSavedState({ queryDb, userId: 7 });
+  assert.deepEqual(state.watchlist, [1, 3]);
+  assert.deepEqual(state.watched, [2, 3]);
 });
 
 test("cleanupExpiredSessions throttles repeated cleanup work", async () => {
@@ -271,6 +292,7 @@ test("getUserAccountOverview normalizes numeric summary counts", async () => {
       {
         saved_titles_count: "12",
         saved_people_count: "5",
+        watched_titles_count: "7",
         active_sessions_count: "3",
       },
     ],
@@ -284,6 +306,7 @@ test("getUserAccountOverview normalizes numeric summary counts", async () => {
   assert.deepEqual(overview, {
     savedTitlesCount: 12,
     savedPeopleCount: 5,
+    watchedTitlesCount: 7,
     activeSessionsCount: 3,
   });
 });
@@ -346,8 +369,8 @@ test("watch provider destinations open the service rather than TMDB", () => {
   assert.deepEqual(
     buildWatchProviderDestination("Stan", "Whiplash", "AU"),
     {
-      url: "https://www.stan.com.au/",
-      type: "provider-home",
+      url: "https://www.stan.com.au/search?q=Whiplash",
+      type: "provider",
     },
   );
   assert.deepEqual(
@@ -357,6 +380,21 @@ test("watch provider destinations open the service rather than TMDB", () => {
       type: "availability",
     },
   );
+});
+
+test("people search returns partial and typo-tolerant name matches", () => {
+  const index = {
+    actors: [
+      { id: 1, name: "Cate Blanchett", department: "Acting", popularity: 20 },
+      { id: 2, name: "Denzel Washington", department: "Acting", popularity: 18 },
+      { id: 3, name: "Emma Stone", department: "Acting", popularity: 16 },
+    ],
+    directors: [],
+    producers: [],
+    writers: [],
+  };
+  assert.equal(searchLocalPeopleIndex(index, "Blanch", { department: "actors" }).results[0].name, "Cate Blanchett");
+  assert.equal(searchLocalPeopleIndex(index, "Denzal", { department: "actors" }).results[0].name, "Denzel Washington");
 });
 
 test("server exposes only public assets and rejects catalog writes", async () => {

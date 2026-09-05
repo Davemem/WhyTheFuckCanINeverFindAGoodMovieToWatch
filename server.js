@@ -30,8 +30,10 @@ const {
   normalizeSavedPersonPayload,
   removeUserPerson,
   removeUserTitle,
+  removeUserWatchedTitle,
   saveUserPerson,
   saveUserTitle,
+  saveUserWatchedTitle,
 } = require("./lib/auth/saved-data-store");
 
 const PUBLIC_API_GET_PATHS = new Set([
@@ -823,6 +825,61 @@ async function handleApi(req, requestUrl, res) {
     return;
   }
 
+  if (requestUrl.pathname === "/api/me/watched") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "POST" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext || !assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    const movie = normalizeSavedMoviePayload(body.movie || body);
+    if (!movie) {
+      sendJson(res, 400, { error: "A valid movie payload is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    await saveUserWatchedTitle({ queryDb, userId: authContext.user.id, movie });
+    const savedState = await getUserSavedState({ queryDb, userId: authContext.user.id });
+    sendJson(res, 200, buildSavedStatePayload(savedState), { "Cache-Control": "no-store" });
+    return;
+  }
+
+  const watchedDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/watched\/([^/]+)$/);
+  if (watchedDeleteMatch) {
+    if (req.method !== "DELETE") {
+      sendJson(res, 405, { error: "Method not allowed" }, { Allow: "DELETE" });
+      return;
+    }
+
+    const authContext = await requireAuthenticatedUser(req, res);
+    if (!authContext || !assertTrustedWriteRequest(req, res, { authContext })) {
+      return;
+    }
+
+    const movieId = Number(decodeURIComponent(watchedDeleteMatch[1]));
+    if (!Number.isInteger(movieId) || movieId <= 0) {
+      sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
+      return;
+    }
+
+    await removeUserWatchedTitle({ queryDb, userId: authContext.user.id, movieId });
+    const savedState = await getUserSavedState({ queryDb, userId: authContext.user.id });
+    sendJson(res, 200, buildSavedStatePayload(savedState), { "Cache-Control": "no-store" });
+    return;
+  }
+
   const watchlistDeleteMatch = requestUrl.pathname.match(/^\/api\/me\/watchlist\/([^/]+)$/);
   if (watchlistDeleteMatch) {
     if (req.method !== "DELETE") {
@@ -1027,6 +1084,7 @@ async function handleApi(req, requestUrl, res) {
         queryDb,
         userId: authContext.user.id,
         watchlistMovies: body.watchlistMovies || [],
+        watchedMovies: body.watchedMovies || [],
         savedPeople: body.savedPeople || [],
       });
       logStructuredEvent("saved_import_success", {
@@ -1114,14 +1172,18 @@ async function handleApi(req, requestUrl, res) {
     const department = requestUrl.searchParams.get("department") || "actors";
     const query = requestUrl.searchParams.get("q")?.trim() || "";
     const sort = requestUrl.searchParams.get("sort") || "suggested";
+    const seed = requestUrl.searchParams.get("seed") || "daily";
     const requestedLimit = clampNumber(requestUrl.searchParams.get("limit"), 10, 1, DB_FEATURED_LIMIT);
+    const poolLimit = Math.min(DB_FEATURED_LIMIT, Math.max(requestedLimit * 4, 200));
     const directory = department === "studios"
       ? { studios: getFeaturedStudiosDirectory() }
-      : await getPeopleDirectoryFromPostgres(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT))
-        || getLocalPeopleDirectory(Math.max(requestedLimit, DB_BOOTSTRAP_LIMIT));
+      : await getPeopleDirectoryFromPostgres(Math.max(poolLimit, DB_BOOTSTRAP_LIMIT))
+        || getLocalPeopleDirectory(Math.max(poolLimit, DB_BOOTSTRAP_LIMIT));
     const source = directory ? peopleDirectorySlice(directory, department) : [];
     const filtered = filterPeopleDirectory(source, query);
-    const sorted = sortPeopleDirectory(filtered, sort);
+    const sorted = sort === "suggested"
+      ? buildSuggestedPeopleDirectory(filtered, seed)
+      : sortPeopleDirectory(filtered, sort);
     const people = sorted.slice(0, requestedLimit);
     sendJson(res, 200, {
       department,
@@ -2348,6 +2410,18 @@ function sortPeopleDirectory(people, sort) {
   return sorted;
 }
 
+function buildSuggestedPeopleDirectory(people, seed) {
+  const dailySeed = `${new Date().toISOString().slice(0, 10)}:${String(seed || "daily")}`;
+  return [...people].sort((left, right) => {
+    return seededSuggestionScore(dailySeed, left.id || left.name)
+      - seededSuggestionScore(dailySeed, right.id || right.name);
+  });
+}
+
+function seededSuggestionScore(seed, value) {
+  return crypto.createHash("sha256").update(`${seed}:${value}`).digest().readUInt32BE(0);
+}
+
 function clampNumber(value, fallback, min, max) {
   if (value === null || value === undefined || String(value).trim() === "") {
     return fallback;
@@ -2401,12 +2475,7 @@ function searchLocalPeopleIndex(index, query, options = {}) {
       ]);
 
   const ranked = dedupePeopleByName(combined
-    .filter((person) => {
-      const haystack = [person.name, person.department, ...(person.knownFor || [])]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(normalizedQuery);
-    })
+    .filter((person) => personNameMatchScore(person.name, normalizedQuery) > 0)
     .sort((left, right) => {
       return comparePeopleSearchResults(left, right, normalizedQuery);
     }));
@@ -2421,7 +2490,55 @@ function searchLocalPeopleIndex(index, query, options = {}) {
   };
 }
 
+function personNameMatchScore(name, query) {
+  const normalizedName = normalizeName(name);
+  const normalizedQuery = normalizeName(query);
+  if (!normalizedName || !normalizedQuery) {
+    return 0;
+  }
+  if (normalizedName === normalizedQuery) {
+    return 1000;
+  }
+  if (normalizedName.startsWith(normalizedQuery)) {
+    return 850;
+  }
+  if (normalizedName.split(" ").some((token) => token.startsWith(normalizedQuery))) {
+    return 720;
+  }
+  if (normalizedName.includes(normalizedQuery)) {
+    return 650;
+  }
+
+  const queryTokens = normalizedQuery.split(" ").filter(Boolean);
+  const nameTokens = normalizedName.split(" ").filter(Boolean);
+  const allTokensClose = queryTokens.every((queryToken) => nameTokens.some((nameToken) => (
+    editDistance(queryToken, nameToken) <= Math.max(1, Math.floor(queryToken.length / 4))
+  )));
+  return allTokensClose ? 500 : 0;
+}
+
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
 function comparePeopleSearchResults(left, right, normalizedQuery) {
+  const fuzzyDifference = personNameMatchScore(right.name, normalizedQuery)
+    - personNameMatchScore(left.name, normalizedQuery);
+  if (fuzzyDifference) {
+    return fuzzyDifference;
+  }
   const leftName = normalizeName(left.name);
   const rightName = normalizeName(right.name);
   const leftExact = leftName === normalizedQuery ? 1 : 0;
@@ -2635,6 +2752,9 @@ function normalizeName(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s'-]/g, " ")
     .replace(/\s+/g, " ");
 }
 
@@ -2917,32 +3037,27 @@ function buildWatchProviderDestination(providerName, title, region = "US") {
     },
     {
       matches: ["disney"],
-      url: "https://www.disneyplus.com/browse/search",
+      url: `https://www.disneyplus.com/search?q=${query}`,
     },
     {
       matches: ["stan"],
-      url: "https://www.stan.com.au/",
-      type: "provider-home",
+      url: `https://www.stan.com.au/search?q=${query}`,
     },
     {
       matches: ["foxtel"],
-      url: "https://www.foxtel.com.au/now/index.html",
-      type: "provider-home",
+      url: `https://www.foxtel.com.au/search-results.html?q=${query}`,
     },
     {
       matches: ["binge"],
-      url: "https://binge.com.au/",
-      type: "provider-home",
+      url: `https://binge.com.au/search?q=${query}`,
     },
     {
       matches: ["paramount"],
-      url: "https://www.paramountplus.com/",
-      type: "provider-home",
+      url: `https://www.paramountplus.com/search/?query=${query}`,
     },
     {
       matches: ["hbo max", "max amazon", "max apple", "max"],
-      url: "https://www.max.com/",
-      type: "provider-home",
+      url: `https://www.max.com/search?q=${query}`,
     },
     {
       matches: ["hulu"],
@@ -2950,8 +3065,7 @@ function buildWatchProviderDestination(providerName, title, region = "US") {
     },
     {
       matches: ["peacock"],
-      url: "https://www.peacocktv.com/watch/home",
-      type: "provider-home",
+      url: `https://www.peacocktv.com/watch/search?q=${query}`,
     },
     {
       matches: ["tubi"],
@@ -3929,6 +4043,8 @@ function buildSavedStatePayload(savedState) {
     watchlist: Array.isArray(savedState?.watchlist) ? savedState.watchlist : [],
     watchlistMovies: Array.isArray(savedState?.watchlistMovies) ? savedState.watchlistMovies : [],
     savedPeople: Array.isArray(savedState?.savedPeople) ? savedState.savedPeople : [],
+    watched: Array.isArray(savedState?.watched) ? savedState.watched : [],
+    watchedMovies: Array.isArray(savedState?.watchedMovies) ? savedState.watchedMovies : [],
   };
 }
 
@@ -4191,6 +4307,7 @@ module.exports = {
   normalizeMovieSearchResult,
   normalizeWatchProviderPayload,
   passesAwardFilter,
+  searchLocalPeopleIndex,
   server,
 };
 

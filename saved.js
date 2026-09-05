@@ -1,7 +1,7 @@
 const watchlistStorageKey = "wtfcineverfind-watchlist";
 const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
-const savedTitleRailCardWidth = 262;
+const savedTitleRailCardWidth = 280;
 const savedTitleRailGap = 10;
 const initialSavedPeopleRenderCount = 6;
 const savedPeopleRenderBatch = 4;
@@ -28,6 +28,8 @@ const elements = {
 const savedDataClient = window.savedDataClient || null;
 const watchlist = new Set();
 const watchlistMovies = new Map();
+const watched = new Set();
+const watchedMovies = new Map();
 const savedPeople = new Map();
 const personCatalogCache = new Map();
 const personCatalogEnrichment = new Map();
@@ -220,6 +222,7 @@ function buildMovieCard(movie, options = {}) {
     defaultMatchReason: "Saved from the catalog.",
     forceSavedButton: !options.allowToggleSave,
     isSaved: watchlist.has(movie.id),
+    isWatched: watched.has(movie.id),
   });
 }
 
@@ -259,6 +262,8 @@ function buildSavedPersonTitleCard(movie, personId) {
     extraClass: "saved-person-movie-card",
     allowToggleSave: true,
     hideMatchReason: true,
+    hideCredits: true,
+    hideSynopsisToggle: true,
     cardKey: `person:${personId}:${movie.id}`,
   });
 }
@@ -372,16 +377,20 @@ function handleSavedAction(event) {
     return;
   }
 
-  const synopsisButton = event.target.closest("[data-synopsis-toggle]");
-  if (synopsisButton) {
-    const card = synopsisButton.closest(".movie-card");
-    if (!card) {
-      return;
+  const watchedButton = event.target.closest("[data-watched-id]");
+  if (watchedButton && savedDataClient) {
+    const movieId = Number(watchedButton.dataset.watchedId);
+    let movie = watchlistMovies.get(movieId) || watchedMovies.get(movieId);
+    if (!movie) {
+      try {
+        movie = JSON.parse(watchedButton.dataset.watchedMovie || "{}");
+      } catch {
+        return;
+      }
     }
-    const isExpanded = synopsisButton.dataset.synopsisExpanded === "true";
-    card.classList.toggle("is-synopsis-expanded", !isExpanded);
-    synopsisButton.dataset.synopsisExpanded = !isExpanded ? "true" : "false";
-    synopsisButton.textContent = !isExpanded ? "Show less" : "Show more";
+    savedDataClient.toggleWatched(movie).catch((error) => {
+      elements.savedStatus.textContent = error.message;
+    });
     return;
   }
 
@@ -585,6 +594,11 @@ function syncSavedCollections(snapshot) {
       savedPeople.set(String(person.id), person);
     }
   });
+
+  watched.clear();
+  (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
+  watchedMovies.clear();
+  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(Number(movie.id), movie));
 }
 
 function emptySavedPeopleMessage() {

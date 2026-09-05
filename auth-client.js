@@ -246,26 +246,17 @@
     const config = state.config || {};
     const signInEnabled = Boolean(config.signInEnabled && config.googleClientId);
     const canRenderGoogleButton = signInEnabled && state.googleReady && !state.error;
-    const secondary = state.isLoading
-      ? "Checking session..."
-      : signInEnabled
-        ? "Anonymous browsing stays enabled. Sign in with Google when you want an account session."
-        : "Anonymous browsing is fully enabled.";
-    const statusLabel = state.isSigningIn
-      ? "Finishing Google sign-in..."
-      : state.isLoading
-        ? "Checking session..."
-        : signInEnabled
-          ? "Sign in with Google"
-          : "Sign in unavailable";
+    const secondary = state.isLoading ? "Checking session…" : "Saves stay on this browser";
 
     return `
-      <div class="account-copy">
-        <strong class="account-label">Account</strong>
+      <div class="account-identity">
+        <span class="account-avatar"><span class="account-avatar-fallback">G</span></span>
+        <div class="account-copy">
+        <strong class="account-label">Guest profile</strong>
         <span class="account-subtext">${escapeHtml(secondary)}</span>
+        </div>
       </div>
       <div class="account-actions">
-        <span class="account-status-pill">${escapeHtml(statusLabel)}</span>
         ${
           canRenderGoogleButton
             ? `
@@ -319,7 +310,6 @@
         >
           Manage
         </a>
-        <span class="account-status-pill is-success">Signed in</span>
         <button
           type="button"
           class="ghost-button account-action"

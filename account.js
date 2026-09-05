@@ -5,6 +5,7 @@
     status: document.querySelector("#account-status"),
     savedTitlesCount: document.querySelector("#account-saved-titles-count"),
     savedPeopleCount: document.querySelector("#account-saved-people-count"),
+    watchedTitlesCount: document.querySelector("#account-watched-titles-count"),
     activeSessionsCount: document.querySelector("#account-active-sessions-count"),
     summaryCard: document.querySelector("#account-summary-card"),
     sessionsSummary: document.querySelector("#account-sessions-summary"),
@@ -152,6 +153,7 @@
 
     elements.savedTitlesCount.textContent = isAuthenticated ? String(overview.savedTitlesCount || 0) : "0";
     elements.savedPeopleCount.textContent = isAuthenticated ? String(overview.savedPeopleCount || 0) : "0";
+    elements.watchedTitlesCount.textContent = isAuthenticated ? String(overview.watchedTitlesCount || 0) : "0";
     elements.activeSessionsCount.textContent = isAuthenticated ? String(overview.activeSessionsCount || 0) : "0";
 
     if (!isAuthenticated) {
@@ -231,7 +233,7 @@
           </div>
           <div>
             <dt>Synced library</dt>
-            <dd>${Number(overview.savedTitlesCount || 0)} titles and ${Number(overview.savedPeopleCount || 0)} people</dd>
+            <dd>${Number(overview.savedTitlesCount || 0)} saved, ${Number(overview.watchedTitlesCount || 0)} watched, and ${Number(overview.savedPeopleCount || 0)} people</dd>
           </div>
         </dl>
       </article>

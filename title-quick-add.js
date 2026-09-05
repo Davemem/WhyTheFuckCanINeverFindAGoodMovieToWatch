@@ -15,6 +15,7 @@
 
   const savedDataClient = window.savedDataClient || null;
   const watchlist = new Set();
+  const watched = new Set();
   const state = {
     query: "",
     results: [],
@@ -43,6 +44,8 @@
           watchlist.add(Number(movieId));
         }
       });
+      watched.clear();
+      (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
       renderResults();
     });
   } else {
@@ -134,6 +137,8 @@
     const year = document.createElement("span");
     const overview = document.createElement("p");
     const saveButton = document.createElement("button");
+    const watchedButton = document.createElement("button");
+    const actions = document.createElement("div");
     const movieId = Number(movie.id);
     const isSaved = watchlist.has(movieId);
     const isSaving = state.savingId === movieId;
@@ -145,6 +150,8 @@
     year.className = "title-search-result-year";
     overview.className = "title-search-result-overview";
     saveButton.className = "title-search-result-save";
+    watchedButton.className = "title-search-result-watched";
+    actions.className = "title-search-result-actions";
 
     if (movie.posterUrl) {
       const poster = document.createElement("img");
@@ -171,14 +178,31 @@
       "aria-label",
       isSaved ? `${movie.title} is already saved` : `Save ${movie.title} to your watchlist`,
     );
+    watchedButton.type = "button";
+    watchedButton.dataset.markWatchedId = String(movieId);
+    watchedButton.textContent = watched.has(movieId) ? "Watched ✓" : "Mark watched";
+    watchedButton.classList.toggle("is-watched", watched.has(movieId));
+    watchedButton.setAttribute("aria-pressed", watched.has(movieId) ? "true" : "false");
 
     headingRow.append(heading, year);
-    body.append(headingRow, overview, saveButton);
+    actions.append(saveButton, watchedButton);
+    body.append(headingRow, overview, actions);
     article.append(posterFrame, body);
     return article;
   }
 
   async function handleResultClick(event) {
+    const watchedButton = event.target.closest("[data-mark-watched-id]");
+    if (watchedButton && savedDataClient) {
+      const movieId = Number(watchedButton.dataset.markWatchedId);
+      const movie = state.results.find((entry) => Number(entry.id) === movieId);
+      if (movie) {
+        await savedDataClient.toggleWatched(movie).catch((error) => {
+          setStatus(error instanceof Error ? error.message : "Unable to update watched status.", true);
+        });
+      }
+      return;
+    }
     const button = event.target.closest("[data-add-movie-id]");
     if (!button || button.disabled || !savedDataClient) {
       return;

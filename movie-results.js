@@ -19,8 +19,10 @@
     trigger: null,
   };
   let watchProviderDialog = null;
+  let personPreviewDialog = null;
 
   document.addEventListener("click", handleWatchProviderClick);
+  document.addEventListener("click", handlePersonCreditClick);
 
   function formatRating(value, decimals) {
     return value === null || value === undefined ? "N/A" : Number(value).toFixed(decimals);
@@ -50,6 +52,36 @@
     }
     element.textContent = value;
     element.classList.toggle("is-pending", Boolean(pending));
+  }
+
+  function setCreditLinks(element, names, category, pending) {
+    if (!element) {
+      return;
+    }
+    if (pending) {
+      setCardField(element, `Loading ${category === "actors" ? "cast" : "credits"}`, true);
+      return;
+    }
+    const values = (Array.isArray(names) ? names : [names]).map(String).map((name) => name.trim()).filter(Boolean);
+    if (!values.length || values.every((name) => name === "Unknown")) {
+      setCardField(element, "Unknown", false);
+      return;
+    }
+    element.classList.remove("is-pending");
+    element.replaceChildren();
+    values.forEach((name, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "person-credit-link";
+      button.dataset.personCredit = name;
+      button.dataset.personCategory = category;
+      button.textContent = name;
+      button.setAttribute("aria-label", `Open ${name}'s profile and movies`);
+      element.append(button);
+      if (index < values.length - 1) {
+        element.append(document.createTextNode(", "));
+      }
+    });
   }
 
   function buildMovieCard(template, movie, options = {}) {
@@ -98,21 +130,9 @@
       formatRating(movie.tmdb, 1),
       !movie.tmdb,
     );
-    setCardField(
-      fragment.querySelector(".cast"),
-      isPending ? "Loading cast" : (movie.cast?.length ? movie.cast.join(", ") : "Unknown"),
-      isPending,
-    );
-    setCardField(
-      fragment.querySelector(".director"),
-      isPending ? "Loading director" : (movie.director || "Unknown"),
-      isPending,
-    );
-    setCardField(
-      fragment.querySelector(".producer"),
-      isPending ? "Loading producers" : (movie.producers?.length ? movie.producers.join(", ") : "Unknown"),
-      isPending,
-    );
+    setCreditLinks(fragment.querySelector(".cast"), movie.cast || [], "actors", isPending);
+    setCreditLinks(fragment.querySelector(".director"), movie.director || "", "directors", isPending);
+    setCreditLinks(fragment.querySelector(".producer"), movie.producers || [], "producers", isPending);
     setCardField(
       fragment.querySelector(".match-reason"),
       movie.matchReason || options.defaultMatchReason || "Saved from the catalog.",
@@ -126,6 +146,12 @@
 
     if (options.hideMatchReason) {
       fragment.querySelector(".match-reason")?.closest("div")?.remove();
+    }
+    if (options.hideCredits) {
+      fragment.querySelector(".credit-list")?.remove();
+    }
+    if (options.hideSynopsisToggle) {
+      fragment.querySelector(".synopsis-toggle")?.remove();
     }
 
     if (movie.posterUrl) {
@@ -167,6 +193,18 @@
       } else {
         watchProvidersButton.disabled = true;
         watchProvidersButton.title = "Viewing availability is unavailable for this title.";
+      }
+    }
+
+    const watchedButton = fragment.querySelector(".watched-button");
+    if (watchedButton) {
+      const isWatched = Boolean(options.isWatched);
+      watchedButton.textContent = isWatched ? "Watched ✓" : "Mark watched";
+      watchedButton.classList.toggle("is-watched", isWatched);
+      watchedButton.setAttribute("aria-pressed", isWatched ? "true" : "false");
+      if (Number.isFinite(Number(movie.id))) {
+        watchedButton.dataset.watchedId = String(movie.id);
+        watchedButton.dataset.watchedMovie = JSON.stringify(movie);
       }
     }
 
@@ -476,6 +514,114 @@
     watchProviderState.movieTitle = button.dataset.watchProviderMovieTitle || "This title";
     watchProviderState.trigger = button;
     openWatchProviderDialog();
+  }
+
+  function handlePersonCreditClick(event) {
+    const button = event.target.closest("[data-person-credit]");
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    openPersonPreview(button.dataset.personCredit, button.dataset.personCategory || "actors", button);
+  }
+
+  async function openPersonPreview(name, category, trigger) {
+    const dialog = ensurePersonPreviewDialog();
+    dialog.dataset.triggerId = trigger?.id || "";
+    renderPersonPreviewState(dialog, "Finding person…", `Looking up ${name} and their movies.`);
+    if (!dialog.open) {
+      dialog.showModal?.();
+    }
+    try {
+      const response = await global.fetch(`/api/people?query=${encodeURIComponent(name)}&limit=8`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "That person could not be loaded.");
+      }
+      const people = Array.isArray(payload.results) ? payload.results : [];
+      const exactName = String(name || "").trim().toLowerCase();
+      const person = people.find((entry) => String(entry.name || "").trim().toLowerCase() === exactName) || people[0];
+      if (!person) {
+        renderPersonPreviewState(dialog, "No matching person found", "Try searching their name from Home.");
+        return;
+      }
+      renderPersonPreview(dialog, person, categoryFromDepartment(person.department, category));
+    } catch (error) {
+      renderPersonPreviewState(dialog, "Profile unavailable", error instanceof Error ? error.message : "Try again from Home.");
+    }
+  }
+
+  function ensurePersonPreviewDialog() {
+    if (personPreviewDialog) {
+      return personPreviewDialog;
+    }
+    const dialog = document.createElement("dialog");
+    dialog.className = "person-preview-dialog";
+    dialog.innerHTML = `<div class="person-preview-shell" data-person-preview-content></div>`;
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog || event.target.closest("[data-close-person-preview]")) {
+        dialog.close?.();
+        return;
+      }
+      const saveButton = event.target.closest("[data-preview-save-person]");
+      if (saveButton && global.savedDataClient) {
+        const person = JSON.parse(saveButton.dataset.previewSavePerson || "{}");
+        global.savedDataClient.togglePerson(person).then(() => {
+          const saved = global.savedDataClient.getSnapshot().savedPeople.some((entry) => String(entry.id) === String(person.id));
+          saveButton.textContent = saved ? "Saved person ✓" : "Save person";
+          saveButton.classList.toggle("is-saved", saved);
+        });
+      }
+    });
+    document.body.append(dialog);
+    personPreviewDialog = dialog;
+    return dialog;
+  }
+
+  function renderPersonPreview(dialog, person, category) {
+    const content = dialog.querySelector("[data-person-preview-content]");
+    const department = person.department || category;
+    const saved = global.savedDataClient?.getSnapshot().savedPeople.some((entry) => String(entry.id) === String(person.id));
+    const personPayload = JSON.stringify({ ...person, department }).replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+    const params = new URLSearchParams({ category, query: person.name, exactMatch: "1" });
+    content.innerHTML = `
+      <button type="button" class="person-preview-close" data-close-person-preview aria-label="Close person profile">×</button>
+      <div class="person-preview-portrait">${person.profileUrl ? `<img src="${escapeAttribute(person.profileUrl)}" alt="${escapeAttribute(person.name)}" />` : `<span>${escapeHtml(person.name).slice(0, 2)}</span>`}</div>
+      <div class="person-preview-copy">
+        <p class="section-label">${escapeHtml(department)}</p>
+        <h2>${escapeHtml(person.name)}</h2>
+        <p>${person.knownFor?.length ? `Known for ${escapeHtml(person.knownFor.join(", "))}` : "Filmography available from Home."}</p>
+        <div class="person-preview-actions">
+          <button type="button" class="ghost-button ${saved ? "is-saved" : ""}" data-preview-save-person="${personPayload}">${saved ? "Saved person ✓" : "Save person"}</button>
+          <a class="watchlist-button" href="/?${params.toString()}">View movies</a>
+        </div>
+      </div>`;
+  }
+
+  function categoryFromDepartment(department, fallback) {
+    const label = String(department || "").toLowerCase();
+    if (label.includes("direct")) return "directors";
+    if (label.includes("produc")) return "producers";
+    if (label.includes("writ") || label.includes("story") || label.includes("screenplay")) return "writers";
+    if (label.includes("act")) return "actors";
+    return fallback || "actors";
+  }
+
+  function renderPersonPreviewState(dialog, title, message) {
+    dialog.querySelector("[data-person-preview-content]").innerHTML = `
+      <button type="button" class="person-preview-close" data-close-person-preview aria-label="Close person profile">×</button>
+      <div class="person-preview-copy"><p class="section-label">Person profile</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p></div>`;
+  }
+
+  function escapeHtml(value) {
+    return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value);
   }
 
   function openWatchProviderDialog() {

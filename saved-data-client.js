@@ -4,6 +4,8 @@
   const watchlistStorageKey = "wtfcineverfind-watchlist";
   const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
   const savedPeopleStorageKey = "wtfcineverfind-saved-people";
+  const watchedStorageKey = "wtfcineverfind-watched";
+  const watchedMoviesStorageKey = "wtfcineverfind-watched-movies";
   const importDecisionStorageKey = "wtfcineverfind-saved-import";
   const bannerRoots = [...document.querySelectorAll("[data-saved-sync-banner]")];
   const listeners = new Set();
@@ -20,14 +22,19 @@
     watchlist: new Set(),
     watchlistMovies: new Map(),
     savedPeople: new Map(),
+    watched: new Set(),
+    watchedMovies: new Map(),
     localWatchlist: new Set(),
     localWatchlistMovies: new Map(),
     localSavedPeople: new Map(),
+    localWatched: new Set(),
+    localWatchedMovies: new Map(),
     autoImportInFlight: false,
     importPrompt: {
       visible: false,
       titleCount: 0,
       personCount: 0,
+      watchedCount: 0,
     },
   };
 
@@ -105,6 +112,29 @@
 
       ensureRemoteWritable();
       return removeRemoteTitle(normalizedMovieId);
+    },
+    async toggleWatched(movie) {
+      const normalizedMovie = normalizeMovie(movie);
+      if (!normalizedMovie) {
+        throw new Error("A valid movie payload is required.");
+      }
+      if (!state.authenticated) {
+        if (state.watched.has(normalizedMovie.id)) {
+          state.watched.delete(normalizedMovie.id);
+          state.watchedMovies.delete(normalizedMovie.id);
+        } else {
+          state.watched.add(normalizedMovie.id);
+          state.watchedMovies.set(normalizedMovie.id, normalizedMovie);
+        }
+        syncActiveStateToLocalSnapshot();
+        persistLocalSnapshot();
+        emitChange();
+        return getSnapshot();
+      }
+      ensureRemoteWritable();
+      return state.watched.has(normalizedMovie.id)
+        ? removeRemoteWatched(normalizedMovie.id)
+        : saveRemoteWatched(normalizedMovie);
     },
     async togglePerson(person) {
       const normalizedPerson = normalizePerson(person);
@@ -213,6 +243,8 @@
       state.watchlist = new Set();
       state.watchlistMovies = new Map();
       state.savedPeople = new Map();
+      state.watched = new Set();
+      state.watchedMovies = new Map();
       updateImportPrompt();
     } finally {
       state.loading = false;
@@ -244,6 +276,26 @@
     state.error = "";
     state.info = "";
     updateImportPrompt();
+    emitChange();
+    return getSnapshot();
+  }
+
+  async function saveRemoteWatched(movie) {
+    const payload = await fetchJson("/api/me/watched", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ movie }),
+    });
+    applyRemotePayload(payload);
+    emitChange();
+    return getSnapshot();
+  }
+
+  async function removeRemoteWatched(movieId) {
+    const payload = await fetchJson(`/api/me/watched/${encodeURIComponent(String(movieId))}`, {
+      method: "DELETE",
+    });
+    applyRemotePayload(payload);
     emitChange();
     return getSnapshot();
   }
@@ -282,7 +334,7 @@
     ensureRemoteWritable();
 
     const payload = buildPendingImportPayload();
-    if (!payload.watchlistMovies.length && !payload.savedPeople.length) {
+    if (!payload.watchlistMovies.length && !payload.watchedMovies.length && !payload.savedPeople.length) {
       markImportDecision("imported");
       updateImportPrompt();
       if (!options.silentIfEmpty) {
@@ -332,6 +384,7 @@
     return {
       watchlist: pendingMovies.map((movie) => movie.id),
       watchlistMovies: pendingMovies,
+      watchedMovies: [...state.localWatchedMovies.values()].filter((movie) => !state.watched.has(movie.id)),
       savedPeople: pendingPeople,
     };
   }
@@ -340,18 +393,24 @@
     state.localWatchlist = loadLocalWatchlist();
     state.localWatchlistMovies = loadLocalWatchlistMovies();
     state.localSavedPeople = loadLocalSavedPeople();
+    state.localWatched = loadLocalWatched();
+    state.localWatchedMovies = loadLocalWatchedMovies();
   }
 
   function applyLocalSnapshotToActiveState() {
     state.watchlist = new Set(state.localWatchlist);
     state.watchlistMovies = new Map(state.localWatchlistMovies);
     state.savedPeople = new Map(state.localSavedPeople);
+    state.watched = new Set(state.localWatched);
+    state.watchedMovies = new Map(state.localWatchedMovies);
   }
 
   function syncActiveStateToLocalSnapshot() {
     state.localWatchlist = new Set(state.watchlist);
     state.localWatchlistMovies = new Map(state.watchlistMovies);
     state.localSavedPeople = new Map(state.savedPeople);
+    state.localWatched = new Set(state.watched);
+    state.localWatchedMovies = new Map(state.watchedMovies);
   }
 
   function persistLocalSnapshot() {
@@ -364,6 +423,8 @@
       savedPeopleStorageKey,
       JSON.stringify([...state.localSavedPeople.values()]),
     );
+    window.localStorage.setItem(watchedStorageKey, JSON.stringify([...state.localWatched]));
+    window.localStorage.setItem(watchedMoviesStorageKey, JSON.stringify([...state.localWatchedMovies.values()]));
   }
 
   function applyRemotePayload(payload) {
@@ -384,6 +445,17 @@
         .filter(Boolean)
         .map((person) => [person.id, person]),
     );
+    state.watched = new Set(
+      (Array.isArray(payload.watched) ? payload.watched : [])
+        .map(Number)
+        .filter(Number.isFinite),
+    );
+    state.watchedMovies = new Map(
+      (Array.isArray(payload.watchedMovies) ? payload.watchedMovies : [])
+        .map(normalizeMovie)
+        .filter(Boolean)
+        .map((movie) => [movie.id, movie]),
+    );
 
     for (const movieId of state.watchlist) {
       if (!state.watchlistMovies.has(movieId)) {
@@ -395,16 +467,18 @@
   function updateImportPrompt() {
     const pendingTitleCount = countMissingLocalTitles();
     const pendingPersonCount = countMissingLocalPeople();
+    const pendingWatchedCount = countMissingLocalWatched();
     const decision = readImportDecision();
     state.importPrompt = {
       visible:
         Boolean(state.authenticated && state.source === "remote")
         && !state.autoImportInFlight
-        && (pendingTitleCount > 0 || pendingPersonCount > 0)
+        && (pendingTitleCount > 0 || pendingPersonCount > 0 || pendingWatchedCount > 0)
         && decision !== "imported"
         && decision !== "dismissed",
       titleCount: pendingTitleCount,
       personCount: pendingPersonCount,
+      watchedCount: pendingWatchedCount,
     };
   }
 
@@ -422,6 +496,16 @@
     let count = 0;
     state.localSavedPeople.forEach((person, personId) => {
       if (!state.savedPeople.has(personId) && person?.name) {
+        count += 1;
+      }
+    });
+    return count;
+  }
+
+  function countMissingLocalWatched() {
+    let count = 0;
+    state.localWatched.forEach((movieId) => {
+      if (!state.watched.has(movieId)) {
         count += 1;
       }
     });
@@ -465,6 +549,7 @@
     return JSON.stringify({
       watchlist: [...state.localWatchlist].sort((left, right) => left - right),
       savedPeople: [...state.localSavedPeople.keys()].sort(),
+      watched: [...state.localWatched].sort((left, right) => left - right),
     });
   }
 
@@ -522,7 +607,7 @@
             <p>This brings your existing local saves into your account so they follow you across devices.</p>
           </div>
           <div class="saved-sync-banner-meta">
-            <span>${state.importPrompt.titleCount} title${state.importPrompt.titleCount === 1 ? "" : "s"} and ${state.importPrompt.personCount} people waiting</span>
+            <span>${state.importPrompt.titleCount} saved title${state.importPrompt.titleCount === 1 ? "" : "s"}, ${state.importPrompt.watchedCount} watched, and ${state.importPrompt.personCount} people waiting</span>
           </div>
           <div class="saved-sync-banner-actions">
             <button type="button" class="ghost-button" data-saved-sync-action="import">Import now</button>
@@ -577,11 +662,15 @@
       watchlistIds: [...state.watchlist],
       watchlistMovies: [...state.watchlistMovies.values()],
       savedPeople: [...state.savedPeople.values()],
+      watchedIds: [...state.watched],
+      watchedMovies: [...state.watchedMovies.values()],
       importPrompt: { ...state.importPrompt },
       localState: {
         watchlistIds: [...state.localWatchlist],
         watchlistMovies: [...state.localWatchlistMovies.values()],
         savedPeople: [...state.localSavedPeople.values()],
+        watchedIds: [...state.localWatched],
+        watchedMovies: [...state.localWatchedMovies.values()],
       },
     };
   }
@@ -654,6 +743,24 @@
           .filter(Boolean)
           .map((person) => [person.id, person]),
       );
+    } catch {
+      return new Map();
+    }
+  }
+
+  function loadLocalWatched() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(watchedStorageKey) || "[]");
+      return new Set(parsed.map(Number).filter(Number.isFinite));
+    } catch {
+      return new Set();
+    }
+  }
+
+  function loadLocalWatchedMovies() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(watchedMoviesStorageKey) || "[]");
+      return new Map(parsed.map(normalizeMovie).filter(Boolean).map((movie) => [movie.id, movie]));
     } catch {
       return new Map();
     }

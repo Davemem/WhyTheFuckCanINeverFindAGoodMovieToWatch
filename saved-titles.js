@@ -6,9 +6,11 @@ const elements = {
   count: document.querySelector("#saved-titles-count"),
   genres: document.querySelector("#saved-titles-genres"),
   rating: document.querySelector("#saved-titles-rating"),
+  watchedCount: document.querySelector("#saved-titles-watched"),
   viewStatus: document.querySelector("#saved-titles-view-status"),
   search: document.querySelector("#saved-titles-search"),
   sort: document.querySelector("#saved-titles-sort"),
+  watchedFilter: document.querySelector("#saved-titles-watched-filter"),
   grid: document.querySelector("#saved-titles-grid"),
   template: document.querySelector("#movie-card-template"),
   notice: document.querySelector("[data-saved-title-notice]"),
@@ -19,9 +21,12 @@ const elements = {
 const savedDataClient = window.savedDataClient || null;
 const watchlist = new Set();
 const watchlistMovies = new Map();
+const watched = new Set();
+const watchedMovies = new Map();
 const viewState = {
   query: "",
   sort: "recent",
+  watchedFilter: "all",
 };
 let savedStateSource = "local";
 let savedStateError = "";
@@ -35,6 +40,10 @@ elements.search?.addEventListener("input", () => {
 });
 elements.sort?.addEventListener("change", () => {
   viewState.sort = elements.sort.value;
+  renderSavedTitlesPage();
+});
+elements.watchedFilter?.addEventListener("change", () => {
+  viewState.watchedFilter = elements.watchedFilter.value;
   renderSavedTitlesPage();
 });
 elements.undoButton?.addEventListener("click", handleUndoRemoval);
@@ -55,7 +64,7 @@ if (savedDataClient) {
 function renderSavedTitlesPage() {
   const allMovies = getSavedMovies();
   const visibleMovies = sortMovies(
-    allMovies.filter((movie) => movieMatchesQuery(movie, viewState.query)),
+    allMovies.filter((movie) => movieMatchesQuery(movie, viewState.query) && movieMatchesWatchedFilter(movie)),
     viewState.sort,
   );
 
@@ -95,9 +104,10 @@ function renderSavedTitlesPage() {
 }
 
 function getSavedMovies() {
-  return [...watchlist]
+  const libraryIds = [...new Set([...watchlist, ...watched])];
+  return libraryIds
     .map((movieId, index) => {
-      const movie = watchlistMovies.get(movieId);
+      const movie = watchlistMovies.get(movieId) || watchedMovies.get(movieId);
       return movie ? { ...movie, __savedOrder: index } : null;
     })
     .filter(Boolean);
@@ -105,7 +115,7 @@ function getSavedMovies() {
 
 function renderSummary(movies) {
   if (elements.count) {
-    elements.count.textContent = String(movies.length);
+    elements.count.textContent = String(watchlist.size);
   }
 
   const uniqueGenres = new Set();
@@ -131,6 +141,9 @@ function renderSummary(movies) {
       : null;
     elements.rating.textContent = average === null ? "—" : average.toFixed(1);
   }
+  if (elements.watchedCount) {
+    elements.watchedCount.textContent = String(watched.size);
+  }
 }
 
 function renderStatus(total, visible) {
@@ -139,8 +152,8 @@ function renderStatus(total, visible) {
       elements.status.textContent = emptySavedTitlesMessage();
     } else {
       elements.status.textContent = savedStateSource === "remote"
-        ? "Your watchlist is synced to your account."
-        : "Your watchlist is saved in this browser.";
+        ? "Your watchlist and watched history are synced to your account."
+        : "Your watchlist and watched history are saved in this browser.";
     }
   }
 
@@ -154,18 +167,20 @@ function renderStatus(total, visible) {
   }
 
   const noun = total === 1 ? "title" : "titles";
-  elements.viewStatus.textContent = viewState.query
-    ? `Showing ${visible} of ${total} saved ${noun}.`
-    : `${total} saved ${noun}.`;
+  elements.viewStatus.textContent = viewState.query || viewState.watchedFilter !== "all"
+    ? `Showing ${visible} of ${total} ${noun} in your library.`
+    : `${total} ${noun} in your library.`;
 }
 
 function buildMovieCard(movie) {
   const fragment = window.MovieResults.buildMovieCard(elements.template, movie, {
     extraClass: "saved-title-card",
     hideMatchReason: true,
-    forceSavedButton: true,
-    isSaved: true,
-    savedButtonLabel: "Remove",
+    allowToggleSave: true,
+    forceSavedButton: watchlist.has(Number(movie.id)),
+    isSaved: watchlist.has(Number(movie.id)),
+    savedButtonLabel: watchlist.has(Number(movie.id)) ? "Remove title" : "Save title",
+    isWatched: watched.has(Number(movie.id)),
   });
 
   const article = fragment.querySelector(".movie-card");
@@ -185,8 +200,9 @@ function buildMovieCard(movie) {
     synopsisButton.setAttribute("aria-expanded", "false");
   }
   if (removeButton) {
-    removeButton.textContent = "Remove";
-    removeButton.setAttribute("aria-label", `Remove ${movie.title || "this title"} from your watchlist`);
+    const isSaved = watchlist.has(Number(movie.id));
+    removeButton.textContent = isSaved ? "Remove" : "Save title";
+    removeButton.setAttribute("aria-label", `${isSaved ? "Remove" : "Save"} ${movie.title || "this title"} ${isSaved ? "from" : "to"} your watchlist`);
   }
 
   return fragment;
@@ -213,12 +229,48 @@ function handleGridClick(event) {
     return;
   }
 
+  const watchedButton = event.target.closest("[data-watched-id]");
+  if (watchedButton && savedDataClient) {
+    const movieId = Number(watchedButton.dataset.watchedId);
+    const movie = watchlistMovies.get(movieId) || watchedMovies.get(movieId);
+    if (movie) {
+      savedDataClient.toggleWatched(movie).catch((error) => {
+        elements.status.textContent = error.message;
+      });
+    }
+    return;
+  }
+
   const movieButton = event.target.closest("[data-watchlist-id]");
   if (!movieButton || movieButton.disabled) {
     return;
   }
 
-  removeSavedTitle(Number(movieButton.dataset.watchlistId), movieButton);
+  const movieId = Number(movieButton.dataset.watchlistId);
+  if (watchlist.has(movieId)) {
+    removeSavedTitle(movieId, movieButton);
+  } else {
+    saveTitleFromHistory(movieId, movieButton);
+  }
+}
+
+async function saveTitleFromHistory(movieId, button) {
+  const movie = watchedMovies.get(movieId);
+  if (!movie || !savedDataClient) {
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Saving…";
+  try {
+    await savedDataClient.toggleTitle(movie);
+    if (elements.status) {
+      elements.status.textContent = `${movie.title || "Title"} saved to your watchlist.`;
+    }
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Save title";
+    elements.status.textContent = error instanceof Error ? error.message : "Unable to save that title.";
+  }
 }
 
 async function removeSavedTitle(movieId, button) {
@@ -306,9 +358,13 @@ function hideUndoNotice() {
 
 function clearFilters() {
   viewState.query = "";
+  viewState.watchedFilter = "all";
   if (elements.search) {
     elements.search.value = "";
     elements.search.focus();
+  }
+  if (elements.watchedFilter) {
+    elements.watchedFilter.value = "all";
   }
   renderSavedTitlesPage();
 }
@@ -463,6 +519,20 @@ function syncSavedCollections(snapshot) {
       watchlistMovies.set(Number(movie.id), movie);
     }
   });
+  watched.clear();
+  (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
+  watchedMovies.clear();
+  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(Number(movie.id), movie));
+}
+
+function movieMatchesWatchedFilter(movie) {
+  if (viewState.watchedFilter === "watched") {
+    return watched.has(Number(movie.id));
+  }
+  if (viewState.watchedFilter === "unwatched") {
+    return !watched.has(Number(movie.id));
+  }
+  return true;
 }
 
 function emptySavedTitlesMessage() {
