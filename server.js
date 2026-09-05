@@ -1231,6 +1231,12 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
+    const fuzzyTmdbResults = await searchPeopleFuzzyFromTmdb(query, { page, limit, department });
+    if (fuzzyTmdbResults.results.length) {
+      sendJson(res, 200, fuzzyTmdbResults);
+      return;
+    }
+
     const fuzzyDbResults = await searchPeopleFuzzyFromPostgres(query, { page, limit, department });
     if (fuzzyDbResults.results.length || !tmdbApiKey && !tmdbToken) {
       sendJson(res, 200, fuzzyDbResults);
@@ -2663,6 +2669,48 @@ async function searchPeopleFromTmdb(query, options = {}) {
     limit,
     hasMore: page * limit < total,
   };
+}
+
+async function searchPeopleFuzzyFromTmdb(query, options = {}) {
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  const searchQueries = buildFuzzyPeopleSearchQueries(query);
+  if (!searchQueries.length || (!tmdbApiKey && !tmdbToken)) {
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+
+  try {
+    const candidateSearches = await Promise.all(searchQueries.map((candidateQuery) => (
+      searchPeopleFromTmdb(candidateQuery, {
+        page: 1,
+        limit: PEOPLE_SEARCH_MAX_LIMIT,
+        department: options.department,
+      })
+    )));
+    const candidates = dedupePeople(candidateSearches.flatMap((result) => result.results || []));
+    const directory = {
+      actors: candidates,
+      directors: candidates,
+      producers: candidates,
+      writers: candidates,
+    };
+    return searchLocalPeopleIndex(directory, query, {
+      page,
+      limit,
+      department: options.department,
+    });
+  } catch (error) {
+    logServerError("searchPeopleFuzzyFromTmdb", error);
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+}
+
+function buildFuzzyPeopleSearchQueries(query) {
+  return [...new Set(normalizeName(query)
+    .split(" ")
+    .filter((token) => token.length >= 3)
+    .map((token) => token.slice(0, token.length >= 5 ? 4 : 3)))]
+    .slice(0, 2);
 }
 
 function mergePeopleSearchResults(primary, secondary, options = {}) {
@@ -4385,6 +4433,7 @@ module.exports = {
   PUBLIC_API_GET_PATHS,
   PUBLIC_STATIC_FILES,
   buildWatchProviderDestination,
+  buildFuzzyPeopleSearchQueries,
   buildLegacyDirectoryRedirect,
   clampNumber,
   mapCandidateSort,

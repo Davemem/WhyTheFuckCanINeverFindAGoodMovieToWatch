@@ -19,6 +19,7 @@ const {
 } = require("../lib/auth/session");
 const { getUserAccountOverview } = require("../lib/auth/account-store");
 const {
+  buildFuzzyPeopleSearchQueries,
   buildLegacyDirectoryRedirect,
   buildWatchProviderDestination,
   clampNumber,
@@ -44,6 +45,11 @@ test("clampNumber uses its fallback when a query parameter is absent", () => {
   assert.equal(clampNumber(null, 25, 1, 50), 25);
   assert.equal(clampNumber("", 10, 1, 50), 10);
   assert.equal(clampNumber("100", 10, 1, 50), 50);
+});
+
+test("fuzzy people searches use short name stems without repeating them", () => {
+  assert.deepEqual(buildFuzzyPeopleSearchQueries("Denzal Washington"), ["denz", "wash"]);
+  assert.deepEqual(buildFuzzyPeopleSearchQueries("Tom Tom"), ["tom"]);
 });
 
 test("movie title search results are normalized into saveable watchlist records", () => {
