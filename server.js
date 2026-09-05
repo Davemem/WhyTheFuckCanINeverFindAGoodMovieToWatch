@@ -1226,8 +1226,14 @@ async function handleApi(req, requestUrl, res) {
     }
 
     const dbResults = await searchPeopleFromPostgres(query, { page, limit, department });
-    if (dbResults.results.length || !tmdbApiKey && !tmdbToken) {
+    if (dbResults.results.length) {
       sendJson(res, 200, dbResults);
+      return;
+    }
+
+    const fuzzyDbResults = await searchPeopleFuzzyFromPostgres(query, { page, limit, department });
+    if (fuzzyDbResults.results.length || !tmdbApiKey && !tmdbToken) {
+      sendJson(res, 200, fuzzyDbResults);
       return;
     }
 
@@ -3831,6 +3837,67 @@ async function searchPeopleFromPostgres(query, options = {}) {
     return value;
   } catch (error) {
     logServerError("searchPeopleFromPostgres", error);
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+}
+
+async function searchPeopleFuzzyFromPostgres(query, options = {}) {
+  const normalizedQuery = normalizeName(query);
+  const page = clampNumber(options.page, 1, 1, 200);
+  const limit = clampNumber(options.limit, PEOPLE_SEARCH_DEFAULT_LIMIT, 1, PEOPLE_SEARCH_MAX_LIMIT);
+  const department = options.department ? normalizePeopleDepartment(options.department) : null;
+  if (!dbPools || normalizedQuery.length < 3) {
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+
+  const patterns = [...new Set(normalizedQuery.split(" ").filter(Boolean).flatMap((token) => {
+    if (token.length < 3) {
+      return [`%${token}%`];
+    }
+    return [`%${token.slice(0, 3)}%`, `%${token.slice(-3)}%`];
+  }))];
+  if (!patterns.length) {
+    return { results: [], total: 0, page, limit, hasMore: false };
+  }
+
+  try {
+    const result = await withTimeout(queryDb(
+      `
+        SELECT
+          p.person_id AS id,
+          p.name,
+          COALESCE(p.known_for_department, 'Person') AS department,
+          p.profile_path,
+          COALESCE(p.popularity, 0) AS popularity,
+          COALESCE(pr.recognition_score, 0) AS recognition_score,
+          0::int AS credit_count,
+          0::bigint AS total_votes,
+          NULL::numeric AS score,
+          ARRAY[]::text[] AS known_for
+        FROM people p
+        LEFT JOIN person_recognition pr ON pr.person_id = p.person_id
+        WHERE p.name ILIKE ANY($1::text[])
+        ${department ? `AND EXISTS (
+          SELECT 1
+          FROM person_movie_credits pmc_search
+          WHERE pmc_search.person_id = p.person_id
+            AND ${roleToSqlFilter(department, "pmc_search")}
+        )` : ""}
+        ORDER BY pr.recognition_score DESC NULLS LAST, p.popularity DESC NULLS LAST, p.name ASC
+        LIMIT $2
+      `,
+      [patterns, 800],
+    ), 2500);
+    const candidates = result.rows.map(normalizeDbPersonRow);
+    const directory = {
+      actors: candidates,
+      directors: candidates,
+      producers: candidates,
+      writers: candidates,
+    };
+    return searchLocalPeopleIndex(directory, normalizedQuery, { page, limit, department });
+  } catch (error) {
+    logServerError("searchPeopleFuzzyFromPostgres", error);
     return { results: [], total: 0, page, limit, hasMore: false };
   }
 }
