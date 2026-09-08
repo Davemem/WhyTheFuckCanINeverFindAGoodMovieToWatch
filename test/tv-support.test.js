@@ -163,3 +163,14 @@ test("switching discovery media invalidates pending results and persists the cho
   assert.ok(calls.some((url) => url.includes("/api/discover?") && url.includes("mediaType=tv")));
   assert.equal(new URL(app.window.location.href).searchParams.get("mediaType"), "tv");
 });
+
+test("enriching a TV discovery card preserves the reason it matched the selected person", async (t) => {
+  const app = browser(); t.after(app.close);
+  app.window.fetch = async (url) => json(url.includes("bootstrap") ? { genres: [], config: {} } : { movies: [], people: [], results: [] });
+  app.load("movie-results.js"); app.load("app.js"); await tick(); await tick();
+  app.evaluate('liveState.movies = [{ id: "tv:1396", mediaType: "tv", title: "Breaking Bad", matchReason: "Cast: Bryan Cranston" }]; renderMovies(liveState.movies);');
+  await new Promise((resolve) => app.window.requestAnimationFrame(resolve));
+  app.window.fetch = async () => json({ movies: [{ id: "tv:1396", mediaType: "tv", title: "Breaking Bad", isEnriched: true, matchReason: "TV discovery result." }] });
+  await app.evaluate("enrichVisibleMovies(liveState.requestId)");
+  assert.equal(app.window.document.querySelector("#results-grid .match-reason").textContent, "Cast: Bryan Cranston");
+});

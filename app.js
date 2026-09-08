@@ -543,7 +543,7 @@ function renderMovies(movies) {
     summaryElement: elements.resultsSummary,
     summaryText: visibleMatches > 0 && totalMatches > visibleMatches
       ? `Showing the top ${visibleMatches} of ${totalMatches} live titles that match your current filters.`
-      : `${totalMatches} live movie${totalMatches === 1 ? "" : "s"} match your current filter stack.`,
+      : `${totalMatches} live title${totalMatches === 1 ? "" : "s"} match your current filter stack.`,
     emptyTitle: "No live matches.",
     emptyMessage: "Broaden the filters or switch to a different person, studio, or award search.",
     buildCard: buildMovieCard,
@@ -893,11 +893,9 @@ async function enrichVisibleMovies(parentRequestId) {
         if (!enriched) {
           return movie;
         }
-        return {
-          ...movie,
-          ...enriched,
-          matchReason: movie.matchReason || enriched.matchReason,
-        };
+        const updated = { ...movie, ...enriched, matchReason: movie.matchReason || enriched.matchReason };
+        enrichedById.set(movie.id, updated);
+        return updated;
       });
       window.MovieResults.patchMovieCards(elements.resultsGrid, enrichedById, buildMovieCard);
       syncWatchlistMovieDetails(enrichedById);
