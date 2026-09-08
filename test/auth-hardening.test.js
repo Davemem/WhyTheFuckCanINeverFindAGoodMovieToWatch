@@ -421,6 +421,18 @@ test("server exposes only public assets and rejects catalog writes", async () =>
     assert.equal(publicResponse.headers.get("cross-origin-opener-policy"), "same-origin-allow-popups");
     assert.match(publicResponse.headers.get("permissions-policy") || "", /camera=\(\)/);
 
+    const health = await fetch(`${baseUrl}/api/health`);
+    assert.equal(health.status, 200);
+    assert.equal((await health.json()).status, "ok");
+
+    const head = await fetch(`${baseUrl}/index.html`, { method: "HEAD" });
+    assert.equal(head.status, 200);
+    assert.ok(Number(head.headers.get("content-length")) > 0);
+    assert.equal(await head.text(), "");
+    const conditional = await fetch(`${baseUrl}/index.html`, { headers: { "If-None-Match": head.headers.get("etag") } });
+    assert.equal(conditional.status, 304);
+    assert.equal(conditional.headers.get("etag"), head.headers.get("etag"));
+
     const legacyDirectoryResponse = await fetch(
       `${baseUrl}/people.html?department=producers&query=Emma%20Thomas&exactPerson=1`,
       { redirect: "manual" },

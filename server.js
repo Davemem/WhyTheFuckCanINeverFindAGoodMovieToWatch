@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { Pool } = require("pg");
+const { createJsonCache } = require("./lib/json-cache");
 const { readJsonBody, getRequestIp } = require("./lib/auth/http");
 const { verifyGoogleIdToken } = require("./lib/auth/google");
 const { createCsrfToken, isValidCsrfToken } = require("./lib/auth/csrf");
@@ -37,6 +38,7 @@ const {
 } = require("./lib/auth/saved-data-store");
 
 const PUBLIC_API_GET_PATHS = new Set([
+  "/api/health",
   "/api/bootstrap",
   "/api/featured-people",
   "/api/index-status",
@@ -115,6 +117,9 @@ const allowedAuthOrigins = createAllowedOrigins(appBaseUrl, additionalAllowedOri
 const staticRoot = __dirname;
 const cache = new BoundedCache(1000);
 const cacheDir = path.join(__dirname, ".cache");
+const jsonCache = createJsonCache({ directory: cacheDir, memory: cache });
+const readDiskCache = jsonCache.read;
+const writeDiskCache = jsonCache.write;
 const peopleIndexPath = path.join(cacheDir, "people-index-v1.json");
 const DISCOVER_RESULT_LIMIT = 60;
 const DISCOVER_HYDRATE_LIMIT = 6;
@@ -349,6 +354,8 @@ ensureCacheDir();
 let preferredDbPool = null;
 const dbPools = createDbPools();
 let siteSnapshotRequest = null;
+let peopleIndexCache = null;
+let peopleIndexRequest = null;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -388,6 +395,11 @@ if (require.main === module) {
 async function handleApi(req, requestUrl, res) {
   if (PUBLIC_API_GET_PATHS.has(requestUrl.pathname) && req.method !== "GET" && req.method !== "HEAD") {
     sendJson(res, 405, { error: "Method not allowed" }, { Allow: "GET, HEAD" });
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/health") {
+    sendJson(res, 200, { status: "ok", commit: process.env.RENDER_GIT_COMMIT || null }, { "Cache-Control": "no-store" });
     return;
   }
 
@@ -432,7 +444,7 @@ async function handleApi(req, requestUrl, res) {
 
       body = await readJsonBody(req);
     } catch (error) {
-      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      sendJson(res, error.statusCode || 400, { error: error.message || "Invalid JSON body" }, { "Cache-Control": "no-store" });
       return;
     }
 
@@ -536,8 +548,6 @@ async function handleApi(req, requestUrl, res) {
         queryDb,
         token: authContext.sessionToken,
         sessionSecret,
-      }).catch((error) => {
-        logServerError("auth-logout", error);
       });
       logStructuredEvent("auth_logout", {
         userId: authContext.user?.id || null,
@@ -780,8 +790,8 @@ async function handleApi(req, requestUrl, res) {
       let body = {};
       try {
         body = await readJsonBody(req);
-      } catch {
-        sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      } catch (error) {
+        sendJson(res, error.statusCode || 400, { error: error.message || "Invalid JSON body" }, { "Cache-Control": "no-store" });
         return;
       }
 
@@ -839,8 +849,8 @@ async function handleApi(req, requestUrl, res) {
     let body = {};
     try {
       body = await readJsonBody(req);
-    } catch {
-      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+    } catch (error) {
+      sendJson(res, error.statusCode || 400, { error: error.message || "Invalid JSON body" }, { "Cache-Control": "no-store" });
       return;
     }
 
@@ -893,7 +903,7 @@ async function handleApi(req, requestUrl, res) {
     }
 
     const movieId = Number(decodeURIComponent(watchlistDeleteMatch[1]));
-    if (!Number.isFinite(movieId)) {
+    if (!Number.isSafeInteger(movieId) || movieId <= 0) {
       sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
       return;
     }
@@ -959,8 +969,8 @@ async function handleApi(req, requestUrl, res) {
       let body = {};
       try {
         body = await readJsonBody(req);
-      } catch {
-        sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      } catch (error) {
+        sendJson(res, error.statusCode || 400, { error: error.message || "Invalid JSON body" }, { "Cache-Control": "no-store" });
         return;
       }
 
@@ -1073,20 +1083,20 @@ async function handleApi(req, requestUrl, res) {
 
     let body = {};
     try {
-      body = await readJsonBody(req);
-    } catch {
-      sendJson(res, 400, { error: "Invalid JSON body" }, { "Cache-Control": "no-store" });
+      body = await readJsonBody(req, { maxBytes: 1024 * 1024 });
+    } catch (error) {
+      sendJson(res, error.statusCode || 400, { error: error.message || "Invalid JSON body" }, { "Cache-Control": "no-store" });
       return;
     }
 
     try {
-      const importResult = await importUserSavedState({
-        queryDb,
+      const importResult = await withDbTransaction((client) => importUserSavedState({
+        queryDb: client.query.bind(client),
         userId: authContext.user.id,
         watchlistMovies: body.watchlistMovies || [],
         watchedMovies: body.watchedMovies || [],
         savedPeople: body.savedPeople || [],
-      });
+      }));
       logStructuredEvent("saved_import_success", {
         userId: authContext.user.id,
         importedTitles: importResult.importedTitles,
@@ -1164,7 +1174,7 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    sendJson(res, 200, buildIndexStatus(readPeopleIndex()));
+    sendJson(res, 200, buildIndexStatus(await readPeopleIndex()));
     return;
   }
 
@@ -1178,7 +1188,7 @@ async function handleApi(req, requestUrl, res) {
     const directory = department === "studios"
       ? { studios: getFeaturedStudiosDirectory() }
       : await getPeopleDirectoryFromPostgres(Math.max(poolLimit, DB_BOOTSTRAP_LIMIT))
-        || getLocalPeopleDirectory(Math.max(poolLimit, DB_BOOTSTRAP_LIMIT));
+        || await getLocalPeopleDirectory(Math.max(poolLimit, DB_BOOTSTRAP_LIMIT));
     const source = directory ? peopleDirectorySlice(directory, department) : [];
     const filtered = filterPeopleDirectory(source, query);
     const sorted = sort === "suggested"
@@ -1194,7 +1204,7 @@ async function handleApi(req, requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/people") {
-    const query = requestUrl.searchParams.get("query")?.trim();
+    const query = requestUrl.searchParams.get("query")?.trim().slice(0, 120);
     const department = requestUrl.searchParams.has("department")
       ? normalizePeopleDepartment(requestUrl.searchParams.get("department"))
       : null;
@@ -1210,7 +1220,7 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    const localPeopleIndex = readPeopleIndex();
+    const localPeopleIndex = await readPeopleIndex();
     const localIndexResults = localPeopleIndex
       ? searchLocalPeopleIndex(localPeopleIndex, query, { page, limit, department })
       : null;
@@ -1249,7 +1259,7 @@ async function handleApi(req, requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/studios") {
-    const query = requestUrl.searchParams.get("query")?.trim();
+    const query = requestUrl.searchParams.get("query")?.trim().slice(0, 120);
     if (!query) {
       sendJson(res, 200, { results: [] });
       return;
@@ -1296,8 +1306,8 @@ async function handleApi(req, requestUrl, res) {
       searchType: requestUrl.searchParams.get("searchType") || "person",
       personId: Number(requestUrl.searchParams.get("personId") || "0"),
       personQuery:
-        requestUrl.searchParams.get("query")?.trim()
-        || requestUrl.searchParams.get("personQuery")?.trim()
+        requestUrl.searchParams.get("query")?.trim().slice(0, 120)
+        || requestUrl.searchParams.get("personQuery")?.trim().slice(0, 120)
         || "",
       role: requestUrl.searchParams.get("role") || "any",
       genreId: requestUrl.searchParams.get("genre") || "all",
@@ -1308,24 +1318,11 @@ async function handleApi(req, requestUrl, res) {
       award: normalizeAwardFilterValue(requestUrl.searchParams.get("award")),
     };
 
-    const cacheKey = buildDiscoverCacheKey(filters);
-    const cached = cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      sendJson(res, 200, cached.value);
-      return;
-    }
-
-    const diskCached = readDiskCache(cacheKey);
-    if (diskCached && diskCached.expiresAt > Date.now()) {
-      cache.set(cacheKey, diskCached);
-      sendJson(res, 200, diskCached.value);
-      return;
-    }
-
-    const payload = await buildDiscoverPayload(filters);
-    const entry = { value: payload, expiresAt: Date.now() + DISCOVER_CACHE_TTL_MS };
-    cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
+    const payload = await jsonCache.getOrLoad(
+      buildDiscoverCacheKey(filters),
+      () => buildDiscoverPayload(filters),
+      DISCOVER_CACHE_TTL_MS,
+    );
 
     sendJson(res, 200, payload);
     return;
@@ -1335,7 +1332,8 @@ async function handleApi(req, requestUrl, res) {
     const ids = (requestUrl.searchParams.get("ids") || "")
       .split(",")
       .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0)
+      .filter((value, index, ids) => ids.indexOf(value) === index)
       .slice(0, ENRICH_BATCH_LIMIT);
 
     if (!ids.length) {
@@ -1395,7 +1393,7 @@ function handleDemoApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/people") {
-    const query = requestUrl.searchParams.get("query")?.trim().toLowerCase() || "";
+    const query = requestUrl.searchParams.get("query")?.trim().slice(0, 120).toLowerCase() || "";
     const department = requestUrl.searchParams.has("department")
       ? normalizePeopleDepartment(requestUrl.searchParams.get("department"))
       : null;
@@ -1424,7 +1422,7 @@ function handleDemoApi(requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/studios") {
-    const query = requestUrl.searchParams.get("query")?.trim().toLowerCase() || "";
+    const query = requestUrl.searchParams.get("query")?.trim().slice(0, 120).toLowerCase() || "";
     const results = query
       ? dedupeDemoStudios()
         .filter((studio) => studio.name.toLowerCase().includes(query))
@@ -1471,8 +1469,8 @@ function handleDemoApi(requestUrl, res) {
       searchType: requestUrl.searchParams.get("searchType") || "person",
       personId: Number(requestUrl.searchParams.get("personId") || "0"),
       personQuery:
-        requestUrl.searchParams.get("query")?.trim()
-        || requestUrl.searchParams.get("personQuery")?.trim()
+        requestUrl.searchParams.get("query")?.trim().slice(0, 120)
+        || requestUrl.searchParams.get("personQuery")?.trim().slice(0, 120)
         || "",
       role: requestUrl.searchParams.get("role") || "any",
       genreId: requestUrl.searchParams.get("genre") || "all",
@@ -1560,7 +1558,7 @@ function buildDemoDiscoverPayload(filters) {
 async function buildBootstrapPayload(options = {}) {
   const includePeople = options.includePeople !== false;
   const snapshot = await getSiteSnapshotFromPostgres();
-  const localPeopleIndex = readPeopleIndex();
+  const localPeopleIndex = await readPeopleIndex();
   const hasLocalPeopleIndex = Boolean(snapshot || localPeopleIndex);
   const resolvedGenres = await getGenresFast();
 
@@ -1606,7 +1604,7 @@ async function buildFeaturedPeoplePayload() {
     };
   }
 
-  const rankedPeople = getLocalPeopleDirectory(FEATURED_PEOPLE_LIMIT);
+  const rankedPeople = await getLocalPeopleDirectory(FEATURED_PEOPLE_LIMIT);
 
   return {
     featuredActors: rankedPeople.actors,
@@ -1678,7 +1676,7 @@ async function discoverBroad(filters) {
     language: "en-US",
     page: "1",
     sort_by: mapCandidateSort(filters),
-    vote_count_gte: "200",
+    "vote_count.gte": "200",
   };
 
   if (filters.genreId !== "all") {
@@ -1819,7 +1817,7 @@ async function discoverByStudio(filters) {
     language: "en-US",
     page: "1",
     sort_by: mapCandidateSort(filters),
-    vote_count_gte: "200",
+    "vote_count.gte": "200",
     with_companies: String(studio.id),
   };
 
@@ -2220,7 +2218,7 @@ async function getGenresFast() {
     return cached.value;
   }
 
-  const diskCached = readDiskCache(cacheKey);
+  const diskCached = await readDiskCache(cacheKey);
   if (diskCached && diskCached.expiresAt > Date.now()) {
     cache.set(cacheKey, diskCached);
     return diskCached.value;
@@ -2231,7 +2229,7 @@ async function getGenresFast() {
     const genres = Array.isArray(response?.genres) ? response.genres : demoGenres;
     const entry = { value: genres, expiresAt: Date.now() + 1000 * 60 * 60 * 24 };
     cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
+    await writeDiskCache(cacheKey, entry);
     return genres;
   } catch {
     return demoGenres;
@@ -2257,44 +2255,40 @@ function withTimeout(promise, timeoutMs) {
   });
 }
 
-function readPeopleIndex() {
-  try {
-    if (!fs.existsSync(peopleIndexPath)) {
-      return null;
-    }
-
-    const parsed = JSON.parse(fs.readFileSync(peopleIndexPath, "utf8"));
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      !Array.isArray(parsed.actors) ||
-      (!Array.isArray(parsed.filmmakers) &&
-        (!Array.isArray(parsed.directors) || !Array.isArray(parsed.producers)))
-    ) {
-      return null;
-    }
-
-    if (Array.isArray(parsed.directors) && Array.isArray(parsed.producers)) {
-      return {
+async function readPeopleIndex() {
+  if (peopleIndexRequest) return peopleIndexRequest;
+  peopleIndexRequest = (async () => {
+    try {
+      const stats = await fs.promises.stat(peopleIndexPath);
+      const version = `${stats.mtimeMs}:${stats.size}`;
+      if (peopleIndexCache?.version === version) return peopleIndexCache.value;
+      const parsed = JSON.parse(await fs.promises.readFile(peopleIndexPath, "utf8"));
+      if (!parsed || !Array.isArray(parsed.actors) ||
+          (!Array.isArray(parsed.filmmakers) &&
+            (!Array.isArray(parsed.directors) || !Array.isArray(parsed.producers)))) return null;
+      const value = {
         ...parsed,
-        writers: Array.isArray(parsed.writers) ? parsed.writers : [],
+        directors: parsed.directors || (parsed.filmmakers || []).filter((person) => isDirectorDepartment(person.department)),
+        producers: parsed.producers || (parsed.filmmakers || []).filter((person) => isProducerDepartment(person.department)),
+        writers: parsed.writers || (parsed.filmmakers || []).filter((person) => isWriterDepartment(person.department)),
       };
+      peopleIndexCache = { version, value };
+      return value;
+    } catch (error) {
+      peopleIndexCache = null;
+      if (error.code !== "ENOENT") logServerError("people-index", error);
+      return null;
     }
-
-    return {
-      ...parsed,
-      directors: (parsed.filmmakers || []).filter((person) => isDirectorDepartment(person.department)),
-      producers: (parsed.filmmakers || []).filter((person) => isProducerDepartment(person.department)),
-      writers: (parsed.filmmakers || []).filter((person) => isWriterDepartment(person.department)),
-    };
-  } catch (error) {
-    logServerError("getIndexStatusFromPostgres", error);
-    return null;
+  })();
+  try {
+    return await peopleIndexRequest;
+  } finally {
+    peopleIndexRequest = null;
   }
 }
 
-function getLocalPeopleDirectory(limit = DB_FEATURED_LIMIT) {
-  const index = readPeopleIndex();
+async function getLocalPeopleDirectory(limit = DB_FEATURED_LIMIT) {
+  const index = await readPeopleIndex();
   const fallback = {
     actors: demoPeople.filter((person) => isActingDepartment(person.department)),
     directors: demoPeople.filter((person) => isDirectorDepartment(person.department)),
@@ -2835,7 +2829,7 @@ function buildDiscoverCacheKey(filters) {
     award: normalizeAwardFilterValue(filters.award),
   };
 
-  return `discover:v2:${JSON.stringify(normalized)}`;
+  return `discover:v3:${JSON.stringify(normalized)}`;
 }
 
 function normalizeDiscoverMovie(movie, reasons = []) {
@@ -3168,31 +3162,13 @@ function normalizeWatchProviderLink(value) {
 }
 
 async function cachedJson(key, url, options = {}) {
-  const cached = cache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
-
-  const diskCached = readDiskCache(key);
-  if (diskCached && diskCached.expiresAt > Date.now()) {
-    cache.set(key, diskCached);
-    return diskCached.value;
-  }
-
-  const response = await requestJson(url, options.headers || {});
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(
-      `Upstream request failed: ${response.statusCode} ${response.statusMessage}${
-        response.body ? ` - ${response.body}` : ""
-      }`,
-    );
-  }
-
-  const value = JSON.parse(response.body);
-  const entry = { value, expiresAt: Date.now() + (options.ttlMs || 0) };
-  cache.set(key, entry);
-  writeDiskCache(key, entry);
-  return value;
+  return jsonCache.getOrLoad(key, async () => {
+    const response = await requestJson(url, options.headers || {});
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`Upstream request failed: ${response.statusCode}`);
+    }
+    return JSON.parse(response.body);
+  }, options.ttlMs || 0);
 }
 
 function requestJson(url, headers) {
@@ -3225,7 +3201,7 @@ function requestViaCurl(url, headers) {
 
     execFile("curl", args, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(`curl failed for ${url}: ${stderr || error.message}`));
+        reject(new Error(`Upstream connection failed (curl ${error.code || "error"})`));
         return;
       }
 
@@ -3240,7 +3216,7 @@ function requestViaCurl(url, headers) {
       const statusCode = Number(trimmed.slice(lastNewline + 1));
 
       if (!Number.isFinite(statusCode)) {
-        reject(new Error(`Unexpected curl status for ${url}`));
+        reject(new Error("Unexpected upstream response status"));
         return;
       }
 
@@ -3505,6 +3481,9 @@ function createDbPools() {
     preferredDbPool = "ssl";
   }
 
+  for (const [mode, pool] of Object.entries(pools)) {
+    pool?.on("error", (error) => logServerError(`db-idle-${mode}`, error));
+  }
   return pools;
 }
 
@@ -3544,7 +3523,7 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
     return cached.value;
   }
 
-  const diskCached = readDiskCache(cacheKey);
+  const diskCached = await readDiskCache(cacheKey);
   if (diskCached && diskCached.expiresAt > Date.now()) {
     cache.set(cacheKey, diskCached);
     return diskCached.value;
@@ -3567,7 +3546,7 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
       };
       const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
       cache.set(cacheKey, entry);
-      writeDiskCache(cacheKey, entry);
+      await writeDiskCache(cacheKey, entry);
       return value;
     }
 
@@ -3586,7 +3565,7 @@ async function getPeopleDirectoryFromPostgres(limit = DB_FEATURED_LIMIT) {
     const value = { actors, directors, producers, writers };
     const entry = { value, expiresAt: Date.now() + DB_DIRECTORY_CACHE_TTL_MS };
     cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
+    await writeDiskCache(cacheKey, entry);
     return value;
   } catch (error) {
     logServerError("getPeopleDirectoryFromPostgres", error);
@@ -3605,7 +3584,7 @@ async function getSiteSnapshotFromPostgres() {
     return cached.value;
   }
 
-  const diskCached = readDiskCache(cacheKey);
+  const diskCached = await readDiskCache(cacheKey);
   if (diskCached && diskCached.expiresAt > Date.now()) {
     cache.set(cacheKey, diskCached);
     return diskCached.value;
@@ -3640,7 +3619,7 @@ async function getSiteSnapshotFromPostgres() {
       };
       const entry = { value, expiresAt: Date.now() + DB_SNAPSHOT_CACHE_TTL_MS };
       cache.set(cacheKey, entry);
-      writeDiskCache(cacheKey, entry);
+      await writeDiskCache(cacheKey, entry);
       return value;
     } catch (error) {
       cache.set(cacheKey, { value: null, expiresAt: Date.now() + DB_FAILURE_CACHE_TTL_MS });
@@ -3794,7 +3773,7 @@ async function searchPeopleFromPostgres(query, options = {}) {
     return cached.value;
   }
 
-  const diskCached = readDiskCache(cacheKey);
+  const diskCached = await readDiskCache(cacheKey);
   if (diskCached && diskCached.expiresAt > Date.now()) {
     cache.set(cacheKey, diskCached);
     return diskCached.value;
@@ -3881,7 +3860,7 @@ async function searchPeopleFromPostgres(query, options = {}) {
     };
     const entry = { value, expiresAt: Date.now() + DB_PEOPLE_SEARCH_CACHE_TTL_MS };
     cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
+    await writeDiskCache(cacheKey, entry);
     return value;
   } catch (error) {
     logServerError("searchPeopleFromPostgres", error);
@@ -3979,7 +3958,7 @@ async function getPersonFromPostgresById(personId) {
     return cached.value;
   }
 
-  const diskCached = readDiskCache(cacheKey);
+  const diskCached = await readDiskCache(cacheKey);
   if (diskCached && diskCached.expiresAt > Date.now()) {
     cache.set(cacheKey, diskCached);
     return diskCached.value;
@@ -4022,7 +4001,7 @@ async function getPersonFromPostgresById(personId) {
     const value = result.rows[0] ? normalizeDbPersonRow(result.rows[0]) : null;
     const entry = { value, expiresAt: Date.now() + DB_PEOPLE_SEARCH_CACHE_TTL_MS };
     cache.set(cacheKey, entry);
-    writeDiskCache(cacheKey, entry);
+    await writeDiskCache(cacheKey, entry);
     return value;
   } catch (error) {
     logServerError("getPersonFromPostgresById", error);
@@ -4031,28 +4010,14 @@ async function getPersonFromPostgresById(personId) {
 }
 
 async function queryDb(sql, params = []) {
-  if (!dbPools) {
-    throw new Error("Database pool not configured");
+  // Only connection acquisition may fall back. Replaying a failed SQL write on
+  // another connection can apply it twice after an ambiguous network failure.
+  const { client, release } = await getPreferredDbClient();
+  try {
+    return await client.query(sql, params);
+  } finally {
+    release();
   }
-
-  const order = preferredDbPool === "plain" ? ["plain", "ssl"] : ["ssl", "plain"];
-  let lastError = null;
-  for (const mode of order) {
-    const pool = dbPools[mode];
-    if (!pool) {
-      continue;
-    }
-    try {
-      const result = await pool.query(sql, params);
-      preferredDbPool = mode;
-      return result;
-    } catch (error) {
-      lastError = error;
-      logServerError(`db-query-${mode}`, error);
-    }
-  }
-
-  throw lastError || new Error("Database query failed");
 }
 
 async function withDbTransaction(handler) {
@@ -4299,7 +4264,7 @@ function serveStatic(requestPath, res) {
 
     const etag = `"${stats.size}-${Number(stats.mtimeMs).toString(16)}"`;
     if (res.req?.headers["if-none-match"] === etag) {
-      res.writeHead(304, SECURITY_HEADERS);
+      res.writeHead(304, { ...SECURITY_HEADERS, ETag: etag, "Cache-Control": "no-cache" });
       res.end();
       return;
     }
@@ -4325,7 +4290,12 @@ function serveStatic(requestPath, res) {
       "Content-Type": contentType(filePath),
       "Cache-Control": cacheControl,
       ETag: etag,
+      "Content-Length": stats.size,
     });
+    if (res.req?.method === "HEAD") {
+      res.end();
+      return;
+    }
 
     const stream = fs.createReadStream(filePath);
     stream.on("error", () => {
@@ -4463,7 +4433,7 @@ function loadEnv(filePath) {
 
     const key = trimmed.slice(0, separatorIndex).trim();
     const value = trimmed.slice(separatorIndex + 1).trim();
-    if (!process.env[key]) {
+    if (!(key in process.env)) {
       process.env[key] = value;
     }
   });
@@ -4471,35 +4441,4 @@ function loadEnv(filePath) {
 
 function ensureCacheDir() {
   fs.mkdirSync(cacheDir, { recursive: true });
-}
-
-function cacheFilePath(key) {
-  const digest = crypto.createHash("sha1").update(key).digest("hex");
-  return path.join(cacheDir, `${digest}.json`);
-}
-
-function readDiskCache(key) {
-  try {
-    const filePath = cacheFilePath(key);
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (parsed?.expiresAt && parsed.expiresAt <= Date.now()) {
-      fs.unlinkSync(filePath);
-      return null;
-    }
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeDiskCache(key, entry) {
-  try {
-    fs.writeFileSync(cacheFilePath(key), JSON.stringify(entry));
-  } catch {
-    // Ignore cache persistence failures.
-  }
 }
