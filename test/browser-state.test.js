@@ -2,6 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { browser, deferred, json, signIn, tick } = require("../test-support/browser");
+const { discoveryBrowser } = require("../test-support/discovery-browser");
 
 const library = (ids = []) => ({ watchlist: ids, watchlistMovies: ids.map((id) => ({ id, title: `Movie ${id}` })), savedPeople: [], watched: [], watchedMovies: [] });
 
@@ -115,52 +116,47 @@ test("saved data follows storage updates from other tabs", async (t) => {
   assert.deepEqual(Array.from(app.window.savedDataClient.getSnapshot().watchlistIds), [12]);
 });
 
-async function discoveryBrowser(t) {
-  const app = browser();
-  t.after(app.close);
-  app.window.fetch = async (url) => json(url.includes("bootstrap")
-    ? { genres: [], config: { mode: "demo" } }
-    : { people: [], results: [], movies: [] });
-  app.load("movie-results.js");
-  app.load("app.js");
-  await tick();
-  await tick();
-  return app;
-}
-
 test("repeating an in-flight discovery search does not discard its result", async (t) => {
   const app = await discoveryBrowser(t);
   const reply = deferred();
   app.window.fetch = () => reply.promise;
-  app.window.document.querySelector("#award-filter").value = "oscar-winner";
-  const first = app.evaluate("refreshMovies()");
-  await app.evaluate("refreshMovies()");
-  reply.resolve(json({ movies: [{ id: 1, title: "Result", genres: [], cast: [], producers: [], isEnriched: true }] }));
-  await first;
-  assert.equal(app.evaluate("liveState.movies.length"), 1);
+  app.window.document.querySelector("#search-input").value = "Result";
+  app.evaluate("setScope('movie')");
+  const first = app.evaluate("runSearch()");
+  const second = app.evaluate("runSearch()");
+  reply.resolve(json({ results: [{ id: 1, title: "Result", isEnriched: true }] }));
+  await Promise.all([first, second]);
+  assert.equal(app.window.document.querySelectorAll('#search-matches [data-title-id]').length, 1);
 });
 
-test("reset invalidates pending movie results and enrichment", async (t) => {
+test("clearing search invalidates pending results without removing suggestion rows", async (t) => {
   const app = await discoveryBrowser(t);
   const reply = deferred();
   app.window.fetch = () => reply.promise;
-  const request = app.evaluate("refreshMovies()");
-  app.evaluate("resetFilters()");
-  reply.resolve(json({ movies: [{ id: 1, title: "Stale", isEnriched: true }] }));
+  app.window.document.querySelector('#search-input').value = 'Stale';
+  const request = app.evaluate("runSearch()");
+  app.evaluate("clearSearch()");
+  reply.resolve(json({ results: [{ id: 1, title: "Stale", isEnriched: true }] }));
   await request;
-  assert.equal(app.evaluate("liveState.movies.length"), 0);
+  assert.equal(app.window.document.querySelector('#search-matches').children.length, 0);
+  assert.equal(app.window.document.querySelectorAll('#suggestion-collections .suggestion-shelf').length, 7);
+  assert.equal(app.window.document.querySelectorAll('#genre-shelves .suggestion-shelf').length, 20);
 });
 
 test("suggestions from an old category cannot populate a new category", async (t) => {
   const app = await discoveryBrowser(t);
   const reply = deferred();
   app.window.fetch = () => reply.promise;
-  app.window.document.querySelector("#person-search").value = "Chris";
-  const lookup = app.evaluate("updatePersonSuggestions()");
-  app.window.document.querySelector("#search-type").value = "writers";
+  app.window.document.querySelector("#search-input").value = "Chris";
+  app.evaluate("setScope('actors')");
+  const lookup = app.evaluate("runSearch()");
+  app.window.fetch = async () => json({ results: [{ id: 2, name: 'Chris Writer' }] });
+  app.evaluate("setScope('writers')");
+  await app.evaluate("runSearch()");
   reply.resolve(json({ results: [{ id: 1, name: "Chris Actor" }] }));
   await lookup;
-  assert.equal(app.window.document.querySelector("#people-suggestions").children.length, 0);
+  assert.match(app.window.document.querySelector('#search-matches').textContent, /Chris Writer/);
+  assert.doesNotMatch(app.window.document.querySelector('#search-matches').textContent, /Chris Actor/);
 });
 
 test("movie metadata enrichment does not copy account saves into anonymous storage", async (t) => {

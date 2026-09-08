@@ -12,6 +12,7 @@ const tvCatalog = createTvCatalog({ tmdb, lookupOmdb, searchPeople: searchPeople
   passesFilters: passesMovieFilters, sortMovies, needsHydration: discoverNeedsHydration,
   hydrateLimit: determineHydrateLimit });
 const { createJsonCache } = require("./lib/json-cache");
+const { createSuggestionCatalog } = require("./lib/suggestion-catalog");
 const { readJsonBody, getRequestIp } = require("./lib/auth/http");
 const { verifyGoogleIdToken } = require("./lib/auth/google");
 const { createCsrfToken, isValidCsrfToken } = require("./lib/auth/csrf");
@@ -56,6 +57,8 @@ const PUBLIC_API_GET_PATHS = new Set([
   "/api/discover",
   "/api/enrich",
   "/api/watch-providers",
+  "/api/suggestions",
+  "/api/suggestion-credits",
 ]);
 const PUBLIC_STATIC_FILES = new Set([
   "account.html",
@@ -72,6 +75,8 @@ const PUBLIC_STATIC_FILES = new Set([
   "styles.css",
   "title-quick-add.js",
   "title-identity.js",
+  "discovery-filters.js",
+  "discovery.css",
 ]);
 const SECURITY_HEADERS = {
   "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
@@ -126,6 +131,29 @@ const staticRoot = __dirname;
 const cache = new BoundedCache(1000);
 const cacheDir = path.join(__dirname, ".cache");
 const jsonCache = createJsonCache({ directory: cacheDir, memory: cache });
+const suggestionCatalog = createSuggestionCatalog({
+  tmdb, cache: jsonCache, live: () => Boolean(tmdbToken || tmdbApiKey),
+  normalize: (title, type) => {
+    if (type === "tv") return normalizeTv(title);
+    const movie = normalizeMovieSearchResult(title);
+    return movie ? { ...movie, mediaType: "movie" } : null;
+  },
+  directory: async kind => {
+    if (kind === "studios") return getFeaturedStudiosDirectory();
+    if (!tmdbToken && !tmdbApiKey) return demoPeople.filter(p => personMatchesDepartment(p, kind));
+    const directory = await getPeopleDirectoryFromPostgres(250) || await getLocalPeopleDirectory(250);
+    return peopleDirectorySlice(directory, kind);
+  },
+  demo: type => demoTitles(type).map(title => ({ ...title, awards: demoMovieAwards[title.id] || title.awards,
+    studios: demoMovieStudios[title.id] || [], writers: title.id === 1005 ? ["Aaron Sorkin"] : title.writers,
+    isEnriched: true })),
+  resolveStudio: async (id, name) => {
+    if (/^[1-9]\d*$/.test(String(id))) return { id: Number(id), name };
+    const known = getFeaturedStudiosDirectory().find(studio => studio.id === id);
+    if (!known) return null;
+    return selectBestStudioMatch(await searchStudios(known.name), known.name);
+  },
+});
 const readDiskCache = jsonCache.read;
 const writeDiskCache = jsonCache.write;
 const peopleIndexPath = path.join(cacheDir, "people-index-v1.json");
@@ -1185,6 +1213,24 @@ async function handleApi(req, requestUrl, res) {
     return;
   }
 
+  if (requestUrl.pathname === "/api/suggestions" || requestUrl.pathname === "/api/suggestion-credits") {
+    const kind = requestUrl.searchParams.get("kind") || "movie";
+    const validKinds = ["movie", "tv", "genre", "actors", "writers", "directors", "producers", "studios"];
+    if (!validKinds.includes(kind)) {
+      sendJson(res, 400, { error: "Unknown collection." }); return;
+    }
+    if (requestUrl.pathname === "/api/suggestions") {
+      const genre = requestUrl.searchParams.get("genre") || "all";
+      if (genre !== "all" && !/^\d{1,5}$/.test(genre)) { sendJson(res, 400, { error: "Invalid genre." }); return; }
+      const seed = Math.floor(clampNumber(requestUrl.searchParams.get("seed"), 0, 0, 1000000));
+      sendJson(res, 200, await suggestionCatalog.suggestions({ kind, genre, seed })); return;
+    }
+    const id = requestUrl.searchParams.get("id") || "";
+    const validId = /^[1-9]\d{0,9}$/.test(id) || kind === "studios" && getFeaturedStudiosDirectory().some(studio => studio.id === id);
+    if (["movie","tv","genre"].includes(kind) || !validId) { sendJson(res, 400, { error: "Invalid person or studio." }); return; }
+    sendJson(res, 200, await suggestionCatalog.featuredCredits({ kind, id, name: (requestUrl.searchParams.get("name") || "").slice(0,120) })); return;
+  }
+
   if (!tmdbToken && !tmdbApiKey) {
     handleDemoApi(requestUrl, res);
     return;
@@ -1832,8 +1878,9 @@ async function discoverByPerson(filters) {
 }
 
 async function discoverByPersonFromTmdb(filters) {
-  const search = await searchPeopleFromTmdb(filters.personQuery, { page: 1, limit: 10 });
-  const person = selectBestPersonMatch(search.results || [], filters.personQuery);
+  const search = filters.personId > 0 ? null : await searchPeopleFromTmdb(filters.personQuery, { page: 1, limit: 10 });
+  const person = filters.personId > 0 ? { id: filters.personId, name: filters.personQuery }
+    : selectBestPersonMatch(search.results || [], filters.personQuery);
   if (!person) {
     return { matchedPerson: null, totalMatches: 0, movies: [] };
   }
@@ -1872,8 +1919,9 @@ async function discoverByPersonFromTmdb(filters) {
 }
 
 async function discoverByStudio(filters) {
-  const studios = await searchStudios(filters.personQuery);
-  const studio = selectBestStudioMatch(studios, filters.personQuery);
+  const studios = filters.personId > 0 ? [] : await searchStudios(filters.personQuery);
+  const studio = filters.personId > 0 ? { id: filters.personId, name: filters.personQuery }
+    : selectBestStudioMatch(studios, filters.personQuery);
   if (!studio) {
     return { matchedEntity: null, matchedPerson: null, totalMatches: 0, movies: [] };
   }
@@ -2154,6 +2202,7 @@ function normalizeMovie(details, reasons, omdbRatings) {
     tmdb: typeof details.vote_average === "number" ? Number(details.vote_average.toFixed(1)) : null,
     matchScore: Number(details.vote_count || 0),
     genres: (details.genres ?? []).map((genre) => genre.name),
+    genreIds: (details.genres ?? []).map((genre) => genre.id),
     cast,
     director: director?.name || "Unknown",
     producers,
@@ -2459,7 +2508,19 @@ function peopleDirectorySlice(directory, department) {
 }
 
 function getFeaturedStudiosDirectory() {
-  return featuredStudios.slice();
+  const additional = [
+    "Walt Disney Pictures", "20th Century Studios", "DreamWorks Pictures", "DreamWorks Animation",
+    "Sony Pictures Animation", "Studio Ghibli", "Toho", "StudioCanal", "Pathé", "Gaumont",
+    "Universal Television", "Warner Bros. Television", "Sony Pictures Television", "Paramount Television Studios",
+    "HBO", "Netflix", "Amazon MGM Studios", "Apple Studios", "FX Productions", "20th Television",
+    "BBC Studios", "ITV Studios", "AMC Studios", "Monkeypaw Productions", "Amblin Entertainment",
+    "Skydance Media", "Imagine Entertainment", "Bad Robot", "Annapurna Pictures", "MRC",
+    "Regency Enterprises", "Scott Free Productions", "Syncopy", "Castle Rock Entertainment",
+    "Orion Pictures", "Screen Gems", "Summit Entertainment", "Constantin Film", "EuropaCorp",
+    "BBC Film", "Wild Bunch", "CJ Entertainment",
+  ].map(name => ({ id: "studio:" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name,
+    department: "Studio", knownFor: [], profileUrl: "", ratingLabel: "Curated studio pick" }));
+  return [...featuredStudios, ...additional];
 }
 
 function filterPeopleDirectory(people, query) {
@@ -3354,8 +3415,8 @@ function matchesGenreAndDecade(credit, filters) {
 }
 
 function passesRatingFilters(movie, filters) {
-  const imdbCandidate = movie.imdb ?? movie.tmdb ?? null;
-  const rtCandidate = movie.rt ?? (movie.tmdb !== null && movie.tmdb !== undefined ? Math.round(movie.tmdb * 10) : null);
+  const imdbCandidate = movie.imdb ?? null;
+  const rtCandidate = movie.rt ?? null;
   const imdbOk = filters.imdbMin <= 0 || (imdbCandidate !== null && imdbCandidate >= filters.imdbMin);
   const rtOk = filters.rtMin <= 0 || (rtCandidate !== null && rtCandidate >= filters.rtMin);
   return imdbOk && rtOk;

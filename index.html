@@ -1,312 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>flickstuck — find your next movie or TV show</title>
-    <meta
-      name="description"
-      content="Stuck on what to watch? Discover movies and TV shows through the actors, creators, writers, and studios you love. Save your next watch with flickstuck."
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css?v=20260908a" />
-  </head>
-  <body>
-    <a class="skip-link" href="#main-content">Skip to content</a>
-    <div class="page-shell">
-      <div class="title-bar">
-        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck</a>
-        <nav class="title-bar-nav" aria-label="Primary">
-          <a class="is-active" href="/" aria-current="page">Home</a>
-          <a href="/saved.html">Saved People</a>
-          <a href="/saved-titles.html">Saved Titles</a>
-          <a href="/account.html">Account</a>
-        </nav>
-        <div class="title-bar-account" data-auth-root aria-live="polite"></div>
-      </div>
-      <section class="saved-sync-banner" data-saved-sync-banner hidden></section>
-      <header class="hero" id="home">
-        <div class="hero-copy">
-          <h1 class="hero-marquee flickstuck-marquee" aria-label="flickstuck">
-            <span>flickstuck</span>
-          </h1>
-          <p class="hero-text">
-            Stuck on what to watch? Find your next movie or TV show through
-            the actors, writers, directors, and producers you already love.
-            Explore a familiar name, browse fresh suggestions, or search a title—then
-            narrow it down by ratings, genre, and year.
-          </p>
-          <p id="data-source" class="hero-subtext">
-            Live data will load here once the TMDb and OMDb keys are configured.
-          </p>
-          <div class="hero-stats">
-            <div>
-              <span class="stat-number" id="movie-count">0</span>
-              <span class="stat-label">Catalog mode</span>
-            </div>
-            <div>
-              <span class="stat-number" id="people-count">0</span>
-              <span class="stat-label">People indexed</span>
-            </div>
-            <div>
-              <span class="stat-number" id="watchlist-count">0</span>
-              <span class="stat-label">Saved to watchlist</span>
-            </div>
-            <div>
-              <span class="stat-number" id="watched-count">0</span>
-              <span class="stat-label">Marked watched</span>
-            </div>
-          </div>
-        </div>
-
-        <section class="filter-panel" aria-label="Title filters">
-          <div class="filter-panel-header">
-            <h2>Find something worth watching</h2>
-            <button id="reset-button" type="button" class="ghost-button">
-              Reset
-            </button>
-          </div>
-
-          <form id="filters-form">
-            <label class="field media-type-field">
-              <span>What would you like to watch?</span>
-              <select id="media-type" name="media-type">
-                <option value="both">Movies &amp; TV shows</option>
-                <option value="movie">Movies</option>
-                <option value="tv">TV shows</option>
-              </select>
-            </label>
-            <section class="filter-group" aria-labelledby="discovery-filters-heading">
-              <div class="field-row">
-                <span class="filter-group-title" id="discovery-filters-heading">Discovery search</span>
-                <strong class="field-helper">Choose what you want to explore</strong>
-              </div>
-
-              <label class="field">
-                <span>Discover by</span>
-                <select id="search-type" name="search-type">
-                  <option value="actors">Actors</option>
-                  <option value="writers">Writers</option>
-                  <option value="directors">Directors</option>
-                  <option value="producers">Producers</option>
-                  <option value="studios">Studios</option>
-                </select>
-              </label>
-
-              <label class="field">
-                <span id="search-label">Actor</span>
-                <input
-                  id="person-search"
-                  name="person-search"
-                  type="search"
-                  list="people-suggestions"
-                  placeholder="Try: Cate Blanchett, Denzel Washington, Emma Stone"
-                />
-              </label>
-              <datalist id="people-suggestions"></datalist>
-            </section>
-
-            <section class="filter-group movie-filter-group" id="movie-filter-group" aria-labelledby="movie-filters-heading">
-              <div class="field-row">
-                <span class="filter-group-title" id="movie-filters-heading">Title filters</span>
-                <strong id="movie-filter-helper" class="field-helper">These apply once you pick a specific actor.</strong>
-              </div>
-
-              <label class="field">
-                <span>Award recognition</span>
-                <select id="award-filter" name="award-filter">
-                  <option value="all">All award records</option>
-                  <option value="winner:any">Any award winner</option>
-                  <option value="nominee:any">Any award nomination</option>
-                  <option value="winner:oscar">Oscar winner</option>
-                  <option value="nominee:oscar">Oscar nominated</option>
-                  <option value="winner:emmy">Emmy winner</option>
-                  <option value="nominee:emmy">Emmy nominated</option>
-                  <option value="winner:golden-globe">Golden Globe winner</option>
-                  <option value="nominee:golden-globe">Golden Globe nominated</option>
-                  <option value="winner:bafta">BAFTA winner</option>
-                  <option value="nominee:bafta">BAFTA nominated</option>
-                </select>
-                <small class="field-note">Searches verified award summaries and favours established titles.</small>
-              </label>
-
-              <div class="field-grid">
-                <label class="field">
-                  <span>Minimum IMDb</span>
-                  <input
-                    id="imdb-min"
-                    name="imdb-min"
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.1"
-                    value="0"
-                  />
-                  <strong id="imdb-value">0.0+</strong>
-                </label>
-
-                <label class="field">
-                  <span>Minimum Rotten Tomatoes</span>
-                  <input
-                    id="rt-min"
-                    name="rt-min"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value="0"
-                  />
-                  <strong id="rt-value">0%+</strong>
-                </label>
-              </div>
-
-              <div class="field-grid">
-                <label class="field">
-                  <span>Genre</span>
-                  <select id="genre-filter" name="genre-filter">
-                    <option value="all">All genres</option>
-                  </select>
-                </label>
-
-                <label class="field">
-                  <span>Decade</span>
-                  <select id="decade-filter" name="decade-filter">
-                    <option value="all">All decades</option>
-                  </select>
-                </label>
-              </div>
-
-              <label class="field">
-                <span>Sort by</span>
-                <select id="sort-filter" name="sort-filter">
-                  <option value="match">Best match</option>
-                  <option value="imdb">Highest IMDb</option>
-                  <option value="rt">Highest Rotten Tomatoes</option>
-                  <option value="year-desc">Newest first</option>
-                  <option value="year-asc">Oldest first</option>
-                </select>
-              </label>
-            </section>
-          </form>
-        </section>
-      </header>
-
-      <main id="main-content" tabindex="-1">
-        <section class="status-strip" aria-live="polite" hidden>
-          <p id="api-status">Waiting for live data.</p>
-        </section>
-
-        <section class="status-strip index-status-strip" aria-live="polite" hidden>
-          <p id="index-status">Local people index not built yet.</p>
-        </section>
-
-        <section class="catalog-section title-quick-add home-quick-add" aria-labelledby="title-quick-add-heading">
-          <div class="title-quick-add-copy">
-            <p class="section-label">Quick add</p>
-            <h2 id="title-quick-add-heading">Already have a title in mind?</h2>
-            <p>Search by title and save it straight to your watchlist.</p>
-          </div>
-          <form id="title-catalog-search-form" class="title-catalog-search-form" role="search">
-            <label for="title-search-media-type">Search in</label>
-            <select id="title-search-media-type">
-              <option value="both">Movies &amp; TV shows</option>
-              <option value="movie">Movies</option>
-              <option value="tv">TV shows</option>
-            </select>
-            <label for="title-catalog-search">Movie or TV show title</label>
-            <div class="title-catalog-search-controls">
-              <input
-                id="title-catalog-search"
-                type="search"
-                placeholder="Try: The Godfather, Past Lives, Jaws"
-                autocomplete="off"
-                enterkeyhint="search"
-              />
-              <button type="submit" class="title-catalog-search-button">Search</button>
-            </div>
-          </form>
-          <p id="title-catalog-search-status" class="title-catalog-search-status" aria-live="polite">
-            Enter a movie or TV show title to add it without building a discovery search.
-          </p>
-          <div id="title-catalog-search-results" class="title-catalog-search-results" hidden></div>
-        </section>
-
-        <section
-          class="catalog-section people-search-results"
-          id="people-results-section"
-          aria-live="polite"
-          aria-labelledby="people-results-title"
-          hidden
-        >
-          <div class="results-header">
-            <div>
-              <p class="section-label">People</p>
-              <h2 id="people-results-title">Potential matches</h2>
-            </div>
-            <p id="people-results-summary" class="results-summary"></p>
-          </div>
-          <div id="people-results-grid" class="people-grid"></div>
-        </section>
-
-        <section
-          class="catalog-section results-section"
-          id="results-section"
-          aria-live="polite"
-          aria-labelledby="results-title"
-          hidden
-        >
-          <div class="results-header">
-            <div>
-              <p class="section-label">Results</p>
-              <h2 id="results-title">Titles selected by the people behind them</h2>
-            </div>
-            <div class="section-actions">
-              <p id="results-summary" class="results-summary"></p>
-            </div>
-          </div>
-          <section class="movie-rail movie-results-rail" data-movie-rail data-rail-status="idle">
-            <div class="movie-rail-meta">
-              <span class="movie-rail-count" data-movie-rail-count></span>
-              <div class="movie-rail-controls">
-                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="prev" aria-label="Previous titles">
-                  &larr;
-                </button>
-                <button type="button" class="ghost-button movie-rail-button" data-rail-direction="next" aria-label="Next titles">
-                  &rarr;
-                </button>
-              </div>
-            </div>
-            <div class="movie-rail-viewport" data-movie-rail-viewport>
-              <section id="results-grid" class="movie-rail-track results-grid" data-movie-rail-track aria-live="polite"></section>
-            </div>
-          </section>
-        </section>
-
-        <section class="catalog-section discovery-directory" id="discovery-directory" aria-labelledby="directory-heading">
-          <div class="results-header">
-            <div>
-              <p id="directory-label" class="section-label">Actors</p>
-              <h2 id="directory-heading">Suggested 50 actors</h2>
-            </div>
-            <div class="section-actions">
-              <p id="directory-summary" class="results-summary" aria-live="polite">
-                Loading the ranked actor directory.
-              </p>
-              <button id="directory-refresh" type="button" class="ghost-button directory-refresh-button">
-                ↻ Refresh suggestions
-              </button>
-            </div>
-          </div>
-          <div id="directory-grid" class="people-grid" aria-live="polite"></div>
-        </section>
-      </main>
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>flickstuck — find your next movie or TV show</title>
+  <meta name="description" content="Find your next watch. Search movies, shows, people and studios, or browse fresh collections with filters for ratings, awards and more." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css?v=20260908c" /><link rel="stylesheet" href="./discovery.css?v=20260908c" />
+</head>
+<body class="discovery-home">
+<a class="skip-link" href="#main-content">Skip to collections</a>
+<div class="page-shell">
+  <header class="title-bar">
+    <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck<span class="brand-dot">.</span></a>
+    <nav class="title-bar-nav" aria-label="Primary"><a class="is-active" href="/" aria-current="page">Discover</a><a href="/saved.html">Saved people</a><a href="/saved-titles.html">Watchlist</a><a href="/account.html">Account</a></nav>
+    <div class="title-bar-account" data-auth-root aria-live="polite"></div>
+  </header>
+  <section class="saved-sync-banner" data-saved-sync-banner hidden></section>
+  <section class="discovery-search" aria-labelledby="search-heading">
+    <div class="discovery-intro"><div><p class="eyebrow">A good watch starts here</p><h1 id="search-heading">Less searching. More watching.</h1></div><a class="library-count" href="/saved-titles.html"><span id="watchlist-count">0</span> on your watchlist ↗</a></div>
+    <form id="search-form" role="search" autocomplete="off">
+      <label class="sr-only" for="search-input">Search titles, people or studios</label>
+      <div class="search-box"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="A film, a show, a favourite person…" enterkeyhint="search" aria-describedby="search-hint" /><button id="clear-search" type="button" aria-label="Clear search" hidden>✕</button><button type="submit" class="primary-button">Search</button></div>
+      <div class="search-bottom"><div id="search-scopes" class="chip-row" role="group" aria-label="Search category">
+      <button type="button" data-scope="all" aria-pressed="true">Everything</button><button type="button" data-scope="movie" aria-pressed="false">Movies</button><button type="button" data-scope="tv" aria-pressed="false">TV shows</button><button type="button" data-scope="actors" aria-pressed="false">Actors</button><button type="button" data-scope="writers" aria-pressed="false">Writers</button><button type="button" data-scope="directors" aria-pressed="false">Directors</button><button type="button" data-scope="producers" aria-pressed="false">Producers</button><button type="button" data-scope="studios" aria-pressed="false">Studios</button>
+      </div><p id="search-hint">Results appear as you type.</p></div>
+    </form>
+  </section>
+  <section class="discovery-filter-bar" aria-label="Collection filters">
+    <div class="filter-toolbar">
+      <div class="segmented" role="group" aria-label="Titles to include"><button type="button" data-media="both" aria-pressed="true">All titles</button><button type="button" data-media="movie" aria-pressed="false">Movies</button><button type="button" data-media="tv" aria-pressed="false">TV shows</button></div>
+      <button id="filter-toggle" type="button" aria-expanded="false" aria-controls="filters-panel">Filters <span id="filter-count">0</span> <span aria-hidden="true">⌄</span></button>
+      <label class="inline-sort">Sort <select id="sort-filter"><option value="suggested">Suggested order</option><option value="tmdb">TMDb rating</option><option value="imdb">IMDb rating</option><option value="rt">Rotten Tomatoes</option><option value="metacritic">Metacritic</option><option value="year-desc">Newest first</option><option value="year-asc">Oldest first</option><option value="title">Title A–Z</option></select></label>
+      <button id="reset-filters" type="button" class="text-button" hidden>Clear filters</button>
     </div>
-
+    <form id="filters-panel" hidden>
+      <div class="filter-columns">
+        <fieldset><legend>Minimum ratings</legend>
+          <label class="rating-filter" for="imdb-min"><span>IMDb <output id="imdb-value">Any</output></span><input id="imdb-min" data-filter="imdbMin" type="range" min="0" max="10" step="0.1" value="0" /></label>
+<label class="rating-filter" for="rt-min"><span>Rotten Tomatoes <output id="rt-value">Any</output></span><input id="rt-min" data-filter="rtMin" type="range" min="0" max="100" step="1" value="0" /></label>
+<label class="rating-filter" for="metacritic-min"><span>Metacritic <output id="metacritic-value">Any</output></span><input id="metacritic-min" data-filter="metacriticMin" type="range" min="0" max="100" step="1" value="0" /></label>
+<label class="rating-filter" for="tmdb-min"><span>TMDb <output id="tmdb-value">Any</output></span><input id="tmdb-min" data-filter="tmdbMin" type="range" min="0" max="10" step="0.1" value="0" /></label>
+          <p class="filter-note">Real scores only. Unavailable ratings never count as a match.</p>
+        </fieldset>
+        <fieldset><legend>Awards &amp; recognition</legend><label>Award<select id="award-family"><option value="any">Any award</option><option value="oscar">Oscars</option><option value="emmy">Emmys</option><option value="golden-globe">Golden Globes</option><option value="bafta">BAFTAs</option><option value="sag">Screen Actors Guild</option><option value="critics-choice">Critics Choice</option></select></label>
+          <label>Recognition<select id="award-outcome"><option value="all">Any recognition / none</option><option value="winner">Winners</option><option value="nominee">Nominees</option><option value="recognised">Winners or nominees</option></select></label>
+          <label>Minimum audience votes<select data-filter="votesMin" id="votes-min"><option value="0">Any number</option><option value="100">100+ TMDb votes</option><option value="1000">1,000+ TMDb votes</option><option value="10000">10,000+ TMDb votes</option></select></label>
+          <p class="filter-note">Awards are checked against OMDb summaries, not a complete awards database.</p>
+        </fieldset>
+        <fieldset><legend>Find your kind of watch</legend><label>Genre<select id="genre-filter" data-filter="genre"><option value="all">All genres</option></select></label>
+          <div class="year-fields"><label>From year<input id="year-from" data-filter="yearFrom" type="number" min="1888" max="2100" placeholder="Any" /></label><label>To year<input id="year-to" data-filter="yearTo" type="number" min="1888" max="2100" placeholder="Any" /></label></div>
+          <label>Maximum length<select id="runtime-max" data-filter="runtimeMax"><option value="0">Any length</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="90">90 minutes</option><option value="120">2 hours</option><option value="150">2½ hours</option></select></label>
+          <label>Series status<select id="series-status" data-filter="seriesStatus"><option value="all">Any status</option><option value="ongoing">Still running</option><option value="ended">Ended or cancelled</option></select></label>
+          <p class="filter-note">For TV, year means first aired and length means an episode.</p>
+        </fieldset>
+      </div>
+      <label class="checkbox-filter"><input id="hide-watched" data-filter="hideWatched" type="checkbox" /> Hide titles I’ve watched</label>
+      <p class="filter-note">Filters trim each collection’s current 50 picks. People and studios qualify through up to two featured movies and two featured shows, not their entire careers. Refresh a row for a new selection.</p>
+    </form>
+    <div id="active-filters" class="active-filters" aria-label="Active filters"></div><p id="filter-status" class="filter-feedback" role="status"></p>
+  </section>
+  <main id="main-content" tabindex="-1">
+    <section id="search-results" class="search-results" aria-labelledby="search-results-title" hidden><div class="shelf-heading"><div><p class="eyebrow">Your search</p><h2 id="search-results-title">Search results</h2></div><button id="close-results" type="button" class="text-button">Clear search ✕</button></div><p id="search-status" role="status"></p><div id="search-matches"></div></section>
+    <section id="person-results" class="search-results" aria-labelledby="person-results-title" hidden><div class="shelf-heading"><div><p class="eyebrow">Follow the credits</p><h2 id="person-results-title"></h2></div><button id="close-person" type="button" class="text-button">Close titles ✕</button></div><p id="person-status" role="status"></p><div id="person-titles"></div></section>
+    <nav class="browse-nav" aria-label="Jump to collections"><span>Browse</span><a href="#shelf-movie">Movies</a><a href="#shelf-tv">TV shows</a><a href="#shelf-actors">People</a><a href="#shelf-studios">Studios</a><a href="#genre-collections">Genres</a></nav>
+    <div id="suggestion-collections" aria-label="Suggested collections"></div>
+    <div id="genre-collections"><div class="genre-heading"><p class="eyebrow">Find your mood</p><h2>Explore by genre</h2><p>Fresh movies and shows, one genre at a time.</p></div><div id="genre-shelves"></div></div>
+  </main>
+  <footer class="discovery-footer"><a href="/">flickstuck.</a><p id="data-source">Movie and TV data from <a href="https://www.themoviedb.org/">TMDb</a>. Ratings and award summaries from <a href="https://www.omdbapi.com/">OMDb</a>.</p><p>flickstuck is not endorsed or certified by TMDb.</p></footer>
+</div>
+<dialog id="title-details" aria-labelledby="detail-heading"><button type="button" id="close-details" aria-label="Close title details">✕</button><h2 id="detail-heading" class="sr-only">Title details</h2><p id="detail-status" role="status"></p><div id="detail-content"></div></dialog>
+<div id="discovery-toast" class="discovery-toast" role="status" hidden></div>
     <template id="movie-card-template">
       <article class="movie-card">
         <div class="movie-poster-frame">
@@ -370,31 +134,6 @@
       </article>
     </template>
 
-    <template id="person-card-template">
-      <article class="person-card">
-        <div class="person-card-visual">
-          <img class="person-card-portrait" alt="" loading="lazy" width="500" height="750" />
-        </div>
-        <p class="person-card-role"></p>
-        <h3></h3>
-        <p class="person-card-count"></p>
-        <p class="person-card-credits"></p>
-        <div class="person-card-actions">
-          <button type="button" class="person-card-button ghost-button" data-open-person>
-            Show matching titles
-          </button>
-          <button type="button" class="person-save-button ghost-button" data-save-person>
-            Save person
-          </button>
-        </div>
-      </article>
-    </template>
 
-    <script src="./title-identity.js?v=20260908a" defer></script>
-    <script src="./auth-client.js?v=20260908a" defer></script>
-    <script src="./saved-data-client.js?v=20260908a" defer></script>
-    <script src="./movie-results.js?v=20260908a" defer></script>
-    <script src="./app.js?v=20260908b" defer></script>
-    <script src="./title-quick-add.js?v=20260908a" defer></script>
-  </body>
-</html>
+<script src="./title-identity.js?v=20260908a" defer></script><script src="./auth-client.js?v=20260908a" defer></script><script src="./saved-data-client.js?v=20260908a" defer></script><script src="./movie-results.js?v=20260908a" defer></script><script src="./discovery-filters.js?v=20260908c" defer></script><script src="./app.js?v=20260908c" defer></script>
+</body></html>

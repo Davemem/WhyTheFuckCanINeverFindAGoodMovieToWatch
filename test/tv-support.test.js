@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { identity } = require("../title-identity");
 const { createTvCatalog, normalizeTv, genreIdsFor } = require("../lib/tv-catalog");
 const { browser, json, signIn, tick } = require("../test-support/browser");
+const { discoveryBrowser } = require("../test-support/discovery-browser");
 
 test("public demo APIs support TV search, mixed discovery, enrichment and streaming IDs", async (t) => {
   for (const name of ["TMDB_API_KEY", "TMDB_BEARER_TOKEN", "OMDB_API_KEY", "DATABASE_URL"]) process.env[name] = "";
@@ -29,6 +30,21 @@ test("public demo APIs support TV search, mixed discovery, enrichment and stream
   assert.equal(details.movies.find((title) => title.id === "tv:1396").seasons, 5);
   assert.equal((await get("/api/watch-providers?movieId=tv%3A1396&region=AU")).movieId, "tv:1396");
   assert.equal((await fetch(base + "/api/title-search", { method: "POST" })).status, 405);
+  for (const kind of ['movie','tv','actors','writers','directors','producers','studios','genre']) {
+    const suggestions = await get('/api/suggestions?kind=' + kind);
+    assert.ok(Array.isArray(suggestions.items)); assert.ok(suggestions.items.length <= 50);
+    assert.equal(new Set(suggestions.items.map(item => item.id)).size, suggestions.items.length);
+  }
+  const studios = await get('/api/suggestions?kind=studios');
+  assert.equal(studios.items.length,50);
+  const studio = studios.items.find(item => item.id.includes('netflix')) || studios.items[0];
+  const featured = await get('/api/suggestion-credits?kind=studios&id=' + encodeURIComponent(studio.id));
+  assert.ok(Array.isArray(featured.titles)); assert.equal(featured.scope,'featured');
+  for (const route of ['/api/suggestions?kind=invalid','/api/suggestions?genre=not-a-number','/api/suggestion-credits?kind=movie&id=1','/api/suggestion-credits?kind=actors&id=bad']) {
+    assert.equal((await fetch(base + route)).status,400,route);
+  }
+  for (const route of ['/api/suggestions','/api/suggestion-credits']) assert.equal((await fetch(base + route,{method:'POST'})).status,405);
+  for (const route of ['/discovery.css','/discovery-filters.js']) assert.equal((await fetch(base + route,{method:'HEAD'})).status,200);
 });
 
 test("TV and legacy movie identities cannot collide or accept malformed IDs", () => {
@@ -152,25 +168,21 @@ test("saved library cards, filters, watched actions and streaming use the TV ide
   assert.equal(document.querySelector(".watch-provider-dialog").open, true);
 });
 
-test("switching discovery media invalidates pending results and persists the choice in links", async (t) => {
-  const app = browser(); t.after(app.close);
-  app.window.fetch = async (url) => json(url.includes("bootstrap") ? { genres: [], tvGenres: [], config: {} } : { movies: [], people: [], results: [] });
-  app.load("movie-results.js"); app.load("app.js"); await tick(); await tick();
-  const calls = [];
-  app.window.fetch = async (url) => { calls.push(url); return json({ movies: [] }); };
-  const select = app.window.document.querySelector("#media-type");
-  select.value = "tv"; select.dispatchEvent(new app.window.Event("change")); await tick();
-  assert.ok(calls.some((url) => url.includes("/api/discover?") && url.includes("mediaType=tv")));
+test("switching discovery media trims the same picks and persists the choice in links", async (t) => {
+  const app = await discoveryBrowser(t, async url => json({ items: url.includes('kind=movie')
+    ? [{ id: 1, title: 'Film', mediaType: 'movie' }] : url.includes('kind=tv') ? [{ id: 'tv:1', title: 'Series', mediaType: 'tv' }] : [] }));
+  app.window.document.querySelector('[data-media="tv"]').click();
+  assert.equal(app.window.document.querySelectorAll('#shelf-movie [data-title-id]').length, 0);
+  assert.equal(app.window.document.querySelectorAll('#shelf-tv [data-title-id]').length, 1);
+  assert.equal(app.evaluate('discoveryState.rows.get("movie").items.length'), 1);
   assert.equal(new URL(app.window.location.href).searchParams.get("mediaType"), "tv");
 });
 
 test("enriching a TV discovery card preserves the reason it matched the selected person", async (t) => {
-  const app = browser(); t.after(app.close);
-  app.window.fetch = async (url) => json(url.includes("bootstrap") ? { genres: [], config: {} } : { movies: [], people: [], results: [] });
-  app.load("movie-results.js"); app.load("app.js"); await tick(); await tick();
-  app.evaluate('liveState.movies = [{ id: "tv:1396", mediaType: "tv", title: "Breaking Bad", matchReason: "Cast: Bryan Cranston" }]; renderMovies(liveState.movies);');
-  await new Promise((resolve) => app.window.requestAnimationFrame(resolve));
+  const app = await discoveryBrowser(t);
+  app.evaluate('rememberTitle({ id: "tv:1396", mediaType: "tv", title: "Breaking Bad", genreIds: [18], matchReason: "Cast: Bryan Cranston" });');
   app.window.fetch = async () => json({ movies: [{ id: "tv:1396", mediaType: "tv", title: "Breaking Bad", isEnriched: true, matchReason: "TV discovery result." }] });
-  await app.evaluate("enrichVisibleMovies(liveState.requestId)");
-  assert.equal(app.window.document.querySelector("#results-grid .match-reason").textContent, "Cast: Bryan Cranston");
+  await app.evaluate('openDetails("tv:1396")');
+  assert.equal(app.window.document.querySelector("#detail-content .match-reason").textContent, "Cast: Bryan Cranston");
+  assert.deepEqual(Array.from(app.evaluate('discoveryState.titles.get("tv:1396").genreIds')), [18]);
 });
