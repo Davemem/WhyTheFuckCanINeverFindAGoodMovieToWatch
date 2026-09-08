@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: whythefuckcanineverfindagoodmovietowatch
+    name: flickstuck
     runtime: node
     plan: starter
     buildCommand: npm ci && npm run check && npm test && npm run build:people-index && npm prune --omit=dev
@@ -18,9 +18,9 @@ services:
           name: moviepicker-db
           property: connectionString
       - key: APP_BASE_URL
-        sync: false
+        value: https://flickstuck.onrender.com
       - key: AUTH_ALLOWED_ORIGINS
-        sync: false
+        value: https://flickstuck.onrender.com
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: SESSION_COOKIE_NAME

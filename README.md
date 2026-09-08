@@ -1,5 +1,7 @@
 # flickstuck
 
+Live website: [flickstuck.onrender.com](https://flickstuck.onrender.com).
+
 Movie and TV discovery app with a browser UI and a small Node server that serves the frontend and `/api/*` endpoints.
 
 The home page is the single discovery surface: choose Movies, TV shows, or Both, quick-add a known title, or explore actors, writers, directors, producers, and studios. Award searches verify OMDb summaries against established TMDb candidates. Saved-person catalogues include movies and television. Older `/people.html` directory links redirect into the equivalent home-page state.
@@ -8,7 +10,9 @@ TV cards show series creators, season and episode counts, status, first/last air
 
 `GET /api/title-search?query=...&mediaType=movie|tv|both` searches the selected catalogues. `/api/discover` accepts the same media filter. Legacy `/api/movie-search` remains movie-only unless a media filter is supplied. TV enrichment and viewing links use IDs such as `tv:1396`; movie IDs remain numeric for compatibility. TV credits and details use cached live TMDb requests; the existing bulk people-ranking pipeline still ranks movie credits.
 
-On startup, when `DATABASE_URL` is configured, the server applies the idempotent account schema in a transaction before accepting requests. Existing saved records default to movies, and the new `(user_id, media_type, movie_id)` key lets movies and shows share a catalogue number safely. Browser storage keys and authentication cookies remain compatible with existing saves and sessions. The existing Render service and URL are retained for the flickstuck rebrand.
+On startup, when `DATABASE_URL` is configured, the server applies the idempotent account schema in a transaction before accepting requests. Existing saved records default to movies, and the new `(user_id, media_type, movie_id)` key lets movies and shows share a catalogue number safely. Browser storage keys and authentication cookie names remain compatible with existing saves and sessions.
+
+The flickstuck address uses a replacement Render web service with the existing Postgres database and worker. Account-backed saves remain available after signing in again. Cookies and guest-only browser saves belong to the old origin and do not automatically move between domains.
 
 ## Run locally
 
@@ -181,8 +185,8 @@ npm run pipeline:auto -- --ingest-every-hours=24 --poll-seconds=30 --batch-size=
 Set these additional variables on the web service for auth/session support:
 
 ```bash
-APP_BASE_URL=https://your-web-service-url
-AUTH_ALLOWED_ORIGINS=https://your-web-service-url
+APP_BASE_URL=https://flickstuck.onrender.com
+AUTH_ALLOWED_ORIGINS=https://flickstuck.onrender.com
 GOOGLE_CLIENT_ID=...
 SESSION_COOKIE_NAME=moviepicker_session
 SESSION_SECRET=...
@@ -202,6 +206,10 @@ npm run deploy:render
 ```
 
 The script checks for a clean working tree and compares the requested commit with the current branch on GitHub before triggering Render. Hook requests have a 30-second timeout and deploy that exact commit.
+
+The production web service is `flickstuck` (`srv-daft4vf40ujc73cs0abg`). Its new deploy hook replaces the legacy web hook in the local, ignored `.env`; the worker hook is unchanged. When configuring another machine or GitHub Actions, copy the hook from this service's Render settings, not from `flickstuck-legacy` (`srv-d6jk83q4d50c738vgkug`). Keep the existing database and worker when migrating an existing installation; do not provision replacements from the Blueprint.
+
+The Google OAuth web client must include `https://flickstuck.onrender.com` in its authorized JavaScript origins. Origin changes can take time to propagate. The old web service may be suspended after verifying the new website; retain it for rollback instead of deleting it.
 
 To deploy automatically from GitHub on every push to `main`, add these repository secrets in GitHub under `Settings -> Secrets and variables -> Actions`:
 
