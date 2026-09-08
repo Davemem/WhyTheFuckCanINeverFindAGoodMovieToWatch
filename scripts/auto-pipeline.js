@@ -1,4 +1,4 @@
-const { execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { loadEnv, getNumberArg } = require("./lib/common");
 const { createPool, applySchema } = require("./lib/ingest-db");
@@ -24,8 +24,11 @@ main().catch((error) => {
 async function main() {
   process.stdout.write("Starting automatic people pipeline worker...\n");
   const pool = createPool();
-  await applySchema(pool);
-  await pool.end();
+  try {
+    await applySchema(pool);
+  } finally {
+    await pool.end();
+  }
 
   try {
     await runScript("refresh-person-recognition.js");
@@ -65,6 +68,7 @@ async function main() {
           `--concurrency=${hydrateConcurrency}`,
           `--max-attempts=${hydrateMaxAttempts}`,
         ]);
+        await sleep(pollSeconds * 1000);
         continue;
       }
 
@@ -82,7 +86,7 @@ async function main() {
 function runScript(scriptName, args = []) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(projectRoot, "scripts", scriptName);
-    const child = execFile("node", [scriptPath, ...args], { cwd: projectRoot });
+    const child = spawn(process.execPath, [scriptPath, ...args], { cwd: projectRoot });
 
     child.stdout.on("data", (chunk) => {
       process.stdout.write(String(chunk));
@@ -109,8 +113,8 @@ async function countPending() {
       `
         SELECT COUNT(*)::bigint AS total
         FROM people_raw
-        WHERE status IN ('pending', 'failed')
-          AND attempts < $1
+        WHERE (status IN ('pending', 'failed') AND attempts < $1)
+          OR status = 'in_progress'
       `,
       [hydrateMaxAttempts],
     );

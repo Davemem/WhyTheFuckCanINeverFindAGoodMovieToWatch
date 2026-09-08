@@ -8,6 +8,7 @@
 
   const state = {
     session: null,
+    requestVersion: 0,
     config: null,
     isLoading: true,
     isSigningIn: false,
@@ -26,6 +27,7 @@
   loadSession({ preserveInfo: false });
 
   async function loadSession(options = {}) {
+    const version = ++state.requestVersion;
     state.isLoading = true;
     if (!options.preserveInfo) {
       state.info = "";
@@ -34,15 +36,18 @@
 
     try {
       const payload = await fetchJson("/api/auth/session");
+      if (version !== state.requestVersion) return;
       state.session = payload.session || { authenticated: false, user: null, expiresAt: null };
       state.config = payload.config || {};
       state.error = "";
       ensureGoogleClientReady();
     } catch (error) {
+      if (version !== state.requestVersion) return;
       state.session = { authenticated: false, user: null, expiresAt: null };
       state.config = {};
       state.error = error instanceof Error ? error.message : "Unable to load account state.";
     } finally {
+      if (version !== state.requestVersion) return;
       state.isLoading = false;
       state.isSigningIn = false;
       state.isLoggingOut = false;
@@ -71,6 +76,7 @@
     }
 
     if (action === "logout") {
+      const version = ++state.requestVersion;
       event.preventDefault();
       state.isLoggingOut = true;
       state.error = "";
@@ -82,11 +88,15 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reason: "user_initiated" }),
         });
+        if (version !== state.requestVersion) return;
         state.session = payload.session || { authenticated: false, user: null, expiresAt: null };
         state.info = "Signed out.";
       } catch (error) {
+        if (version !== state.requestVersion) return;
         state.error = error instanceof Error ? error.message : "Unable to sign out right now.";
       } finally {
+        if (version !== state.requestVersion) return;
+        state.isLoading = false;
         state.isLoggingOut = false;
       }
       render();
@@ -175,6 +185,7 @@
       return;
     }
 
+    const version = ++state.requestVersion;
     state.isSigningIn = true;
     state.error = "";
     state.info = "";
@@ -186,6 +197,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential }),
       });
+      if (version !== state.requestVersion) return;
       state.session = payload.session || {
         authenticated: true,
         user: payload.user || null,
@@ -195,6 +207,7 @@
       state.error = "";
       await loadSession({ preserveInfo: true });
     } catch (error) {
+      if (version !== state.requestVersion) return;
       state.isSigningIn = false;
       state.error = error instanceof Error ? error.message : "Unable to complete Google sign-in.";
       render();

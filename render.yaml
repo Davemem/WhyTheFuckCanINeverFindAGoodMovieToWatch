@@ -3,12 +3,12 @@ services:
     name: whythefuckcanineverfindagoodmovietowatch
     runtime: node
     plan: starter
-    buildCommand: yarn
+    buildCommand: npm ci && npm run check && npm test && npm run build:people-index && npm prune --omit=dev
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
-        value: 20.x
+        value: 22.x
       - key: TMDB_API_KEY
         sync: false
       - key: OMDB_API_KEY
@@ -31,11 +31,11 @@ services:
     name: whythefuckcanineverfindagoodmovietowatch-worker
     runtime: node
     plan: starter
-    buildCommand: yarn
+    buildCommand: npm ci && npm run check && npm test && npm prune --omit=dev
     startCommand: npm run pipeline:auto -- --ingest-every-hours=24 --poll-seconds=30 --batch-size=300 --concurrency=4 --max-attempts=4 --max-ids=100000
     envVars:
       - key: NODE_VERSION
-        value: 20.x
+        value: 22.x
       - key: TMDB_API_KEY
         sync: false
       - key: DATABASE_URL

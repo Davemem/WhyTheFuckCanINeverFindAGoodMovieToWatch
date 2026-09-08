@@ -59,9 +59,13 @@ function resolveDeployUrl(rawUrl) {
   }
 
   try {
-    return new URL(rawUrl);
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" || url.hostname !== "api.render.com") {
+      throw new Error("Untrusted deploy hook");
+    }
+    return url;
   } catch {
-    throw new Error(`Invalid Render deploy hook URL: ${rawUrl}`);
+    throw new Error("Invalid Render deploy hook URL. Expected an HTTPS hook on api.render.com.");
   }
 }
 
@@ -82,7 +86,7 @@ async function triggerDeploy(name, rawUrl, commit) {
   }
 
   const finalUrl = addCommitQuery(deployUrl, commit);
-  const response = await fetch(finalUrl, { method: "POST" });
+  const response = await fetch(finalUrl, { method: "POST", signal: AbortSignal.timeout(30000) });
   const body = await response.text();
 
   if (!response.ok) {
@@ -103,7 +107,10 @@ async function main() {
   const skipRemoteCheck = hasFlag("--skip-remote-check");
 
   if (!skipRemoteCheck) {
-    const remoteCommit = runGit(["rev-parse", `origin/${branch}`]);
+    if (runGit(["status", "--porcelain"])) {
+      throw new Error("Commit your working tree changes before deploying.");
+    }
+    const remoteCommit = runGit(["ls-remote", "--exit-code", "origin", `refs/heads/${branch}`]).split(/\s+/)[0];
 
     if (remoteCommit !== commit) {
       throw new Error(

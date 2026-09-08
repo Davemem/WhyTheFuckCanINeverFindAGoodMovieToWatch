@@ -88,6 +88,7 @@ const liveState = {
   hasOmdb: false,
   lastQueryKey: "",
   requestId: 0,
+  suggestionRequestId: 0,
   enrichRequestId: 0,
   enrichAttempts: new Map(),
   totalMatches: 0,
@@ -301,7 +302,14 @@ async function handleMovieFilterIntent(options = {}) {
 }
 
 async function updatePersonSuggestions() {
+  const requestId = ++liveState.suggestionRequestId;
   const query = elements.personSearch.value.trim();
+  const category = currentDiscoveryCategory();
+  const searchType = currentSearchType();
+  const isCurrent = () => requestId === liveState.suggestionRequestId
+    && query === elements.personSearch.value.trim()
+    && category === currentDiscoveryCategory()
+    && !liveState.exactMatch;
   if (query.length < 2) {
     elements.peopleSuggestions.replaceChildren();
     liveState.suggestionNames.clear();
@@ -313,12 +321,15 @@ async function updatePersonSuggestions() {
   }
 
   try {
-    const endpoint = currentSearchType() === "studio" ? "/api/studios" : "/api/people";
+    const endpoint = searchType === "studio" ? "/api/studios" : "/api/people";
     const params = new URLSearchParams({ query });
-    if (currentSearchType() === "person") {
-      params.set("department", currentDiscoveryCategory());
+    if (searchType === "person") {
+      params.set("department", category);
     }
     const payload = await fetchJson(`${endpoint}?${params.toString()}`);
+    if (!isCurrent()) {
+      return;
+    }
     elements.peopleSuggestions.replaceChildren();
     liveState.suggestionNames.clear();
     (payload.results || []).forEach((person) => {
@@ -333,6 +344,9 @@ async function updatePersonSuggestions() {
       renderEntityResults(liveState.entities, currentSearchType(), currentDiscoveryCategory());
     }
   } catch (error) {
+    if (!isCurrent()) {
+      return;
+    }
     elements.peopleSuggestions.replaceChildren();
     liveState.suggestionNames.clear();
   }
@@ -342,12 +356,12 @@ async function refreshMovies() {
   const state = getFilterState();
   updateUrlFromState(state);
   const queryKey = buildFetchKey(state);
-  const requestId = ++liveState.requestId;
 
   if (queryKey === liveState.lastQueryKey) {
     return;
   }
 
+  const requestId = ++liveState.requestId;
   liveState.lastQueryKey = queryKey;
   syncRangeLabels();
   syncMovieFilterState(state);
@@ -563,6 +577,11 @@ function hidePeopleResults() {
 }
 
 function renderIdleState() {
+  liveState.requestId += 1;
+  liveState.suggestionRequestId += 1;
+  liveState.enrichRequestId += 1;
+  liveState.lastQueryKey = "";
+  liveState.movies = [];
   liveState.renderToken += 1;
   setSearchMode(false);
   elements.resultsRail?.setAttribute("data-rail-content-kind", "movies");
@@ -605,6 +624,7 @@ async function loadDiscoveryDirectory(category) {
   updateDirectoryCopy(category);
 
   if (cachedPeople) {
+    elements.directoryGrid?.removeAttribute("aria-busy");
     renderDiscoveryDirectory(cachedPeople, category);
     return;
   }
@@ -679,9 +699,15 @@ function updateDirectoryCopy(category) {
 }
 
 function applyDevStatusVisibility() {
+  let storedDebug = false;
+  try {
+    storedDebug = window.localStorage.getItem(devStatusFlagKey) === "1";
+  } catch {
+    // Browsing still works when browser storage is disabled.
+  }
   const showDevStatus =
     new URLSearchParams(window.location.search).get("debug") === "1" ||
-    window.localStorage.getItem(devStatusFlagKey) === "1";
+    storedDebug;
 
   [elements.apiStatus, elements.indexStatus].forEach((element) => {
     const strip = element?.closest(".status-strip");
@@ -874,7 +900,11 @@ function syncWatchlistMovieDetails(enrichedById) {
   });
 
   if (changed) {
-    persistWatchlistMovies();
+    if (savedDataClient) {
+      savedDataClient.updateMovieDetails([...enrichedById.values()]);
+    } else {
+      persistWatchlistMovies();
+    }
   }
 }
 

@@ -16,10 +16,14 @@
     "hydrate:people": "node scripts/hydrate-people.js",
     "build:site-snapshots": "node scripts/build-site-snapshots.js",
     "pipeline:people": "npm run db:init && npm run ingest:person-ids && npm run refresh:recognition && npm run hydrate:people",
-    "pipeline:auto": "node scripts/auto-pipeline.js"
+    "pipeline:auto": "node scripts/auto-pipeline.js",
+    "check": "node scripts/check-js.js"
   },
   "dependencies": {
     "google-auth-library": "^10.6.2",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
   }
 }

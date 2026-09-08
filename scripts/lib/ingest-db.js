@@ -12,10 +12,14 @@ function createPool() {
     throw new Error("DATABASE_URL is required for Postgres ingestion.");
   }
 
-  return new Pool({
+  const pool = new Pool({
     connectionString,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 60000,
     ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
   });
+  pool.on("error", (error) => process.stderr.write(`Idle database connection failed: ${error.message}\n`));
+  return pool;
 }
 
 async function applySchema(pool) {

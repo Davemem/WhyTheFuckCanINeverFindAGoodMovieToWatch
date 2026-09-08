@@ -1,22 +1,72 @@
-name: Deploy to Render
+name: Check and deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    env:
-      RENDER_WEB_DEPLOY_HOOK_URL: ${{ secrets.RENDER_WEB_DEPLOY_HOOK_URL }}
-      RENDER_WORKER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK_URL }}
-    steps:
-      - name: Trigger Render web deploy
-        if: ${{ env.RENDER_WEB_DEPLOY_HOOK_URL != '' }}
-        run: curl --fail --silent --show-error --request POST "$RENDER_WEB_DEPLOY_HOOK_URL"
+permissions:
+  contents: read
 
-      - name: Trigger Render worker deploy
-        if: ${{ env.RENDER_WORKER_DEPLOY_HOOK_URL != '' }}
-        run: curl --fail --silent --show-error --request POST "$RENDER_WORKER_DEPLOY_HOOK_URL"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy-hooks: ${{ steps.hooks.outputs.configured }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moviepicker_test
+          POSTGRES_PASSWORD: moviepicker_test
+          POSTGRES_DB: moviepicker_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://moviepicker_test:moviepicker_test@localhost:5432/moviepicker_test
+      DATABASE_URL: ""
+      TMDB_API_KEY: ""
+      TMDB_BEARER_TOKEN: ""
+      OMDB_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Check deploy hook availability
+        id: hooks
+        env:
+          WEB_HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK_URL }}
+          WORKER_HOOK: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$WEB_HOOK" ] || [ -n "$WORKER_HOOK" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Render deploy hooks are not configured in GitHub. Use the local deploy script or Render's connected repository deployment."
+          fi
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && needs.test.outputs.deploy-hooks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Trigger Render deployments for the tested commit
+        env:
+          RENDER_WEB_DEPLOY_HOOK_URL: ${{ secrets.RENDER_WEB_DEPLOY_HOOK_URL }}
+          RENDER_WORKER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK_URL }}
+        run: npm run deploy:render -- --branch main --commit "$GITHUB_SHA" --skip-remote-check

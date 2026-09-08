@@ -15,6 +15,14 @@ main().catch((error) => {
 async function main() {
   const maxIds = getNumberArg("--max-ids", 100000);
   const pool = createPool();
+  try {
+    await ingest(pool, maxIds);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function ingest(pool, maxIds) {
   await applySchema(pool);
 
   const { stamp, rows: selected } = await downloadLatestPersonExportTopByPopularity(maxIds);
@@ -50,7 +58,7 @@ async function main() {
       popularity_export = EXCLUDED.popularity_export,
       source_export_date = EXCLUDED.source_export_date,
       status = CASE
-        WHEN people_raw.status IN ('complete', 'pending') THEN people_raw.status
+        WHEN people_raw.status IN ('complete', 'pending', 'in_progress') THEN people_raw.status
         ELSE 'pending'
       END,
       updated_at = NOW();
@@ -89,6 +97,5 @@ async function main() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }

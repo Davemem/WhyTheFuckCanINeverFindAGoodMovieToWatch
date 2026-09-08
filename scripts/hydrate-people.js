@@ -5,11 +5,12 @@ const {
   mapWithConcurrency,
 } = require("./lib/common");
 const { createPool, applySchema } = require("./lib/ingest-db");
+const { withHydrationLock } = require("./lib/hydration-lock");
 const { publishSiteSnapshot } = require("./lib/site-snapshots");
 
 loadEnv();
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
@@ -21,8 +22,16 @@ async function main() {
 
   const tmdb = createTmdbClient();
   const pool = createPool();
-  await applySchema(pool);
+  try {
+    await applySchema(pool);
+    const ran = await withHydrationLock(pool, () => hydrateBatch(pool, tmdb, { batchSize, concurrency, maxAttempts }));
+    if (!ran) process.stdout.write("Another hydration worker is already running.\n");
+  } finally {
+    await pool.end();
+  }
+}
 
+async function hydrateBatch(pool, tmdb, { batchSize, concurrency, maxAttempts }) {
   const queueResult = await pool.query(
     `
       SELECT person_id, attempts
@@ -38,7 +47,6 @@ async function main() {
 
   if (!queue.length) {
     process.stdout.write("No people queued for hydration.\n");
-    await pool.end();
     return;
   }
 
@@ -66,6 +74,7 @@ async function main() {
   const failures = [];
 
   try {
+    let commitQueue = Promise.resolve();
     const results = await mapWithConcurrency(queue, concurrency, async (row) => {
       const personId = Number(row.person_id);
       try {
@@ -73,7 +82,10 @@ async function main() {
           tmdb(`/person/${personId}`, { language: "en-US" }),
           tmdb(`/person/${personId}/movie_credits`, { language: "en-US" }),
         ]);
-        return { ok: true, personId, details, credits };
+        const commit = commitQueue.then(() => commitPerson(pool, { personId, details, credits }));
+        commitQueue = commit.catch(() => {});
+        await commit;
+        return { ok: true, personId };
       } catch (error) {
         return {
           ok: false,
@@ -85,7 +97,6 @@ async function main() {
 
     for (const result of results) {
       if (result.ok) {
-        await commitPerson(pool, result);
         successCount += 1;
       } else {
         await pool.query(
@@ -125,8 +136,6 @@ async function main() {
       [`error=${error instanceof Error ? error.message : String(error)}`, runId],
     );
     throw error;
-  } finally {
-    await pool.end();
   }
 }
 
@@ -278,3 +287,5 @@ async function upsertCredits(client, personId, credits, creditType) {
     );
   }
 }
+
+module.exports = { hydrateBatch, commitPerson };

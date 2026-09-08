@@ -9,6 +9,8 @@
   const importDecisionStorageKey = "wtfcineverfind-saved-import";
   const bannerRoots = [...document.querySelectorAll("[data-saved-sync-banner]")];
   const listeners = new Set();
+  let sessionVersion = 0;
+  let remoteQueue = Promise.resolve();
 
   const state = {
     authResolved: false,
@@ -46,11 +48,23 @@
     const session = event.detail?.session || null;
     state.csrfToken = session?.csrfToken || "";
     handleSessionChange(session).catch((error) => {
+      if (error.name === "AbortError") return;
       state.error = error instanceof Error ? error.message : "Unable to load saved data.";
       state.loading = false;
       state.source = "remote-error";
       emitChange();
     });
+  });
+
+  window.addEventListener("storage", (event) => {
+    if (event.key !== null && ![
+      watchlistStorageKey, watchlistMoviesStorageKey, savedPeopleStorageKey,
+      watchedStorageKey, watchedMoviesStorageKey, importDecisionStorageKey,
+    ].includes(event.key)) return;
+    loadLocalSnapshot();
+    if (!state.authenticated) applyLocalSnapshotToActiveState();
+    updateImportPrompt();
+    emitChange();
   });
 
   bannerRoots.forEach((root) => {
@@ -179,6 +193,20 @@
       ensureRemoteWritable();
       return removeRemotePerson(normalizedPersonId);
     },
+    updateMovieDetails(movies) {
+      if (state.authenticated) return;
+      for (const movie of movies) {
+        const normalized = normalizeMovie(movie);
+        if (!normalized) continue;
+        for (const collection of [state.watchlistMovies, state.watchedMovies]) {
+          if (collection.has(normalized.id)) {
+            collection.set(normalized.id, { ...collection.get(normalized.id), ...normalized });
+          }
+        }
+      }
+      syncActiveStateToLocalSnapshot();
+      persistLocalSnapshot();
+    },
     normalizePerson,
     async refresh() {
       if (!state.authenticated) {
@@ -200,7 +228,38 @@
     },
   };
 
+  // Serialize account operations so toggles use the last confirmed state and
+  // an older full-library response cannot erase a more recent save.
+  for (const name of ["toggleTitle", "removeTitle", "toggleWatched", "togglePerson", "removePerson", "refresh", "importLocalState"]) {
+    const operation = window.savedDataClient[name];
+    window.savedDataClient[name] = (...args) => state.authenticated
+      ? enqueueRemoteOperation(() => operation(...args))
+      : operation(...args);
+  }
+
+  if (window.moviePickerAuth?.session) {
+    void handleSessionChange(window.moviePickerAuth.session);
+  }
+
+  function assertCurrentSession(version) {
+    if (version !== sessionVersion) {
+      throw new DOMException("The account changed. Please try again.", "AbortError");
+    }
+  }
+
+  function enqueueRemoteOperation(operation) {
+    const version = sessionVersion;
+    const result = remoteQueue.then(() => {
+      assertCurrentSession(version);
+      return operation();
+    });
+    remoteQueue = result.catch(() => {});
+    return result;
+  }
+
   async function handleSessionChange(session) {
+    sessionVersion += 1;
+    remoteQueue = Promise.resolve();
     const isAuthenticated = Boolean(session?.authenticated && session?.user);
     state.authResolved = true;
     state.authenticated = isAuthenticated;
@@ -219,10 +278,16 @@
       return;
     }
 
-    await loadRemoteState({ preserveInfo: false });
+    state.watchlist.clear();
+    state.watchlistMovies.clear();
+    state.savedPeople.clear();
+    state.watched.clear();
+    state.watchedMovies.clear();
+    await enqueueRemoteOperation(() => loadRemoteState({ preserveInfo: false }));
   }
 
   async function loadRemoteState(options = {}) {
+    const version = sessionVersion;
     state.loading = true;
     state.source = "remote-loading";
     if (!options.preserveInfo) {
@@ -237,6 +302,7 @@
       state.error = "";
       updateImportPrompt();
     } catch (error) {
+      if (version !== sessionVersion) return getSnapshot();
       state.source = "remote-error";
       state.error = error instanceof Error ? error.message : "Unable to load account saves.";
       state.autoImportInFlight = false;
@@ -247,8 +313,10 @@
       state.watchedMovies = new Map();
       updateImportPrompt();
     } finally {
-      state.loading = false;
-      emitChange();
+      if (version === sessionVersion) {
+        state.loading = false;
+        emitChange();
+      }
     }
 
     return getSnapshot();
@@ -345,24 +413,37 @@
       return getSnapshot();
     }
 
+    const version = sessionVersion;
     state.autoImportInFlight = true;
+    updateImportPrompt();
+    emitChange();
 
     try {
-      const response = await fetchJson("/api/me/saved/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      applyRemotePayload(response);
+      const totals = { importedTitles: 0, importedPeople: 0, importedWatched: 0 };
+      const count = Math.max(payload.watchlistMovies.length, payload.watchedMovies.length, payload.savedPeople.length);
+      for (let offset = 0; offset < count; offset += 20) {
+        const response = await fetchJson("/api/me/saved/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            watchlistMovies: payload.watchlistMovies.slice(offset, offset + 20),
+            watchedMovies: payload.watchedMovies.slice(offset, offset + 20),
+            savedPeople: payload.savedPeople.slice(offset, offset + 20),
+          }),
+        });
+        applyRemotePayload(response);
+        for (const key of Object.keys(totals)) totals[key] += Number(response.imported?.[key] || 0);
+      }
       markImportDecision("imported");
-      state.info = `Synced ${response.imported?.importedTitles || 0} local title${(response.imported?.importedTitles || 0) === 1 ? "" : "s"} and ${response.imported?.importedPeople || 0} local people to your account.`;
+      state.info = `Synced ${totals.importedTitles} saved titles, ${totals.importedWatched} watched titles, and ${totals.importedPeople} people to your account.`;
       state.error = "";
-      updateImportPrompt();
-      emitChange();
       return getSnapshot();
     } finally {
-      state.autoImportInFlight = false;
+      if (version === sessionVersion) {
+        state.autoImportInFlight = false;
+        updateImportPrompt();
+        emitChange();
+      }
     }
   }
 
@@ -676,7 +757,7 @@
   }
 
   function normalizeMovie(movie) {
-    if (!movie || !Number.isFinite(Number(movie.id))) {
+    if (!movie || !Number.isSafeInteger(Number(movie.id)) || Number(movie.id) <= 0) {
       return null;
     }
     return {
@@ -767,6 +848,7 @@
   }
 
   async function fetchJson(url, options = {}) {
+    const version = sessionVersion;
     const method = String(options.method || "GET").toUpperCase();
     const headers = new Headers(options.headers || {});
     if (!headers.has("Accept")) {
@@ -782,6 +864,7 @@
       headers,
     });
     const payload = await response.json().catch(() => ({}));
+    assertCurrentSession(version);
     if (!response.ok) {
       throw new Error(payload.error || payload.detail || "Request failed");
     }

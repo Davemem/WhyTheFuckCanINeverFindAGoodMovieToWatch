@@ -19,6 +19,8 @@
 
   const state = {
     session: null,
+    version: 0,
+    revokingIds: new Set(),
     account: null,
     sessions: [],
     loading: false,
@@ -44,6 +46,10 @@
   }
 
   async function handleSessionResolved(session) {
+    state.version += 1;
+    state.account = null;
+    state.sessions = [];
+    state.revokingIds.clear();
     state.session = session;
     state.error = "";
     if (!session?.authenticated || !session.user) {
@@ -60,6 +66,7 @@
   }
 
   async function loadAccountData(options = {}) {
+    const version = state.version;
     if (!state.session?.authenticated || !state.session.user) {
       return;
     }
@@ -80,11 +87,14 @@
       state.sessions = Array.isArray(sessionsPayload?.sessions) ? sessionsPayload.sessions : [];
       state.error = "";
     } catch (error) {
+      if (version !== state.version || error.name === "AbortError") return;
       state.error = error instanceof Error ? error.message : "Unable to load account settings.";
     } finally {
-      state.loading = false;
-      state.revokingOthers = false;
-      render();
+      if (version === state.version) {
+        state.loading = false;
+        state.revokingOthers = false;
+        render();
+      }
     }
   }
 
@@ -94,6 +104,7 @@
       return;
     }
 
+    const version = state.version;
     state.revokingOthers = true;
     state.error = "";
     state.info = "";
@@ -109,6 +120,7 @@
       state.info = otherSessionCount === 1 ? "Signed out 1 other session." : `Signed out ${otherSessionCount} other sessions.`;
       await loadAccountData({ preserveInfo: true });
     } catch (error) {
+      if (version !== state.version || error.name === "AbortError") return;
       state.revokingOthers = false;
       state.error = error instanceof Error ? error.message : "Unable to sign out other sessions.";
       render();
@@ -122,10 +134,12 @@
     }
 
     const sessionId = Number(button.dataset.sessionRevokeId);
-    if (!Number.isInteger(sessionId) || sessionId <= 0 || button.disabled) {
+    if (!Number.isInteger(sessionId) || sessionId <= 0 || button.disabled || state.revokingIds.has(sessionId)) {
       return;
     }
 
+    const version = state.version;
+    state.revokingIds.add(sessionId);
     button.disabled = true;
     state.error = "";
     state.info = "";
@@ -139,9 +153,14 @@
       state.info = "Session signed out.";
       await loadAccountData({ preserveInfo: true });
     } catch (error) {
+      if (version !== state.version || error.name === "AbortError") return;
       state.error = error instanceof Error ? error.message : "Unable to sign out that session.";
-      button.disabled = false;
       render();
+    } finally {
+      if (version === state.version) {
+        state.revokingIds.delete(sessionId);
+        render();
+      }
     }
   }
 
@@ -266,7 +285,7 @@
             sessionEntry.isCurrent
               ? `<span class="ghost-button account-session-static-action" aria-disabled="true">This browser</span>`
               : `
-                <button type="button" class="ghost-button" data-session-revoke-id="${sessionEntry.id}">
+                <button type="button" class="ghost-button" data-session-revoke-id="${sessionEntry.id}" ${state.revokingIds.has(sessionEntry.id) ? "disabled" : ""}>
                   Sign out
                 </button>
               `
@@ -277,6 +296,7 @@
   }
 
   async function fetchJson(url, options = {}) {
+    const version = state.version;
     const method = String(options.method || "GET").toUpperCase();
     const headers = new Headers(options.headers || {});
     const csrfToken = state.session?.csrfToken || "";
@@ -293,6 +313,7 @@
       headers,
     });
     const payload = await response.json().catch(() => ({}));
+    if (version !== state.version) throw new DOMException("Account changed", "AbortError");
     if (!response.ok) {
       throw new Error(payload.error || "Request failed");
     }

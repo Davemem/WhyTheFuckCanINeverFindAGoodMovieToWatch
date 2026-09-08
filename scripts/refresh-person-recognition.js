@@ -7,7 +7,7 @@ const { createPool, applySchema } = require("./lib/ingest-db");
 
 loadEnv();
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
@@ -18,15 +18,15 @@ async function main() {
 
   const tmdb = createTmdbClient();
   const pool = createPool();
-  await applySchema(pool);
-
-  const runResult = await pool.query(
-    "INSERT INTO ingest_runs (run_type, status, notes) VALUES ($1, 'running', $2) RETURNING id",
-    ["refresh-person-recognition", `popular_pages=${popularPages};trending_pages=${trendingPages}`],
-  );
-  const runId = Number(runResult.rows[0].id);
-
+  let runId = null;
   try {
+    await applySchema(pool);
+    const runResult = await pool.query(
+      "INSERT INTO ingest_runs (run_type, status, notes) VALUES ($1, 'running', $2) RETURNING id",
+      ["refresh-person-recognition", `popular_pages=${popularPages};trending_pages=${trendingPages}`],
+    );
+    runId = Number(runResult.rows[0].id);
+
     const recognitionMap = new Map();
 
     await ingestPopular(tmdb, popularPages, recognitionMap);
@@ -48,46 +48,7 @@ async function main() {
       }))
       .filter((entry) => Number.isFinite(entry.personId));
 
-    await pool.query("DELETE FROM person_recognition");
-
-    const chunkSize = 1000;
-    for (let index = 0; index < rows.length; index += chunkSize) {
-      const chunk = rows.slice(index, index + chunkSize);
-      await pool.query(
-        `
-          INSERT INTO person_recognition (
-            person_id, popular_rank, trending_rank, recognition_score, source_json, updated_at
-          )
-          SELECT
-            x.person_id,
-            x.popular_rank,
-            x.trending_rank,
-            x.recognition_score,
-            x.source_json::jsonb,
-            NOW()
-          FROM UNNEST(
-            $1::bigint[],
-            $2::integer[],
-            $3::integer[],
-            $4::double precision[],
-            $5::text[]
-          ) AS x(person_id, popular_rank, trending_rank, recognition_score, source_json)
-          ON CONFLICT (person_id) DO UPDATE SET
-            popular_rank = EXCLUDED.popular_rank,
-            trending_rank = EXCLUDED.trending_rank,
-            recognition_score = EXCLUDED.recognition_score,
-            source_json = EXCLUDED.source_json,
-            updated_at = NOW()
-        `,
-        [
-          chunk.map((entry) => entry.personId),
-          chunk.map((entry) => entry.popularRank),
-          chunk.map((entry) => entry.trendingRank),
-          chunk.map((entry) => entry.recognitionScore),
-          chunk.map((entry) => entry.sourceJson),
-        ],
-      );
-    }
+    await replaceRecognition(pool, rows);
 
     await pool.query(
       "UPDATE ingest_runs SET finished_at = NOW(), status = 'complete', notes = $1 WHERE id = $2",
@@ -95,7 +56,7 @@ async function main() {
     );
     process.stdout.write(`Refreshed person recognition. rows=${rows.length}\n`);
   } catch (error) {
-    await pool.query(
+    if (runId !== null) await pool.query(
       "UPDATE ingest_runs SET finished_at = NOW(), status = 'failed', notes = $1 WHERE id = $2",
       [`error=${error instanceof Error ? error.message : String(error)}`, runId],
     );
@@ -163,3 +124,61 @@ function buildRecognitionScore(entry) {
   const popularityScore = Math.log10(Number(entry.popularity || 0) + 10) * 30;
   return Number((popularScore + trendingScore + popularityScore).toFixed(3));
 }
+
+async function replaceRecognition(pool, rows) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM person_recognition");
+
+    const chunkSize = 1000;
+    for (let index = 0; index < rows.length; index += chunkSize) {
+      const chunk = rows.slice(index, index + chunkSize);
+      await client.query(
+        `
+          INSERT INTO person_recognition (
+            person_id, popular_rank, trending_rank, recognition_score, source_json, updated_at
+          )
+          SELECT
+            x.person_id,
+            x.popular_rank,
+            x.trending_rank,
+            x.recognition_score,
+            x.source_json::jsonb,
+            NOW()
+          FROM UNNEST(
+            $1::bigint[],
+            $2::integer[],
+            $3::integer[],
+            $4::double precision[],
+            $5::text[]
+          ) AS x(person_id, popular_rank, trending_rank, recognition_score, source_json)
+          JOIN people p ON p.person_id = x.person_id
+          WHERE TRUE
+          ON CONFLICT (person_id) DO UPDATE SET
+            popular_rank = EXCLUDED.popular_rank,
+            trending_rank = EXCLUDED.trending_rank,
+            recognition_score = EXCLUDED.recognition_score,
+            source_json = EXCLUDED.source_json,
+            updated_at = NOW()
+        `,
+        [
+          chunk.map((entry) => entry.personId),
+          chunk.map((entry) => entry.popularRank),
+          chunk.map((entry) => entry.trendingRank),
+          chunk.map((entry) => entry.recognitionScore),
+          chunk.map((entry) => entry.sourceJson),
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { replaceRecognition };

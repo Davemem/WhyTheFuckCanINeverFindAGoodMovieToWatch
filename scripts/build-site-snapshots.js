@@ -11,9 +11,8 @@ main().catch((error) => {
 
 async function main() {
   const pool = createPool();
-  await applySchema(pool);
-
   try {
+    await applySchema(pool);
     const payload = await publishSiteSnapshot(pool);
 
     process.stdout.write(

@@ -195,7 +195,7 @@ Then run:
 npm run deploy:render
 ```
 
-The script checks that your local `HEAD` matches `origin/<current-branch>` before it triggers Render, which helps avoid trying to deploy a commit that has not been pushed yet.
+The script checks for a clean working tree and compares the requested commit with the current branch on GitHub before triggering Render. Hook requests have a 30-second timeout and deploy that exact commit.
 
 To deploy automatically from GitHub on every push to `main`, add these repository secrets in GitHub under `Settings -> Secrets and variables -> Actions`:
 
@@ -204,10 +204,28 @@ RENDER_WEB_DEPLOY_HOOK_URL=...
 RENDER_WORKER_DEPLOY_HOOK_URL=...
 ```
 
-This repo includes the workflow [deploy-render.yml](/Users/dave/Documents/Projects/moviePicker/.github/workflows/deploy-render.yml), which posts to those hooks on every push to `main` and also supports manual runs from the GitHub Actions tab.
+This repo includes the workflow [deploy-render.yml](.github/workflows/deploy-render.yml), which runs syntax, browser-state, API, and Postgres integration tests before posting the tested commit to configured deploy hooks. When no GitHub hooks are configured, the deployment job is explicitly skipped; use the local deploy script. Manual runs are also available from GitHub Actions.
 
 ## GitHub hosting
 
 This project can be pushed to a GitHub repository without changes.
 
 GitHub Pages is not enough to run the full app because the project depends on `server.js` for its API routes. To host the live app, use a platform that can run Node.js, such as Render, Railway, Fly.io, or Vercel with a serverless/API rewrite.
+
+## Validation and deployment checks
+
+```bash
+npm ci
+npm run check
+npm test
+```
+
+Browser regression tests use jsdom and mocked API responses. The Postgres integration suite runs only with an explicit `TEST_DATABASE_URL`; it creates and removes a temporary schema and never falls back to `DATABASE_URL`. GitHub Actions provisions its own disposable Postgres database for this suite.
+
+The Render configuration uses Node 22 and the npm lockfile. Both services run syntax and regression checks during builds. The web build also refreshes the local people index from a streamed TMDb export. If services were created manually, keep their build commands in sync with `render.yaml`; changing the file alone does not update those services.
+
+`GET /api/health` reports server readiness and the `RENDER_GIT_COMMIT` when available, so a live deployment can be checked against the pushed commit.
+
+Account imports run in batches of 20 records per collection, with each server request committed in one transaction. Google sign-in requires a verified email and preserves identity ownership by Google's subject identifier; a new subject cannot take over an existing account just by sharing its email address.
+
+The hydration worker uses a Postgres session lock to prevent overlapping batches. If a worker exits mid-batch, its lock is released and the next worker requeues unfinished records. Recognition updates are transactional and only include people already hydrated in the database.

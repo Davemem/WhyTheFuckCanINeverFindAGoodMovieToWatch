@@ -1,13 +1,14 @@
-const { execFile } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const zlib = require("node:zlib");
+const { downloadLatestPersonExportTopByPopularity, curlJson, loadEnv, getNumberArg } = require("./lib/common");
 
 const projectRoot = path.resolve(__dirname, "..");
 const cacheDir = path.join(projectRoot, ".cache");
 const fetchCacheDir = path.join(cacheDir, "people-index-fetch");
 const outputPath = path.join(cacheDir, "people-index-v1.json");
+loadEnv();
+
 const defaultMaxIds = Number(process.env.PEOPLE_INDEX_MAX_IDS || 1000);
 const defaultConcurrency = Number(process.env.PEOPLE_INDEX_CONCURRENCY || 4);
 const fetchTtlMs = 1000 * 60 * 60 * 24 * 7;
@@ -28,7 +29,6 @@ const writerJobs = new Set([
   "Characters",
 ]);
 
-loadEnv(path.join(projectRoot, ".env"));
 
 const tmdbToken = process.env.TMDB_BEARER_TOKEN || "";
 const tmdbApiKey = process.env.TMDB_API_KEY || "";
@@ -50,11 +50,7 @@ async function main() {
   const concurrency = getNumberArg("--concurrency", defaultConcurrency);
 
   process.stdout.write(`Building local people index for top ${maxIds} TMDb people.\n`);
-  const exportedPeople = await downloadLatestPersonExport();
-  const candidates = exportedPeople
-    .filter((person) => Number.isFinite(person.id))
-    .sort((left, right) => (right.popularity || 0) - (left.popularity || 0))
-    .slice(0, maxIds);
+  const { rows: candidates } = await downloadLatestPersonExportTopByPopularity(maxIds);
 
   process.stdout.write(`Hydrating ${candidates.length} people with concurrency ${concurrency}.\n`);
   const hydrated = await mapWithConcurrency(candidates, concurrency, hydratePersonForIndex);
@@ -93,7 +89,9 @@ async function main() {
     writers,
   };
 
-  fs.writeFileSync(outputPath, JSON.stringify(payload));
+  const temporaryPath = `${outputPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(payload));
+  fs.renameSync(temporaryPath, outputPath);
   process.stdout.write(
     `Wrote ${actors.length} actors, ${directors.length} directors, ${producers.length} producers, and ${writers.length} writers to ${outputPath}\n`,
   );
@@ -280,29 +278,6 @@ function compareIndexedPeople(left, right) {
   return left.name.localeCompare(right.name);
 }
 
-async function downloadLatestPersonExport() {
-  const today = new Date();
-  const candidates = Array.from({ length: 7 }, (_, offset) => addDays(today, -offset));
-
-  for (const date of candidates) {
-    const stamp = formatExportDate(date);
-    const url = `https://files.tmdb.org/p/exports/person_ids_${stamp}.json.gz`;
-    try {
-      process.stdout.write(`Trying TMDb person export ${stamp}...\n`);
-      const buffer = await curlBuffer(url);
-      const payload = zlib.gunzipSync(buffer).toString("utf8");
-      return payload
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error("Unable to download a recent TMDb person export.");
-}
-
 async function tmdb(endpoint) {
   const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
   if (tmdbApiKey) {
@@ -359,83 +334,6 @@ function fetchCacheFile(key) {
   return path.join(fetchCacheDir, `${digest}.json`);
 }
 
-function curlJson(url, headers) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-sS",
-      "-L",
-      "--connect-timeout",
-      "5",
-      "--max-time",
-      "20",
-      "--retry",
-      "2",
-      "--retry-delay",
-      "1",
-      "--retry-all-errors",
-      "-w",
-      "\n%{http_code}",
-    ];
-
-    Object.entries(headers || {}).forEach(([key, value]) => {
-      args.push("-H", `${key}: ${value}`);
-    });
-
-    args.push(url);
-
-    execFile("curl", args, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr || error.message));
-        return;
-      }
-
-      const trimmed = stdout.trimEnd();
-      const lastNewline = trimmed.lastIndexOf("\n");
-      const body = trimmed.slice(0, lastNewline);
-      const statusCode = Number(trimmed.slice(lastNewline + 1));
-      if (statusCode < 200 || statusCode >= 300) {
-        reject(new Error(`TMDb request failed for ${url}: ${statusCode}`));
-        return;
-      }
-
-      resolve(JSON.parse(body));
-    });
-  });
-}
-
-function curlBuffer(url) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-sS",
-      "-L",
-      "--connect-timeout",
-      "5",
-      "--max-time",
-      "30",
-      "--retry",
-      "2",
-      "--retry-delay",
-      "1",
-      "--retry-all-errors",
-      url,
-    ];
-
-    execFile(
-      "curl",
-      args,
-      { encoding: "buffer", maxBuffer: 1024 * 1024 * 200 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(stderr ? String(stderr) : error.message));
-          return;
-        }
-
-        resolve(stdout);
-      },
-    );
-  });
-}
-
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = [];
   let index = 0;
@@ -458,54 +356,6 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-function getNumberArg(flag, fallback) {
-  const match = process.argv.find((value) => value.startsWith(`${flag}=`));
-  if (!match) {
-    return fallback;
-  }
-
-  const value = Number(match.slice(flag.length + 1));
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function addDays(date, amount) {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + amount);
-  return next;
-}
-
-function formatExportDate(date) {
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const year = String(date.getUTCFullYear());
-  return `${month}_${day}_${year}`;
-}
-
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
-}
-
-function loadEnv(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return;
-  }
-
-  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      return;
-    }
-
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex === -1) {
-      return;
-    }
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
-  });
 }

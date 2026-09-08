@@ -673,13 +673,21 @@ async function ensureCatalogEnrichment(personId, startIndex, count) {
   personCatalogEnrichment.set(String(personId), pending);
 
   try {
-    const payload = await fetchJson(`/api/enrich?ids=${idsToFetch.join(",")}`);
-    const enrichedMovies = new Map((payload.movies || []).map((movie) => [movie.id, movie]));
-    const nextMovies = catalogState.movies.map((movie) => enrichedMovies.get(movie.id) || movie);
-    personCatalogCache.set(String(personId), {
-      ...catalogState,
-      movies: nextMovies,
-    });
+    for (let offset = 0; offset < idsToFetch.length; offset += 2) {
+      const batch = idsToFetch.slice(offset, offset + 2);
+      const payload = await fetchJson(`/api/enrich?ids=${batch.join(",")}`);
+      const enrichedMovies = new Map((payload.movies || []).map((movie) => [movie.id, movie]));
+      const latest = personCatalogCache.get(String(personId));
+      if (!latest) return;
+      personCatalogCache.set(String(personId), {
+        ...latest,
+        movies: latest.movies.map((movie) => {
+          const enriched = enrichedMovies.get(movie.id);
+          return enriched ? { ...movie, ...enriched, matchReason: movie.matchReason || enriched.matchReason } : movie;
+        }),
+      });
+      updatePersonRails(String(personId));
+    }
   } catch {
     // Keep base catalog cards visible even if enrichment fails.
   } finally {

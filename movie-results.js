@@ -20,6 +20,7 @@
   };
   let watchProviderDialog = null;
   let personPreviewDialog = null;
+  let personPreviewRequestId = 0;
 
   document.addEventListener("click", handleWatchProviderClick);
   document.addEventListener("click", handlePersonCreditClick);
@@ -526,6 +527,7 @@
   }
 
   async function openPersonPreview(name, category, trigger) {
+    const requestId = ++personPreviewRequestId;
     const dialog = ensurePersonPreviewDialog();
     dialog.dataset.triggerId = trigger?.id || "";
     renderPersonPreviewState(dialog, "Finding person…", `Looking up ${name} and their movies.`);
@@ -541,6 +543,7 @@
       if (!response.ok) {
         throw new Error(payload.error || "That person could not be loaded.");
       }
+      if (requestId !== personPreviewRequestId) return;
       const people = Array.isArray(payload.results) ? payload.results : [];
       const exactName = String(name || "").trim().toLowerCase();
       const person = people.find((entry) => String(entry.name || "").trim().toLowerCase() === exactName) || people[0];
@@ -550,6 +553,7 @@
       }
       renderPersonPreview(dialog, person, categoryFromDepartment(person.department, category));
     } catch (error) {
+      if (requestId !== personPreviewRequestId) return;
       renderPersonPreviewState(dialog, "Profile unavailable", error instanceof Error ? error.message : "Try again from Home.");
     }
   }
@@ -560,6 +564,8 @@
     }
     const dialog = document.createElement("dialog");
     dialog.className = "person-preview-dialog";
+    dialog.setAttribute("aria-label", "Person profile");
+    dialog.addEventListener("close", () => { personPreviewRequestId += 1; });
     dialog.innerHTML = `<div class="person-preview-shell" data-person-preview-content></div>`;
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog || event.target.closest("[data-close-person-preview]")) {
@@ -567,13 +573,16 @@
         return;
       }
       const saveButton = event.target.closest("[data-preview-save-person]");
-      if (saveButton && global.savedDataClient) {
+      if (saveButton && !saveButton.disabled && global.savedDataClient) {
+        saveButton.disabled = true;
         const person = JSON.parse(saveButton.dataset.previewSavePerson || "{}");
         global.savedDataClient.togglePerson(person).then(() => {
           const saved = global.savedDataClient.getSnapshot().savedPeople.some((entry) => String(entry.id) === String(person.id));
           saveButton.textContent = saved ? "Saved person ✓" : "Save person";
           saveButton.classList.toggle("is-saved", saved);
-        });
+        }).catch((error) => {
+          saveButton.textContent = error.message || "Unable to save. Try again.";
+        }).finally(() => { saveButton.disabled = false; });
       }
     });
     document.body.append(dialog);

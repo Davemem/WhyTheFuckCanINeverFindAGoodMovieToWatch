@@ -25,7 +25,7 @@ function loadEnv(filePath = path.join(projectRoot, ".env")) {
 
     const key = trimmed.slice(0, separatorIndex).trim();
     const value = trimmed.slice(separatorIndex + 1).trim();
-    if (!process.env[key]) {
+    if (!(key in process.env)) {
       process.env[key] = value;
     }
   });
@@ -62,7 +62,7 @@ function execCurl(args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile("curl", args, { maxBuffer: 1024 * 1024 * 50, ...options }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(stderr || error.message));
+        reject(new Error(`curl failed (code ${error.code || "unknown"})`));
         return;
       }
       resolve(stdout);
@@ -96,13 +96,13 @@ async function curlJson(url, headers = {}) {
   const trimmed = String(stdout).trimEnd();
   const lastNewline = trimmed.lastIndexOf("\n");
   if (lastNewline === -1) {
-    throw new Error(`Unexpected curl response for ${url}`);
+    throw new Error("Unexpected upstream response");
   }
 
   const body = trimmed.slice(0, lastNewline);
   const statusCode = Number(trimmed.slice(lastNewline + 1));
   if (statusCode < 200 || statusCode >= 300) {
-    throw new Error(`Request failed (${statusCode}) for ${url}`);
+    throw new Error(`Upstream request failed (${statusCode})`);
   }
 
   return JSON.parse(body);
@@ -233,6 +233,7 @@ function streamTopPeopleFromExport(url, maxIds) {
     const heap = [];
     let processed = 0;
     let curlExitCode = null;
+    let inputClosed = false;
     let curlStderr = "";
     let failed = false;
 
@@ -264,6 +265,11 @@ function streamTopPeopleFromExport(url, maxIds) {
 
     curl.on("close", (code) => {
       curlExitCode = code;
+      if (code !== 0) {
+        fail(new Error(curlStderr || `curl exited with code ${code}`));
+        return;
+      }
+      finish();
     });
 
     rl.on("line", (line) => {
@@ -306,18 +312,14 @@ function streamTopPeopleFromExport(url, maxIds) {
       minHeapifyDown(heap, 0);
     });
 
+    function finish() {
+      if (failed || !inputClosed || curlExitCode !== 0) return;
+      resolve([...heap].sort((left, right) => right.popularity - left.popularity));
+    }
+
     rl.on("close", () => {
-      if (failed) {
-        return;
-      }
-
-      if (curlExitCode !== 0) {
-        fail(new Error(curlStderr || `curl exited with code ${curlExitCode}`));
-        return;
-      }
-
-      const rows = [...heap].sort((left, right) => right.popularity - left.popularity);
-      resolve(rows);
+      inputClosed = true;
+      finish();
     });
   });
 }
@@ -391,7 +393,9 @@ module.exports = {
   ensureDir,
   getNumberArg,
   createTmdbClient,
+  curlJson,
   downloadLatestPersonExport,
   downloadLatestPersonExportTopByPopularity,
+  streamTopPeopleFromExport,
   mapWithConcurrency,
 };
