@@ -75,6 +75,7 @@ test("movie title search results are normalized into saveable watchlist records"
       rt: null,
       metacritic: null,
       tmdb: 7.9,
+      matchScore: 0,
       genres: [],
       genreIds: [18],
       cast: [],

@@ -9,7 +9,7 @@ const { replaceRecognition } = require("../scripts/refresh-person-recognition");
 const { withHydrationLock } = require("../scripts/lib/hydration-lock");
 const { hydrateBatch } = require("../scripts/hydrate-people");
 const { findOrCreateUserFromGoogleIdentity } = require("../lib/auth/user-store");
-const { importUserSavedState, getUserSavedState } = require("../lib/auth/saved-data-store");
+const { importUserSavedState, getUserSavedState, saveUserTitle, saveUserWatchedTitle, removeUserTitle, removeUserWatchedTitle } = require("../lib/auth/saved-data-store");
 
 // Never falls back to DATABASE_URL: these tests need an explicitly disposable DB.
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -27,6 +27,32 @@ test("Postgres account and pipeline integration", { skip: !connectionString }, a
   for (const file of ["ingest-schema.sql", "auth-schema.sql"]) {
     await pool.query(await fs.readFile(path.join(__dirname, "../scripts/sql", file), "utf8"));
   }
+
+  await t.test("legacy library migration preserves movies and separates TV saves with the same ID", async () => {
+    // Recreate the previous table shape inside this test's disposable schema.
+    await pool.query("ALTER TABLE user_saved_titles DROP COLUMN media_type");
+    await pool.query("ALTER TABLE user_saved_titles ADD CONSTRAINT user_saved_titles_user_id_movie_id_key UNIQUE (user_id, movie_id)");
+    const userId = (await pool.query("INSERT INTO users (email) VALUES ('legacy@example.test') RETURNING id")).rows[0].id;
+    await pool.query("INSERT INTO user_saved_titles (user_id, movie_id, movie_payload) VALUES ($1, 42, $2)",
+      [userId, JSON.stringify({ id: 42, title: "Existing movie", watched: true })]);
+    const migration = await fs.readFile(path.join(__dirname, "../scripts/sql/auth-schema.sql"), "utf8");
+    await pool.query(migration);
+    await pool.query(migration);
+    const queryDb = pool.query.bind(pool);
+    await saveUserTitle({ queryDb, userId, movie: { id: "tv:42", title: "New TV show" } });
+    await saveUserWatchedTitle({ queryDb, userId, movie: { id: "tv:42", title: "New TV show" } });
+    let saved = await getUserSavedState({ queryDb, userId });
+    assert.deepEqual(new Set(saved.watchlist), new Set([42, "tv:42"]));
+    assert.deepEqual(new Set(saved.watched), new Set([42, "tv:42"]));
+    await removeUserTitle({ queryDb, userId, movieId: "tv:42" });
+    saved = await getUserSavedState({ queryDb, userId });
+    assert.deepEqual(saved.watchlist, [42]);
+    assert.deepEqual(new Set(saved.watched), new Set([42, "tv:42"]));
+    await removeUserWatchedTitle({ queryDb, userId, movieId: "tv:42" });
+    saved = await getUserSavedState({ queryDb, userId });
+    assert.deepEqual(saved.watched, [42]);
+    assert.equal(saved.watchlistMovies[0].title, "Existing movie");
+  });
 
   await t.test("recognition tolerates unhydrated people and rolls back failed replacements", async () => {
     await pool.query("INSERT INTO people (person_id, name) VALUES (1, 'Known person')");

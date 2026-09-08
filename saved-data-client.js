@@ -109,8 +109,8 @@
       return saveRemoteTitle(normalizedMovie);
     },
     async removeTitle(movieId) {
-      const normalizedMovieId = Number(movieId);
-      if (!Number.isFinite(normalizedMovieId)) {
+      const normalizedMovieId = window.TitleIdentity.key(movieId);
+      if (!window.TitleIdentity.valid(normalizedMovieId)) {
         throw new Error("A valid movie id is required.");
       }
 
@@ -511,8 +511,8 @@
   function applyRemotePayload(payload) {
     state.watchlist = new Set(
       (Array.isArray(payload.watchlist) ? payload.watchlist : [])
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value)),
+        .map(window.TitleIdentity.key)
+        .filter(window.TitleIdentity.valid),
     );
     state.watchlistMovies = new Map(
       (Array.isArray(payload.watchlistMovies) ? payload.watchlistMovies : [])
@@ -528,8 +528,8 @@
     );
     state.watched = new Set(
       (Array.isArray(payload.watched) ? payload.watched : [])
-        .map(Number)
-        .filter(Number.isFinite),
+        .map(window.TitleIdentity.key)
+        .filter(window.TitleIdentity.valid),
     );
     state.watchedMovies = new Map(
       (Array.isArray(payload.watchedMovies) ? payload.watchedMovies : [])
@@ -757,12 +757,13 @@
   }
 
   function normalizeMovie(movie) {
-    if (!movie || !Number.isSafeInteger(Number(movie.id)) || Number(movie.id) <= 0) {
+    const identity = movie && window.TitleIdentity.identity(movie);
+    if (!identity) {
       return null;
     }
     return {
       ...movie,
-      id: Number(movie.id),
+      ...identity,
     };
   }
 
@@ -793,7 +794,7 @@
     try {
       const raw = window.localStorage.getItem(watchlistStorageKey);
       const parsed = raw ? JSON.parse(raw) : [];
-      return new Set(parsed.filter((value) => Number.isFinite(value)));
+      return new Set(parsed.map(window.TitleIdentity.key).filter(window.TitleIdentity.valid));
     } catch {
       return new Set();
     }
@@ -832,7 +833,7 @@
   function loadLocalWatched() {
     try {
       const parsed = JSON.parse(window.localStorage.getItem(watchedStorageKey) || "[]");
-      return new Set(parsed.map(Number).filter(Number.isFinite));
+      return new Set(parsed.map(window.TitleIdentity.key).filter(window.TitleIdentity.valid));
     } catch {
       return new Set();
     }

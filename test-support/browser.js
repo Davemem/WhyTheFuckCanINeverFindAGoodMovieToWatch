@@ -15,6 +15,7 @@ function browser(page = "index.html") {
   dom.window.Headers = Headers;
   dom.window.matchMedia = () => ({ matches: false, addEventListener() {} });
   dom.window.scrollTo = () => {};
+  vm.runInContext(fs.readFileSync(path.join(root, "title-identity.js"), "utf8"), dom.getInternalVMContext());
   return {
     dom,
     window: dom.window,

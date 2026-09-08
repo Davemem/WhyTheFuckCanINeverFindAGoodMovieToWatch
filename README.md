@@ -1,8 +1,14 @@
-# moviePicker
+# flickstuck
 
-Movie discovery app with a browser UI and a small Node server that serves the frontend and `/api/*` endpoints.
+Movie and TV discovery app with a browser UI and a small Node server that serves the frontend and `/api/*` endpoints.
 
-The home page is the single discovery surface: quick-add a known title, choose actors, writers, directors, producers, or studios to swap in that category's top 50 cards, then search a name and refine the resulting movies. Award searches verify OMDb summaries against established TMDb candidates. Older `/people.html` directory links redirect into the equivalent home-page state, while saved-person filmographies open in a focused modal rail.
+The home page is the single discovery surface: choose Movies, TV shows, or Both, quick-add a known title, or explore actors, writers, directors, producers, and studios. Award searches verify OMDb summaries against established TMDb candidates. Saved-person catalogues include movies and television. Older `/people.html` directory links redirect into the equivalent home-page state.
+
+TV cards show series creators, season and episode counts, status, first/last aired years, episode runtime, and available series ratings. Watched status applies to the whole series. Streaming availability is looked up separately for each media type and country.
+
+`GET /api/title-search?query=...&mediaType=movie|tv|both` searches the selected catalogues. `/api/discover` accepts the same media filter. Legacy `/api/movie-search` remains movie-only unless a media filter is supplied. TV enrichment and viewing links use IDs such as `tv:1396`; movie IDs remain numeric for compatibility. TV credits and details use cached live TMDb requests; the existing bulk people-ranking pipeline still ranks movie credits.
+
+On startup, when `DATABASE_URL` is configured, the server applies the idempotent account schema in a transaction before accepting requests. Existing saved records default to movies, and the new `(user_id, media_type, movie_id)` key lets movies and shows share a catalogue number safely. Browser storage keys and authentication cookies remain compatible with existing saves and sessions. The existing Render service and URL are retained for the flickstuck rebrand.
 
 ## Run locally
 

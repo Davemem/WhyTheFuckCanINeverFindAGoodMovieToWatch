@@ -17,6 +17,7 @@ const elements = {
   personSearch: document.querySelector("#person-search"),
   searchLabel: document.querySelector("#search-label"),
   searchType: document.querySelector("#search-type"),
+  mediaType: document.querySelector("#media-type"),
   awardFilter: document.querySelector("#award-filter"),
   peopleSuggestions: document.querySelector("#people-suggestions"),
   movieFilterGroup: document.querySelector("#movie-filter-group"),
@@ -67,6 +68,7 @@ let savedStateError = "";
 let bootstrapComplete = false;
 const liveState = {
   genres: [],
+  tvGenres: [],
   movies: [],
   entities: [],
   directoryCache: new Map(),
@@ -124,6 +126,7 @@ async function bootstrap() {
 
   const payload = await fetchJson("/api/bootstrap?mode=lite");
   liveState.genres = payload.genres || [];
+  liveState.tvGenres = payload.tvGenres || [];
   liveState.imageBaseUrl = payload.config?.imageBaseUrl || "";
   liveState.hasOmdb = Boolean(payload.config?.hasOmdb);
   liveState.hasLocalPeopleIndex = Boolean(payload.config?.hasLocalPeopleIndex);
@@ -146,10 +149,10 @@ async function bootstrap() {
   } else {
     if (liveState.hasOmdb) {
       elements.dataSource.innerHTML =
-        'Movies are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a> with <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a>.';
+        'Movies and TV shows are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a> with <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a>.';
     } else {
       elements.dataSource.innerHTML =
-        'Movies are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a>. Add <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a> to unlock IMDb, Rotten Tomatoes, and award filters.';
+        'Movies and TV shows are sourced live from <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDb</a>. Add <a href="https://www.omdbapi.com/" target="_blank" rel="noreferrer">OMDb</a> to unlock IMDb, Rotten Tomatoes, and award filters.';
     }
     elements.movieCount.textContent = "Live";
   }
@@ -180,12 +183,18 @@ async function bootstrap() {
 }
 
 function populateGenres() {
-  liveState.genres.forEach((genre) => {
+  const selected = elements.genreFilter.value || "all";
+  elements.genreFilter.replaceChildren(new Option("All genres", "all"));
+  const type = elements.mediaType?.value || "both";
+  const genres = type === "movie" ? liveState.genres : type === "tv" ? liveState.tvGenres
+    : [...new Map([...liveState.genres, ...liveState.tvGenres].map((genre) => [genre.id, genre])).values()];
+  genres.sort((a, b) => a.name.localeCompare(b.name)).forEach((genre) => {
     const option = document.createElement("option");
     option.value = String(genre.id);
     option.textContent = genre.name;
     elements.genreFilter.append(option);
   });
+  elements.genreFilter.value = [...elements.genreFilter.options].some((option) => option.value === selected) ? selected : "all";
 }
 
 function populateDecades() {
@@ -198,6 +207,14 @@ function populateDecades() {
 }
 
 function bindEvents() {
+  elements.mediaType?.addEventListener("change", () => {
+    liveState.requestId += 1;
+    liveState.enrichRequestId += 1;
+    liveState.lastQueryKey = "";
+    populateGenres();
+    window.dispatchEvent(new CustomEvent("titles:media-change", { detail: elements.mediaType.value }));
+    refreshMovies();
+  });
   debouncedMovieRefresh = debounce(() => {
     refreshMovies();
   }, 220);
@@ -409,6 +426,7 @@ async function refreshMovies() {
 
     const params = new URLSearchParams({
       query: state.personQuery,
+      mediaType: state.mediaType,
       searchType: state.searchType,
       exactMatch: state.exactMatch ? "1" : "0",
       role: state.role,
@@ -524,7 +542,7 @@ function renderMovies(movies) {
     totalMatches,
     summaryElement: elements.resultsSummary,
     summaryText: visibleMatches > 0 && totalMatches > visibleMatches
-      ? `Showing the top ${visibleMatches} of ${totalMatches} live movies that match your current filters.`
+      ? `Showing the top ${visibleMatches} of ${totalMatches} live titles that match your current filters.`
       : `${totalMatches} live movie${totalMatches === 1 ? "" : "s"} match your current filter stack.`,
     emptyTitle: "No live matches.",
     emptyMessage: "Broaden the filters or switch to a different person, studio, or award search.",
@@ -542,8 +560,8 @@ function renderEntityResults(entities, searchType, category) {
   elements.peopleResultsGrid.replaceChildren();
   const total = liveState.entitySearch.total || entities.length;
   const selectionPrompt = searchType === "studio"
-    ? "Choose a studio to apply the movie filters below."
-    : `Choose ${categoryCopy(category).article} ${categoryCopy(category).singular.toLowerCase()} to apply the movie filters below.`;
+    ? "Choose a studio to apply the title filters below."
+    : `Choose ${categoryCopy(category).article} ${categoryCopy(category).singular.toLowerCase()} to apply the title filters below.`;
   elements.peopleResultsTitle.textContent = searchType === "studio"
     ? `Studios matching "${elements.personSearch.value.trim()}"`
     : `${categoryCopy(category).plural} matching "${elements.personSearch.value.trim()}"`;
@@ -564,7 +582,7 @@ function renderEntityResults(entities, searchType, category) {
     const categoryEntity = { ...entity, department: categoryCopy(category).department };
     elements.peopleResultsGrid.append(buildDirectoryPersonCard(
       categoryEntity,
-      searchType === "studio" ? "Show studio movies" : `Show ${categoryCopy(category).singular.toLowerCase()} movies`,
+      searchType === "studio" ? "Show studio titles" : `Show ${categoryCopy(category).singular.toLowerCase()} titles`,
     ));
   });
 }
@@ -588,7 +606,7 @@ function renderIdleState() {
   elements.resultsGrid.classList.remove("is-entity-results");
   resetEntityPagination();
   elements.resultsGrid.replaceChildren();
-  elements.resultsTitle.textContent = "Movies selected by the people behind them";
+  elements.resultsTitle.textContent = "Titles selected by the people behind them";
   elements.resultsSummary.textContent = "Start with a person, studio, award, genre, decade, or rating filter.";
   syncMovieFilterState();
 }
@@ -653,7 +671,7 @@ async function loadDiscoveryDirectory(category) {
     appendMessageState(emptyState, `${copy.plural} are unavailable right now.`, error.message);
     elements.directoryGrid?.append(emptyState);
     if (elements.directorySummary) {
-      elements.directorySummary.textContent = "The rest of movie discovery is still available.";
+      elements.directorySummary.textContent = "The rest of title discovery is still available.";
     }
   } finally {
     if (requestId === liveState.directoryRequestId) {
@@ -676,7 +694,7 @@ function renderDiscoveryDirectory(people, category) {
       const categoryPerson = { ...person, department: copy.department };
       fragment.append(buildDirectoryPersonCard(
         categoryPerson,
-        category === "studios" ? "Show studio movies" : `Show ${copy.singular.toLowerCase()} movies`,
+        category === "studios" ? "Show studio titles" : `Show ${copy.singular.toLowerCase()} titles`,
       ));
     });
     elements.directoryGrid?.append(fragment);
@@ -767,7 +785,7 @@ function pickRandomName(list, key, salt = 0) {
   return list[start] || list[0] || "";
 }
 
-function buildDirectoryPersonCard(person, openLabel = "Show matching movies") {
+function buildDirectoryPersonCard(person, openLabel = "Show matching titles") {
   const fragment = elements.peopleTemplate.content.cloneNode(true);
   const article = fragment.querySelector(".person-card");
   const portrait = fragment.querySelector(".person-card-portrait");
@@ -920,7 +938,7 @@ function renderLoadingState(state = getFilterState()) {
   const loadingState = document.createElement("div");
   loadingState.className = "empty-state";
   loadingState.innerHTML = state.award !== "all"
-    ? "<h3>Checking award records...</h3><p>Comparing established films with verified award summaries.</p>"
+    ? "<h3>Checking award records...</h3><p>Comparing established titles with verified award summaries.</p>"
     : "<h3>Loading live results...</h3><p>Fetching fresh credits and ratings.</p>";
   elements.resultsGrid.append(loadingState);
 }
@@ -1016,7 +1034,7 @@ function handleWatchlistAction(event) {
     return;
   }
 
-  const movieId = Number(button.dataset.watchlistId);
+  const movieId = window.TitleIdentity.key(button.dataset.watchlistId);
   const movie = [...liveState.movies, ...watchlistMovies.values()].find((entry) => entry.id === movieId);
   if (savedDataClient) {
     savedDataClient.toggleTitle(movie || { id: movieId }).catch((error) => {
@@ -1045,9 +1063,9 @@ function handleWatchedAction(event) {
   if (!button || button.disabled || !savedDataClient) {
     return;
   }
-  const movieId = Number(button.dataset.watchedId);
+  const movieId = window.TitleIdentity.key(button.dataset.watchedId);
   let movie = [...liveState.movies, ...watchlistMovies.values(), ...watchedMovies.values()]
-    .find((entry) => Number(entry.id) === movieId);
+    .find((entry) => window.TitleIdentity.key(entry.id) === movieId);
   if (!movie) {
     try {
       movie = JSON.parse(button.dataset.watchedMovie || "{}");
@@ -1085,6 +1103,7 @@ function resetFilters() {
 function getFilterState() {
   const category = currentDiscoveryCategory();
   return {
+    mediaType: elements.mediaType?.value || "both",
     personQuery: elements.personSearch.value.trim(),
     category,
     searchType: category === "studios" ? "studio" : "person",
@@ -1102,6 +1121,7 @@ function getFilterState() {
 function buildFetchKey(state) {
   const entitySelectionMode = isEntitySelectionMode(state);
   return JSON.stringify({
+    mediaType: state.mediaType,
     category: state.category,
     personQuery: state.personQuery,
     searchType: state.searchType,
@@ -1117,6 +1137,9 @@ function buildFetchKey(state) {
 
 function applyStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
+  if (elements.mediaType) elements.mediaType.value = window.TitleIdentity.mediaFilter(params.get("mediaType"));
+  populateGenres();
+  window.dispatchEvent(new CustomEvent("titles:media-change", { detail: elements.mediaType?.value || "both" }));
   const personQuery = params.get("query") || params.get("person") || "";
   const category = discoveryCategoryFromParams(params);
   const exactMatch = params.get("exactMatch") === "1";
@@ -1150,6 +1173,7 @@ function applyStateFromUrl() {
 
 function updateUrlFromState(state) {
   const params = new URLSearchParams();
+  params.set("mediaType", state.mediaType);
 
   if (state.category !== "actors") {
     params.set("category", state.category);
@@ -1277,6 +1301,7 @@ function categoryCopy(category) {
 function hasMovieDiscoveryCriteria(state = getFilterState()) {
   return Boolean(
     state.personQuery
+      || state.mediaType !== "both"
       || state.genre !== "all"
       || state.decade !== "all"
       || state.imdbMin > 0
@@ -1322,7 +1347,7 @@ function syncMovieFilterState(state = getFilterState()) {
   if (elements.movieFilterHelper) {
     elements.movieFilterHelper.textContent = pendingSelection
       ? `These settings are queued and will apply after you choose ${copy.article} ${copy.singular.toLowerCase()}.`
-      : "These filters are applied to the movie results below.";
+      : "These filters are applied to the title results below.";
   }
 }
 
@@ -1333,27 +1358,27 @@ function buildResultsTitle(payload) {
     if (award !== "all") {
       return awardResultsTitle(award);
     }
-    return "Movies selected by the people behind them";
+    return "Titles selected by the people behind them";
   }
   if (matchedEntity.type === "studio") {
-    return `Movies from "${matchedEntity.name}"`;
+    return `Titles from "${matchedEntity.name}"`;
   }
-  return `Movies connected to "${matchedEntity.name}"`;
+  return `Titles connected to "${matchedEntity.name}"`;
 }
 
 function awardResultsTitle(award) {
   return {
-    "winner:any": "Award-winning movies",
-    "nominee:any": "Award-nominated movies",
-    "winner:oscar": "Oscar-winning movies",
-    "nominee:oscar": "Oscar-nominated movies",
-    "winner:emmy": "Emmy-winning movies",
-    "nominee:emmy": "Emmy-nominated movies",
-    "winner:golden-globe": "Golden Globe-winning movies",
-    "nominee:golden-globe": "Golden Globe-nominated movies",
-    "winner:bafta": "BAFTA-winning movies",
-    "nominee:bafta": "BAFTA-nominated movies",
-  }[award] || "Award-recognised movies";
+    "winner:any": "Award-winning titles",
+    "nominee:any": "Award-nominated titles",
+    "winner:oscar": "Oscar-winning titles",
+    "nominee:oscar": "Oscar-nominated titles",
+    "winner:emmy": "Emmy-winning titles",
+    "nominee:emmy": "Emmy-nominated titles",
+    "winner:golden-globe": "Golden Globe-winning titles",
+    "nominee:golden-globe": "Golden Globe-nominated titles",
+    "winner:bafta": "BAFTA-winning titles",
+    "nominee:bafta": "BAFTA-nominated titles",
+  }[award] || "Award-recognised titles";
 }
 
 async function fetchJson(url, options = {}) {
@@ -1427,6 +1452,7 @@ function compareMovies(left, right, sortBy) {
       return compareNumber(right.year, left.year, right, left);
     case "match":
     default:
+      if ((right.matchScore || 0) !== (left.matchScore || 0)) return (right.matchScore || 0) - (left.matchScore || 0);
       return compareNumber(
         right.imdb ?? right.rt ?? right.tmdb ?? right.year,
         left.imdb ?? left.rt ?? left.tmdb ?? left.year,
@@ -1456,7 +1482,7 @@ function loadWatchlist() {
   try {
     const raw = window.localStorage.getItem(watchlistStorageKey);
     const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(parsed.filter((value) => Number.isFinite(value)));
+    return new Set(parsed.map(window.TitleIdentity.key).filter(window.TitleIdentity.valid));
   } catch {
     return new Set();
   }
@@ -1615,15 +1641,15 @@ function handleSavedDataUpdate(snapshot) {
 function syncSavedCollections(snapshot) {
   watchlist.clear();
   (snapshot.watchlistIds || []).forEach((movieId) => {
-    if (Number.isFinite(Number(movieId))) {
-      watchlist.add(Number(movieId));
+    if (window.TitleIdentity.valid(movieId)) {
+      watchlist.add(window.TitleIdentity.key(movieId));
     }
   });
 
   watchlistMovies.clear();
   (snapshot.watchlistMovies || []).forEach((movie) => {
-    if (movie && Number.isFinite(Number(movie.id))) {
-      watchlistMovies.set(Number(movie.id), movie);
+    if (movie && window.TitleIdentity.valid(movie)) {
+      watchlistMovies.set(window.TitleIdentity.key(movie.id), movie);
     }
   });
 
@@ -1636,14 +1662,14 @@ function syncSavedCollections(snapshot) {
 
   watched.clear();
   (snapshot.watchedIds || []).forEach((movieId) => {
-    if (Number.isFinite(Number(movieId))) {
-      watched.add(Number(movieId));
+    if (window.TitleIdentity.valid(movieId)) {
+      watched.add(window.TitleIdentity.key(movieId));
     }
   });
   watchedMovies.clear();
   (snapshot.watchedMovies || []).forEach((movie) => {
-    if (movie && Number.isFinite(Number(movie.id))) {
-      watchedMovies.set(Number(movie.id), movie);
+    if (movie && window.TitleIdentity.valid(movie)) {
+      watchedMovies.set(window.TitleIdentity.key(movie.id), movie);
     }
   });
   if (elements.watchedCount) {

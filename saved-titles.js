@@ -11,6 +11,7 @@ const elements = {
   search: document.querySelector("#saved-titles-search"),
   sort: document.querySelector("#saved-titles-sort"),
   watchedFilter: document.querySelector("#saved-titles-watched-filter"),
+  mediaType: document.querySelector("#saved-titles-media-type"),
   grid: document.querySelector("#saved-titles-grid"),
   template: document.querySelector("#movie-card-template"),
   notice: document.querySelector("[data-saved-title-notice]"),
@@ -27,6 +28,7 @@ const viewState = {
   query: "",
   sort: "recent",
   watchedFilter: "all",
+  mediaType: "both",
 };
 let savedStateSource = "local";
 let savedStateError = "";
@@ -34,6 +36,10 @@ let lastRemovedMovie = null;
 let noticeTimeoutId = 0;
 
 elements.grid?.addEventListener("click", handleGridClick);
+elements.mediaType?.addEventListener("change", () => {
+  viewState.mediaType = elements.mediaType.value;
+  renderSavedTitlesPage();
+});
 elements.search?.addEventListener("input", () => {
   viewState.query = elements.search.value.trim();
   renderSavedTitlesPage();
@@ -64,7 +70,8 @@ if (savedDataClient) {
 function renderSavedTitlesPage() {
   const allMovies = getSavedMovies();
   const visibleMovies = sortMovies(
-    allMovies.filter((movie) => movieMatchesQuery(movie, viewState.query) && movieMatchesWatchedFilter(movie)),
+    allMovies.filter((movie) => movieMatchesQuery(movie, viewState.query) && movieMatchesWatchedFilter(movie)
+      && (viewState.mediaType === "both" || window.TitleIdentity.identity(movie)?.mediaType === viewState.mediaType)),
     viewState.sort,
   );
 
@@ -81,7 +88,7 @@ function renderSavedTitlesPage() {
     elements.grid.append(buildEmptyState(
       "No saved titles yet",
       "Quick-add a title from Home or save one from discovery and it will appear here.",
-      { linkHref: "/", linkLabel: "Find a movie" },
+      { linkHref: "/", linkLabel: "Find something to watch" },
     ));
     return;
   }
@@ -167,7 +174,7 @@ function renderStatus(total, visible) {
   }
 
   const noun = total === 1 ? "title" : "titles";
-  elements.viewStatus.textContent = viewState.query || viewState.watchedFilter !== "all"
+  elements.viewStatus.textContent = viewState.query || viewState.watchedFilter !== "all" || viewState.mediaType !== "both"
     ? `Showing ${visible} of ${total} ${noun} in your library.`
     : `${total} ${noun} in your library.`;
 }
@@ -177,10 +184,10 @@ function buildMovieCard(movie) {
     extraClass: "saved-title-card",
     hideMatchReason: true,
     allowToggleSave: true,
-    forceSavedButton: watchlist.has(Number(movie.id)),
-    isSaved: watchlist.has(Number(movie.id)),
-    savedButtonLabel: watchlist.has(Number(movie.id)) ? "Remove title" : "Save title",
-    isWatched: watched.has(Number(movie.id)),
+    forceSavedButton: watchlist.has(window.TitleIdentity.key(movie.id)),
+    isSaved: watchlist.has(window.TitleIdentity.key(movie.id)),
+    savedButtonLabel: watchlist.has(window.TitleIdentity.key(movie.id)) ? "Remove title" : "Save title",
+    isWatched: watched.has(window.TitleIdentity.key(movie.id)),
   });
 
   const article = fragment.querySelector(".movie-card");
@@ -200,7 +207,7 @@ function buildMovieCard(movie) {
     synopsisButton.setAttribute("aria-expanded", "false");
   }
   if (removeButton) {
-    const isSaved = watchlist.has(Number(movie.id));
+    const isSaved = watchlist.has(window.TitleIdentity.key(movie.id));
     removeButton.textContent = isSaved ? "Remove" : "Save title";
     removeButton.setAttribute("aria-label", `${isSaved ? "Remove" : "Save"} ${movie.title || "this title"} ${isSaved ? "from" : "to"} your watchlist`);
   }
@@ -231,7 +238,7 @@ function handleGridClick(event) {
 
   const watchedButton = event.target.closest("[data-watched-id]");
   if (watchedButton && savedDataClient) {
-    const movieId = Number(watchedButton.dataset.watchedId);
+    const movieId = window.TitleIdentity.key(watchedButton.dataset.watchedId);
     const movie = watchlistMovies.get(movieId) || watchedMovies.get(movieId);
     if (movie) {
       savedDataClient.toggleWatched(movie).catch((error) => {
@@ -246,7 +253,7 @@ function handleGridClick(event) {
     return;
   }
 
-  const movieId = Number(movieButton.dataset.watchlistId);
+  const movieId = window.TitleIdentity.key(movieButton.dataset.watchlistId);
   if (watchlist.has(movieId)) {
     removeSavedTitle(movieId, movieButton);
   } else {
@@ -317,8 +324,8 @@ async function handleUndoRemoval() {
     if (savedDataClient) {
       await savedDataClient.toggleTitle(movie);
     } else {
-      watchlist.add(Number(movie.id));
-      watchlistMovies.set(Number(movie.id), movie);
+      watchlist.add(window.TitleIdentity.key(movie.id));
+      watchlistMovies.set(window.TitleIdentity.key(movie.id), movie);
       persistWatchlist();
       persistWatchlistMovies();
       renderSavedTitlesPage();
@@ -359,6 +366,8 @@ function hideUndoNotice() {
 function clearFilters() {
   viewState.query = "";
   viewState.watchedFilter = "all";
+  viewState.mediaType = "both";
+  if (elements.mediaType) elements.mediaType.value = "both";
   if (elements.search) {
     elements.search.value = "";
     elements.search.focus();
@@ -469,7 +478,7 @@ function loadWatchlist() {
   try {
     const raw = window.localStorage.getItem(watchlistStorageKey);
     const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(parsed.filter((value) => Number.isFinite(value)));
+    return new Set(parsed.map(window.TitleIdentity.key).filter(window.TitleIdentity.valid));
   } catch {
     return new Set();
   }
@@ -481,7 +490,7 @@ function loadWatchlistMovies() {
     const parsed = raw ? JSON.parse(raw) : [];
     return new Map(
       parsed
-        .filter((entry) => entry && Number.isFinite(entry.id))
+        .filter((entry) => entry && window.TitleIdentity.valid(entry))
         .map((entry) => [entry.id, entry]),
     );
   } catch {
@@ -508,29 +517,29 @@ function syncSavedCollections(snapshot) {
 
   watchlist.clear();
   (snapshot.watchlistIds || []).forEach((movieId) => {
-    if (Number.isFinite(Number(movieId))) {
-      watchlist.add(Number(movieId));
+    if (window.TitleIdentity.valid(movieId)) {
+      watchlist.add(window.TitleIdentity.key(movieId));
     }
   });
 
   watchlistMovies.clear();
   (snapshot.watchlistMovies || []).forEach((movie) => {
-    if (movie && Number.isFinite(Number(movie.id))) {
-      watchlistMovies.set(Number(movie.id), movie);
+    if (movie && window.TitleIdentity.valid(movie)) {
+      watchlistMovies.set(window.TitleIdentity.key(movie.id), movie);
     }
   });
   watched.clear();
-  (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
+  (snapshot.watchedIds || []).forEach((movieId) => watched.add(window.TitleIdentity.key(movieId)));
   watchedMovies.clear();
-  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(Number(movie.id), movie));
+  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(window.TitleIdentity.key(movie.id), movie));
 }
 
 function movieMatchesWatchedFilter(movie) {
   if (viewState.watchedFilter === "watched") {
-    return watched.has(Number(movie.id));
+    return watched.has(window.TitleIdentity.key(movie.id));
   }
   if (viewState.watchedFilter === "unwatched") {
-    return !watched.has(Number(movie.id));
+    return !watched.has(window.TitleIdentity.key(movie.id));
   }
   return true;
 }
@@ -560,7 +569,7 @@ async function fetchJson(url) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || payload.detail || "Movie search request failed.");
+    throw new Error(payload.error || payload.detail || "Title search request failed.");
   }
   return payload;
 }

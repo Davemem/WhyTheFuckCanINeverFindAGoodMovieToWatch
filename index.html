@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Movie Selector</title>
+    <title>flickstuck — find your next movie or TV show</title>
     <meta
       name="description"
-      content="Discover movies by the people, writers, studios, and award pedigree behind them, with ratings-first filters and secondary genre and year controls."
+      content="Stuck on what to watch? Discover movies and TV shows through the actors, creators, writers, and studios you love. Save your next watch with flickstuck."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,12 +14,13 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260905a" />
+    <link rel="stylesheet" href="./styles.css?v=20260908a" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
+        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck</a>
         <nav class="title-bar-nav" aria-label="Primary">
           <a class="is-active" href="/" aria-current="page">Home</a>
           <a href="/saved.html">Saved People</a>
@@ -31,16 +32,14 @@
       <section class="saved-sync-banner" data-saved-sync-banner hidden></section>
       <header class="hero" id="home">
         <div class="hero-copy">
-          <h1 class="hero-marquee" aria-label="Movie Selector">
-            <span>Movie</span>
-            <span>Selector</span>
+          <h1 class="hero-marquee flickstuck-marquee" aria-label="flickstuck">
+            <span>flickstuck</span>
           </h1>
           <p class="hero-text">
-            Can't find a movie after endlessly browsing? Find new (and old)
-            movies by searching the filmographies of actors, directors,
-            producers, and writers you already know and love. Pick one path,
-            browse 50 fresh suggestions, or search a name directly—then tighten the list
-            by ratings, genre, and release year.
+            Stuck on what to watch? Find your next movie or TV show through
+            the actors, writers, directors, and producers you already love.
+            Explore a familiar name, browse fresh suggestions, or search a title—then
+            narrow it down by ratings, genre, and year.
           </p>
           <p id="data-source" class="hero-subtext">
             Live data will load here once the TMDb and OMDb keys are configured.
@@ -65,7 +64,7 @@
           </div>
         </div>
 
-        <section class="filter-panel" aria-label="Movie filters">
+        <section class="filter-panel" aria-label="Title filters">
           <div class="filter-panel-header">
             <h2>Find something worth watching</h2>
             <button id="reset-button" type="button" class="ghost-button">
@@ -74,6 +73,14 @@
           </div>
 
           <form id="filters-form">
+            <label class="field media-type-field">
+              <span>What would you like to watch?</span>
+              <select id="media-type" name="media-type">
+                <option value="both">Movies &amp; TV shows</option>
+                <option value="movie">Movies</option>
+                <option value="tv">TV shows</option>
+              </select>
+            </label>
             <section class="filter-group" aria-labelledby="discovery-filters-heading">
               <div class="field-row">
                 <span class="filter-group-title" id="discovery-filters-heading">Discovery search</span>
@@ -106,7 +113,7 @@
 
             <section class="filter-group movie-filter-group" id="movie-filter-group" aria-labelledby="movie-filters-heading">
               <div class="field-row">
-                <span class="filter-group-title" id="movie-filters-heading">Movie filters</span>
+                <span class="filter-group-title" id="movie-filters-heading">Title filters</span>
                 <strong id="movie-filter-helper" class="field-helper">These apply once you pick a specific actor.</strong>
               </div>
 
@@ -125,7 +132,7 @@
                   <option value="winner:bafta">BAFTA winner</option>
                   <option value="nominee:bafta">BAFTA nominated</option>
                 </select>
-                <small class="field-note">Searches verified award summaries and favours established films.</small>
+                <small class="field-note">Searches verified award summaries and favours established titles.</small>
               </label>
 
               <div class="field-grid">
@@ -201,11 +208,17 @@
         <section class="catalog-section title-quick-add home-quick-add" aria-labelledby="title-quick-add-heading">
           <div class="title-quick-add-copy">
             <p class="section-label">Quick add</p>
-            <h2 id="title-quick-add-heading">Already know the movie?</h2>
+            <h2 id="title-quick-add-heading">Already have a title in mind?</h2>
             <p>Search by title and save it straight to your watchlist.</p>
           </div>
           <form id="title-catalog-search-form" class="title-catalog-search-form" role="search">
-            <label for="title-catalog-search">Movie title</label>
+            <label for="title-search-media-type">Search in</label>
+            <select id="title-search-media-type">
+              <option value="both">Movies &amp; TV shows</option>
+              <option value="movie">Movies</option>
+              <option value="tv">TV shows</option>
+            </select>
+            <label for="title-catalog-search">Movie or TV show title</label>
             <div class="title-catalog-search-controls">
               <input
                 id="title-catalog-search"
@@ -218,7 +231,7 @@
             </div>
           </form>
           <p id="title-catalog-search-status" class="title-catalog-search-status" aria-live="polite">
-            Enter a movie title to add it without building a discovery search.
+            Enter a movie or TV show title to add it without building a discovery search.
           </p>
           <div id="title-catalog-search-results" class="title-catalog-search-results" hidden></div>
         </section>
@@ -250,7 +263,7 @@
           <div class="results-header">
             <div>
               <p class="section-label">Results</p>
-              <h2 id="results-title">Movies selected by the people behind them</h2>
+              <h2 id="results-title">Titles selected by the people behind them</h2>
             </div>
             <div class="section-actions">
               <p id="results-summary" class="results-summary"></p>
@@ -368,7 +381,7 @@
         <p class="person-card-credits"></p>
         <div class="person-card-actions">
           <button type="button" class="person-card-button ghost-button" data-open-person>
-            Show matching movies
+            Show matching titles
           </button>
           <button type="button" class="person-save-button ghost-button" data-save-person>
             Save person
@@ -377,10 +390,11 @@
       </article>
     </template>
 
-    <script src="./auth-client.js?v=20260905a" defer></script>
-    <script src="./saved-data-client.js?v=20260905a" defer></script>
-    <script src="./movie-results.js?v=20260905a" defer></script>
-    <script src="./app.js?v=20260905a" defer></script>
-    <script src="./title-quick-add.js?v=20260905a" defer></script>
+    <script src="./title-identity.js?v=20260908a" defer></script>
+    <script src="./auth-client.js?v=20260908a" defer></script>
+    <script src="./saved-data-client.js?v=20260908a" defer></script>
+    <script src="./movie-results.js?v=20260908a" defer></script>
+    <script src="./app.js?v=20260908a" defer></script>
+    <script src="./title-quick-add.js?v=20260908a" defer></script>
   </body>
 </html>

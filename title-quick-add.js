@@ -24,6 +24,15 @@
   };
 
   elements.form.addEventListener("submit", handleSearchSubmit);
+  const mediaSelect = document.querySelector("#title-search-media-type");
+  if (mediaSelect) {
+    mediaSelect.value = window.TitleIdentity.mediaFilter(new URLSearchParams(window.location.search).get("mediaType"));
+    mediaSelect.addEventListener("change", () => searchTitles(elements.search.value));
+  }
+  window.addEventListener("titles:media-change", (event) => {
+    if (mediaSelect) mediaSelect.value = event.detail;
+    searchTitles(elements.search.value);
+  });
   elements.results.addEventListener("click", handleResultClick);
   elements.search.addEventListener("input", debounce(() => {
     const query = elements.search.value.trim();
@@ -40,12 +49,12 @@
     savedDataClient.subscribe((snapshot) => {
       watchlist.clear();
       (snapshot.watchlistIds || []).forEach((movieId) => {
-        if (Number.isFinite(Number(movieId))) {
-          watchlist.add(Number(movieId));
+        if (window.TitleIdentity.valid(movieId)) {
+          watchlist.add(window.TitleIdentity.key(movieId));
         }
       });
       watched.clear();
-      (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
+      (snapshot.watchedIds || []).forEach((movieId) => watched.add(window.TitleIdentity.key(movieId)));
       renderResults();
     });
   } else {
@@ -77,7 +86,8 @@
     setStatus(`Searching for “${normalizedQuery}”…`);
 
     try {
-      const payload = await fetchJson(`/api/movie-search?query=${encodeURIComponent(normalizedQuery)}&limit=8`);
+      const type = document.querySelector("#title-search-media-type")?.value || "both";
+      const payload = await fetchJson(`/api/title-search?query=${encodeURIComponent(normalizedQuery)}&mediaType=${type}&limit=8`);
       if (requestId !== state.requestId) {
         return;
       }
@@ -85,7 +95,7 @@
       renderResults();
 
       if (!state.results.length) {
-        setStatus(`No movies found for “${normalizedQuery}”. Try including the release year.`);
+        setStatus(`No titles found for “${normalizedQuery}”. Try including the release year.`);
         return;
       }
 
@@ -98,7 +108,7 @@
       }
       state.results = [];
       renderResults();
-      setStatus(error instanceof Error ? error.message : "Movie search is unavailable right now.", true);
+      setStatus(error instanceof Error ? error.message : "Title search is unavailable right now.", true);
     } finally {
       if (requestId === state.requestId) {
         setLoading(false);
@@ -113,7 +123,7 @@
     state.savingId = null;
     setLoading(false);
     renderResults();
-    setStatus("Enter a movie title to add it without building a discovery search.");
+    setStatus("Enter a movie or TV show title to add it without building a discovery search.");
   }
 
   function renderResults() {
@@ -139,7 +149,7 @@
     const saveButton = document.createElement("button");
     const watchedButton = document.createElement("button");
     const actions = document.createElement("div");
-    const movieId = Number(movie.id);
+    const movieId = window.TitleIdentity.key(movie.id);
     const isSaved = watchlist.has(movieId);
     const isSaving = state.savingId === movieId;
 
@@ -167,7 +177,7 @@
     }
 
     heading.textContent = movie.title || "Untitled movie";
-    year.textContent = movie.year || "Year unknown";
+    year.textContent = `${movie.mediaType === "tv" ? "TV show" : "Movie"} · ${movie.year || "Year unknown"}`;
     overview.textContent = movie.logline || "No overview available yet.";
     saveButton.type = "button";
     saveButton.dataset.addMovieId = String(movieId);
@@ -181,6 +191,7 @@
     watchedButton.type = "button";
     watchedButton.dataset.markWatchedId = String(movieId);
     watchedButton.textContent = watched.has(movieId) ? "Watched ✓" : "Mark watched";
+    if (movie.mediaType === "tv") watchedButton.title = "Watched status applies to the whole series.";
     watchedButton.classList.toggle("is-watched", watched.has(movieId));
     watchedButton.setAttribute("aria-pressed", watched.has(movieId) ? "true" : "false");
 
@@ -194,10 +205,10 @@
   async function handleResultClick(event) {
     const watchedButton = event.target.closest("[data-mark-watched-id]");
     if (watchedButton && savedDataClient) {
-      const movieId = Number(watchedButton.dataset.markWatchedId);
-      const movie = state.results.find((entry) => Number(entry.id) === movieId);
+      const movieId = window.TitleIdentity.key(watchedButton.dataset.markWatchedId);
+      const movie = state.results.find((entry) => window.TitleIdentity.key(entry.id) === movieId);
       if (movie) {
-        await savedDataClient.toggleWatched(movie).catch((error) => {
+        await enrichTitle(movie).then((title) => savedDataClient.toggleWatched(title)).catch((error) => {
           setStatus(error instanceof Error ? error.message : "Unable to update watched status.", true);
         });
       }
@@ -208,8 +219,8 @@
       return;
     }
 
-    const movieId = Number(button.dataset.addMovieId);
-    const movie = state.results.find((entry) => Number(entry.id) === movieId);
+    const movieId = window.TitleIdentity.key(button.dataset.addMovieId);
+    const movie = state.results.find((entry) => window.TitleIdentity.key(entry.id) === movieId);
     if (!movie || watchlist.has(movieId)) {
       return;
     }
@@ -219,25 +230,27 @@
     setStatus(`Saving “${movie.title}”…`);
 
     try {
-      let movieToSave = movie;
-      if (!movie.isEnriched) {
-        const payload = await fetchJson(`/api/enrich?ids=${encodeURIComponent(String(movieId))}`);
-        const enrichedMovie = Array.isArray(payload.movies) ? payload.movies[0] : null;
-        if (enrichedMovie) {
-          movieToSave = { ...movie, ...enrichedMovie };
-        }
-      }
+      const movieToSave = await enrichTitle(movie);
 
       if (!watchlist.has(movieId)) {
         await savedDataClient.toggleTitle({ ...movieToSave, savedAt: new Date().toISOString() });
       }
       setStatus(`“${movie.title}” is saved to your watchlist.`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to save that movie right now.", true);
+      setStatus(error instanceof Error ? error.message : "Unable to save that title right now.", true);
     } finally {
       state.savingId = null;
       renderResults();
     }
+  }
+
+  async function enrichTitle(movie) {
+    if (movie.isEnriched) return movie;
+    const payload = await fetchJson(`/api/enrich?ids=${encodeURIComponent(String(movie.id))}`);
+    const details = (payload.movies || []).find((title) => title.id === movie.id);
+    const title = details ? { ...movie, ...details } : movie;
+    state.results = state.results.map((entry) => entry.id === title.id ? title : entry);
+    return title;
   }
 
   function setLoading(isLoading) {

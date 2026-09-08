@@ -379,7 +379,7 @@ function handleSavedAction(event) {
 
   const watchedButton = event.target.closest("[data-watched-id]");
   if (watchedButton && savedDataClient) {
-    const movieId = Number(watchedButton.dataset.watchedId);
+    const movieId = window.TitleIdentity.key(watchedButton.dataset.watchedId);
     let movie = watchlistMovies.get(movieId) || watchedMovies.get(movieId);
     if (!movie) {
       try {
@@ -396,7 +396,7 @@ function handleSavedAction(event) {
 
   const movieButton = event.target.closest("[data-watchlist-id]");
   if (movieButton) {
-    const movieId = Number(movieButton.dataset.watchlistId);
+    const movieId = window.TitleIdentity.key(movieButton.dataset.watchlistId);
     if (savedDataClient) {
       let movie = null;
       if (!watchlist.has(movieId)) {
@@ -512,7 +512,7 @@ function loadWatchlist() {
   try {
     const raw = window.localStorage.getItem(watchlistStorageKey);
     const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(parsed.filter((value) => Number.isFinite(value)));
+    return new Set(parsed.map(window.TitleIdentity.key).filter(window.TitleIdentity.valid));
   } catch {
     return new Set();
   }
@@ -524,7 +524,7 @@ function loadWatchlistMovies() {
     const parsed = raw ? JSON.parse(raw) : [];
     return new Map(
       parsed
-        .filter((entry) => entry && Number.isFinite(entry.id))
+        .filter((entry) => entry && window.TitleIdentity.valid(entry))
         .map((entry) => [entry.id, entry]),
     );
   } catch {
@@ -576,15 +576,15 @@ function syncSavedCollections(snapshot) {
 
   watchlist.clear();
   (snapshot.watchlistIds || []).forEach((movieId) => {
-    if (Number.isFinite(Number(movieId))) {
-      watchlist.add(Number(movieId));
+    if (window.TitleIdentity.valid(movieId)) {
+      watchlist.add(window.TitleIdentity.key(movieId));
     }
   });
 
   watchlistMovies.clear();
   (snapshot.watchlistMovies || []).forEach((movie) => {
-    if (movie && Number.isFinite(Number(movie.id))) {
-      watchlistMovies.set(Number(movie.id), movie);
+    if (movie && window.TitleIdentity.valid(movie)) {
+      watchlistMovies.set(window.TitleIdentity.key(movie.id), movie);
     }
   });
 
@@ -596,9 +596,9 @@ function syncSavedCollections(snapshot) {
   });
 
   watched.clear();
-  (snapshot.watchedIds || []).forEach((movieId) => watched.add(Number(movieId)));
+  (snapshot.watchedIds || []).forEach((movieId) => watched.add(window.TitleIdentity.key(movieId)));
   watchedMovies.clear();
-  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(Number(movie.id), movie));
+  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(window.TitleIdentity.key(movie.id), movie));
 }
 
 function emptySavedPeopleMessage() {
@@ -626,6 +626,7 @@ async function ensurePersonCatalog(person) {
   try {
     const params = new URLSearchParams({
       personId: String(person.id),
+      mediaType: "both",
       personQuery: person.name,
       role: inferCatalogRole(person),
       genre: "all",
@@ -661,7 +662,7 @@ async function ensureCatalogEnrichment(personId, startIndex, count) {
   const pending = personCatalogEnrichment.get(String(personId)) || new Set();
   const targetMovies = catalogState.movies.slice(startIndex, startIndex + count);
   const idsToFetch = targetMovies
-    .filter((movie) => movie && Number.isFinite(movie.id) && !movie.isEnriched && !pending.has(movie.id))
+    .filter((movie) => movie && window.TitleIdentity.valid(movie) && !movie.isEnriched && !pending.has(movie.id))
     .map((movie) => movie.id)
     .slice(0, 12);
 
@@ -867,7 +868,7 @@ function renderPersonRail(rail, personId) {
       try {
         titlesTrack.append(buildSavedPersonTitleCard(movie, personId));
       } catch (error) {
-        rail.dataset.renderError = error instanceof Error ? error.message : "Unable to render movie card";
+        rail.dataset.renderError = error instanceof Error ? error.message : "Unable to render title card";
       }
     });
     if (!titlesTrack.children.length) {
@@ -876,7 +877,7 @@ function renderPersonRail(rail, personId) {
       error.innerHTML = `
         <p class="saved-person-title-card-label">Catalog unavailable</p>
         <h4>${escapeHtml(person?.name || "Saved person")}</h4>
-        <p class="saved-person-title-card-copy">The movie cards could not be displayed right now.</p>
+        <p class="saved-person-title-card-copy">The title cards could not be displayed right now.</p>
       `;
       titlesTrack.append(error);
     }

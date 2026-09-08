@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS user_saved_titles (
 CREATE INDEX IF NOT EXISTS user_saved_titles_user_id_idx
   ON user_saved_titles (user_id, created_at DESC);
 
+-- Additive migration: old records are movies; TV IDs have their own namespace.
+ALTER TABLE user_saved_titles ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'movie'
+  CHECK (media_type IN ('movie', 'tv'));
+ALTER TABLE user_saved_titles DROP CONSTRAINT IF EXISTS user_saved_titles_user_id_movie_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS user_saved_titles_media_identity_idx
+  ON user_saved_titles (user_id, media_type, movie_id);
+
 CREATE TABLE IF NOT EXISTS user_saved_people (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

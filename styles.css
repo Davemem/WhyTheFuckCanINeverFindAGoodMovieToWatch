@@ -2697,6 +2697,24 @@ dd {
   filter: drop-shadow(2px 3px 0 rgba(255, 249, 240, 0.7));
 }
 
+.hero-marquee.flickstuck-marquee span {
+  text-transform: lowercase;
+  font-size: clamp(3.1rem, 7vw, 6.6rem);
+  letter-spacing: -0.035em;
+}
+
+.site-brand {
+  color: var(--text);
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 1.9rem;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+.media-type-field { margin-bottom: 16px; }
+.pill-media-type { background: #26231f; color: #fff8f1; }
+.series-info { margin: 4px 0 10px; color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+
 .hero-stats {
   grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
 }
@@ -2950,10 +2968,11 @@ dd {
 }
 
 .saved-titles-toolbar {
-  grid-template-columns: minmax(220px, 1.4fr) repeat(2, minmax(150px, 0.7fr));
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
 }
 
 @media (max-width: 640px) {
+  .saved-titles-toolbar { grid-template-columns: 1fr; }
   .hero-marquee {
     padding: 8px 12px 11px 8px;
   }

@@ -77,7 +77,7 @@
       button.dataset.personCredit = name;
       button.dataset.personCategory = category;
       button.textContent = name;
-      button.setAttribute("aria-label", `Open ${name}'s profile and movies`);
+      button.setAttribute("aria-label", `Open ${name}'s profile and titles`);
       element.append(button);
       if (index < values.length - 1) {
         element.append(document.createTextNode(", "));
@@ -101,7 +101,7 @@
       if (options.cardKey) {
         article.dataset.cardKey = options.cardKey;
       }
-      if (Number.isFinite(movie.id)) {
+      if (window.TitleIdentity.valid(movie)) {
         article.dataset.movieId = String(movie.id);
       }
     }
@@ -109,6 +109,23 @@
     fragment.querySelector("h3").textContent = movie.title;
     fragment.querySelector(".pill-year").textContent = movie.year || "TBA";
     fragment.querySelector(".pill-runtime").textContent = movie.runtime || "Runtime unknown";
+    const isTv = movie.mediaType === "tv";
+    const typeBadge = document.createElement("span");
+    typeBadge.className = "pill pill-media-type";
+    typeBadge.textContent = isTv ? "TV show" : "Movie";
+    fragment.querySelector(".pill-year").parentElement.prepend(typeBadge);
+    if (isTv) {
+      const ongoing = ["Returning Series", "In Production"].includes(movie.status);
+      fragment.querySelector(".pill-year").textContent = movie.year
+        ? `${movie.year}${ongoing ? "–present" : movie.endYear && movie.endYear !== movie.year ? `–${movie.endYear}` : ""}` : "TBA";
+      const seriesInfo = document.createElement("p");
+      seriesInfo.className = "series-info";
+      seriesInfo.textContent = [movie.seasons ? `${movie.seasons} season${movie.seasons === 1 ? "" : "s"}` : "",
+        movie.episodes ? `${movie.episodes} episodes` : "", movie.status].filter(Boolean).join(" · ");
+      if (seriesInfo.textContent) fragment.querySelector("h3").after(seriesInfo);
+      const creatorLabel = fragment.querySelector(".director")?.closest("div")?.querySelector("dt");
+      if (creatorLabel) creatorLabel.textContent = "Creator";
+    }
     fragment.querySelector(".logline").textContent = movie.logline || options.defaultLogline || "No overview available yet.";
 
     setCardField(
@@ -132,7 +149,7 @@
       !movie.tmdb,
     );
     setCreditLinks(fragment.querySelector(".cast"), movie.cast || [], "actors", isPending);
-    setCreditLinks(fragment.querySelector(".director"), movie.director || "", "directors", isPending);
+    setCreditLinks(fragment.querySelector(".director"), movie.director || "", isTv ? "writers" : "directors", isPending);
     setCreditLinks(fragment.querySelector(".producer"), movie.producers || [], "producers", isPending);
     setCardField(
       fragment.querySelector(".match-reason"),
@@ -173,7 +190,7 @@
         ? (isSaved ? "Remove title" : "Save title")
         : (options.savedButtonLabel || "Save to watchlist");
       watchlistButton.classList.toggle("is-saved", isSaved || Boolean(options.forceSavedButton));
-      if (Number.isFinite(movie.id)) {
+      if (window.TitleIdentity.valid(movie)) {
         watchlistButton.dataset.watchlistId = String(movie.id);
       }
       if (options.allowToggleSave) {
@@ -183,8 +200,8 @@
 
     const watchProvidersButton = fragment.querySelector("[data-watch-providers-button]");
     if (watchProvidersButton) {
-      const movieId = Number(movie.id);
-      if (Number.isInteger(movieId) && movieId > 0) {
+      const movieId = window.TitleIdentity.key(movie.id);
+      if (window.TitleIdentity.valid(movieId)) {
         watchProvidersButton.dataset.watchProviderMovieId = String(movieId);
         watchProvidersButton.dataset.watchProviderMovieTitle = String(movie.title || "This title");
         watchProvidersButton.setAttribute(
@@ -201,9 +218,10 @@
     if (watchedButton) {
       const isWatched = Boolean(options.isWatched);
       watchedButton.textContent = isWatched ? "Watched ✓" : "Mark watched";
+      if (isTv) watchedButton.setAttribute("aria-label", `${isWatched ? "Unmark" : "Mark"} ${movie.title} as a watched series`);
       watchedButton.classList.toggle("is-watched", isWatched);
       watchedButton.setAttribute("aria-pressed", isWatched ? "true" : "false");
-      if (Number.isFinite(Number(movie.id))) {
+      if (window.TitleIdentity.valid(movie)) {
         watchedButton.dataset.watchedId = String(movie.id);
         watchedButton.dataset.watchedMovie = JSON.stringify(movie);
       }
@@ -252,7 +270,7 @@
 
     container.replaceChildren();
     if (summaryElement) {
-      summaryElement.textContent = summaryText || `${totalMatches || movies.length} movies match your current filter stack.`;
+      summaryElement.textContent = summaryText || `${totalMatches || movies.length} titles match your current filter stack.`;
     }
 
     if (!movies.length) {
@@ -506,8 +524,8 @@
       return;
     }
 
-    const movieId = Number(button.dataset.watchProviderMovieId);
-    if (!Number.isInteger(movieId) || movieId <= 0) {
+    const movieId = window.TitleIdentity.key(button.dataset.watchProviderMovieId);
+    if (!window.TitleIdentity.valid(movieId)) {
       return;
     }
 
@@ -530,7 +548,7 @@
     const requestId = ++personPreviewRequestId;
     const dialog = ensurePersonPreviewDialog();
     dialog.dataset.triggerId = trigger?.id || "";
-    renderPersonPreviewState(dialog, "Finding person…", `Looking up ${name} and their movies.`);
+    renderPersonPreviewState(dialog, "Finding person…", `Looking up ${name} and their titles.`);
     if (!dialog.open) {
       dialog.showModal?.();
     }
@@ -595,7 +613,8 @@
     const department = person.department || category;
     const saved = global.savedDataClient?.getSnapshot().savedPeople.some((entry) => String(entry.id) === String(person.id));
     const personPayload = JSON.stringify({ ...person, department }).replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-    const params = new URLSearchParams({ category, query: person.name, exactMatch: "1" });
+    const params = new URLSearchParams({ category, query: person.name, exactMatch: "1",
+      mediaType: document.querySelector("#media-type")?.value || "both" });
     content.innerHTML = `
       <button type="button" class="person-preview-close" data-close-person-preview aria-label="Close person profile">×</button>
       <div class="person-preview-portrait">${person.profileUrl ? `<img src="${escapeAttribute(person.profileUrl)}" alt="${escapeAttribute(person.name)}" />` : `<span>${escapeHtml(person.name).slice(0, 2)}</span>`}</div>
@@ -605,7 +624,7 @@
         <p>${person.knownFor?.length ? `Known for ${escapeHtml(person.knownFor.join(", "))}` : "Filmography available from Home."}</p>
         <div class="person-preview-actions">
           <button type="button" class="ghost-button ${saved ? "is-saved" : ""}" data-preview-save-person="${personPayload}">${saved ? "Saved person ✓" : "Save person"}</button>
-          <a class="watchlist-button" href="/?${params.toString()}">View movies</a>
+          <a class="watchlist-button" href="/?${params.toString()}">View titles</a>
         </div>
       </div>`;
   }
@@ -742,7 +761,7 @@
     const movieTitle = watchProviderState.movieTitle;
     const requestToken = ++watchProviderState.requestToken;
 
-    if (!results || !Number.isInteger(movieId)) {
+    if (!results || !window.TitleIdentity.valid(movieId)) {
       return;
     }
 

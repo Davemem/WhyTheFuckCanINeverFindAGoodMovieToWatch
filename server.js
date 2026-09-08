@@ -5,6 +5,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { Pool } = require("pg");
+const { identity: titleIdentity, key: titleKey, mediaFilter } = require("./title-identity");
+const { createTvCatalog, normalizeTv, TV_GENRES, genreIdsFor } = require("./lib/tv-catalog");
+const tvCatalog = createTvCatalog({ tmdb, lookupOmdb, searchPeople: searchPeopleFromTmdb,
+  selectPerson: selectBestPersonMatch, searchStudios, selectStudio: selectBestStudioMatch,
+  passesFilters: passesMovieFilters, sortMovies, needsHydration: discoverNeedsHydration,
+  hydrateLimit: determineHydrateLimit });
 const { createJsonCache } = require("./lib/json-cache");
 const { readJsonBody, getRequestIp } = require("./lib/auth/http");
 const { verifyGoogleIdToken } = require("./lib/auth/google");
@@ -46,6 +52,7 @@ const PUBLIC_API_GET_PATHS = new Set([
   "/api/people",
   "/api/studios",
   "/api/movie-search",
+  "/api/title-search",
   "/api/discover",
   "/api/enrich",
   "/api/watch-providers",
@@ -64,6 +71,7 @@ const PUBLIC_STATIC_FILES = new Set([
   "saved.js",
   "styles.css",
   "title-quick-add.js",
+  "title-identity.js",
 ]);
 const SECURITY_HEADERS = {
   "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
@@ -151,6 +159,22 @@ const demoGenres = [
   { id: 53, name: "Thriller" },
   { id: 12, name: "Adventure" },
 ];
+
+const demoTvShows = [
+  { id: 1396, name: "Breaking Bad", first_air_date: "2008-01-20", last_air_date: "2013-09-29", number_of_seasons: 5,
+    number_of_episodes: 62, status: "Ended", episode_run_time: [47], genre_ids: [18, 80], vote_average: 8.9,
+    created_by: [{ name: "Vince Gilligan" }], credits: { cast: [{ name: "Bryan Cranston" }, { name: "Aaron Paul" }] },
+    overview: "A chemistry teacher enters the drug trade, with consequences that transform his family and his life." },
+  { id: 688, name: "The West Wing", first_air_date: "1999-09-22", last_air_date: "2006-05-14", number_of_seasons: 7,
+    number_of_episodes: 154, status: "Ended", episode_run_time: [42], genre_ids: [18], vote_average: 8.3,
+    created_by: [{ name: "Aaron Sorkin" }], credits: { cast: [{ name: "Martin Sheen" }, { name: "Allison Janney" }] },
+    overview: "The president and his staff balance public service, political pressure, and personal conviction." },
+].map((show) => ({ ...normalizeTv(show, null, true), writers: (show.created_by || []).map((person) => person.name) }));
+
+function demoTitles(mediaType = "both") {
+  const type = mediaFilter(mediaType);
+  return type === "tv" ? demoTvShows : type === "movie" ? demoMovies : [...demoMovies, ...demoTvShows];
+}
 const demoMovies = [
   {
     id: 1001,
@@ -387,9 +411,20 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(port, () => {
-    process.stdout.write(`Server running at http://localhost:${port}\n`);
+  startServer().catch((error) => {
+    logServerError("startup", error);
+    process.exit(1);
   });
+}
+
+async function startServer() {
+  if (dbPools) {
+    await withDbTransaction(async (client) => {
+      await client.query("SELECT pg_advisory_xact_lock(74921503)");
+      await client.query(await fs.promises.readFile(path.join(__dirname, "scripts/sql/auth-schema.sql"), "utf8"));
+    });
+  }
+  server.listen(port, () => process.stdout.write(`flickstuck running at http://localhost:${port}\n`));
 }
 
 async function handleApi(req, requestUrl, res) {
@@ -878,8 +913,8 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    const movieId = Number(decodeURIComponent(watchedDeleteMatch[1]));
-    if (!Number.isInteger(movieId) || movieId <= 0) {
+    const movieId = titleKey(decodeURIComponent(watchedDeleteMatch[1]));
+    if (!movieId) {
       sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
       return;
     }
@@ -902,8 +937,8 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    const movieId = Number(decodeURIComponent(watchlistDeleteMatch[1]));
-    if (!Number.isSafeInteger(movieId) || movieId <= 0) {
+    const movieId = titleKey(decodeURIComponent(watchlistDeleteMatch[1]));
+    if (!movieId) {
       sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
       return;
     }
@@ -1124,11 +1159,12 @@ async function handleApi(req, requestUrl, res) {
   }
 
   if (requestUrl.pathname === "/api/watch-providers") {
-    const movieId = Number(requestUrl.searchParams.get("movieId"));
+    const title = titleIdentity({ id: requestUrl.searchParams.get("movieId"), mediaType: requestUrl.searchParams.get("mediaType") || undefined });
+    const movieId = title?.id;
     const region = String(requestUrl.searchParams.get("region") || "US").trim().toUpperCase();
-    const title = String(requestUrl.searchParams.get("title") || "").trim().slice(0, 160);
+    const titleName = String(requestUrl.searchParams.get("title") || "").trim().slice(0, 160);
 
-    if (!Number.isInteger(movieId) || movieId <= 0) {
+    if (!title) {
       sendJson(res, 400, { error: "A valid movie id is required." }, { "Cache-Control": "no-store" });
       return;
     }
@@ -1138,12 +1174,12 @@ async function handleApi(req, requestUrl, res) {
     }
 
     const upstreamPayload = tmdbToken || tmdbApiKey
-      ? await tmdb(`/movie/${movieId}/watch/providers`)
+      ? await tmdb(`/${title.mediaType}/${title.tmdbId}/watch/providers`)
       : null;
     sendJson(
       res,
       200,
-      normalizeWatchProviderPayload(upstreamPayload, { movieId, region, title }),
+      normalizeWatchProviderPayload(upstreamPayload, { movieId, region, title: titleName }),
       { "Cache-Control": `public, max-age=${WATCH_PROVIDER_CACHE_TTL_SECONDS}` },
     );
     return;
@@ -1270,7 +1306,7 @@ async function handleApi(req, requestUrl, res) {
     return;
   }
 
-  if (requestUrl.pathname === "/api/movie-search") {
+  if (["/api/movie-search", "/api/title-search"].includes(requestUrl.pathname)) {
     const query = String(requestUrl.searchParams.get("query") || "").trim().slice(0, 120);
     const limit = clampNumber(
       requestUrl.searchParams.get("limit"),
@@ -1283,26 +1319,28 @@ async function handleApi(req, requestUrl, res) {
       return;
     }
 
-    const payload = await tmdb("/search/movie", {
-      query,
-      include_adult: "false",
-      language: "en-US",
-      page: "1",
-    });
-    const results = (payload.results || [])
-      .map(normalizeMovieSearchResult)
-      .filter(Boolean)
-      .slice(0, limit);
+    const type = mediaFilter(requestUrl.searchParams.get("mediaType"), requestUrl.pathname === "/api/movie-search" ? "movie" : "both");
+    const types = type === "both" ? ["movie", "tv"] : [type];
+    const pages = await Promise.all(types.map(async (mediaType) => {
+      const payload = await tmdb(`/search/${mediaType}`, { query, include_adult: "false", language: "en-US", page: "1" });
+      return { ...payload, mediaType };
+    }));
+    const results = pages.flatMap((page) => (page.results || []).map((result, rank) => ({
+      rank, popularity: result.popularity || 0,
+      title: page.mediaType === "tv" ? normalizeTv(result) : normalizeMovieSearchResult(result),
+    }))).filter((entry) => entry.title)
+      .sort((a, b) => a.rank - b.rank || b.popularity - a.popularity).slice(0, limit).map((entry) => entry.title);
     sendJson(res, 200, {
       query,
       results,
-      total: Number(payload.total_results || results.length),
+      total: pages.reduce((sum, page) => sum + Number(page.total_results || 0), 0),
     });
     return;
   }
 
   if (requestUrl.pathname === "/api/discover") {
     const filters = {
+      mediaType: mediaFilter(requestUrl.searchParams.get("mediaType")),
       searchType: requestUrl.searchParams.get("searchType") || "person",
       personId: Number(requestUrl.searchParams.get("personId") || "0"),
       personQuery:
@@ -1331,8 +1369,8 @@ async function handleApi(req, requestUrl, res) {
   if (requestUrl.pathname === "/api/enrich") {
     const ids = (requestUrl.searchParams.get("ids") || "")
       .split(",")
-      .map((value) => Number(value))
-      .filter((value) => Number.isSafeInteger(value) && value > 0)
+      .map((value) => titleKey({ id: value, mediaType: requestUrl.searchParams.get("mediaType") || undefined }))
+      .filter(Boolean)
       .filter((value, index, ids) => ids.indexOf(value) === index)
       .slice(0, ENRICH_BATCH_LIMIT);
 
@@ -1364,6 +1402,7 @@ function handleDemoApi(requestUrl, res) {
         mode: "demo",
       },
       genres: demoGenres,
+      tvGenres: TV_GENRES,
     };
     if (mode !== "lite") {
       payload.featuredActors = demoPeople.filter((person) => isActingDepartment(person.department));
@@ -1431,7 +1470,7 @@ function handleDemoApi(requestUrl, res) {
     return;
   }
 
-  if (requestUrl.pathname === "/api/movie-search") {
+  if (["/api/movie-search", "/api/title-search"].includes(requestUrl.pathname)) {
     const query = String(requestUrl.searchParams.get("query") || "").trim().toLowerCase().slice(0, 120);
     const limit = clampNumber(
       requestUrl.searchParams.get("limit"),
@@ -1440,7 +1479,7 @@ function handleDemoApi(requestUrl, res) {
       MOVIE_SEARCH_MAX_LIMIT,
     );
     const results = query
-      ? demoMovies
+      ? demoTitles(mediaFilter(requestUrl.searchParams.get("mediaType"), requestUrl.pathname === "/api/movie-search" ? "movie" : "both"))
         .filter((movie) => movie.title.toLowerCase().includes(query))
         .slice(0, limit)
         .map((movie) => ({ ...movie, matchReason: "Direct title search.", isEnriched: true }))
@@ -1466,6 +1505,7 @@ function handleDemoApi(requestUrl, res) {
 
   if (requestUrl.pathname === "/api/discover") {
     const filters = {
+      mediaType: mediaFilter(requestUrl.searchParams.get("mediaType")),
       searchType: requestUrl.searchParams.get("searchType") || "person",
       personId: Number(requestUrl.searchParams.get("personId") || "0"),
       personQuery:
@@ -1484,6 +1524,11 @@ function handleDemoApi(requestUrl, res) {
     return;
   }
 
+  if (requestUrl.pathname === "/api/enrich") {
+    const ids = (requestUrl.searchParams.get("ids") || "").split(",").map(titleKey).filter(Boolean).slice(0, ENRICH_BATCH_LIMIT);
+    sendJson(res, 200, { movies: demoTitles().filter((title) => ids.includes(title.id)).map((title) => ({ ...title, isEnriched: true })) });
+    return;
+  }
   sendJson(res, 404, { error: "Not found" });
 }
 
@@ -1508,7 +1553,7 @@ function buildDemoDiscoverPayload(filters) {
         )
       : null;
 
-  const movies = demoMovies
+  const movies = demoTitles(filters.mediaType)
     .map((movie) => {
       const reasons = [];
       const castMatch = movie.cast.filter((name) => name.toLowerCase().includes(personQuery));
@@ -1572,6 +1617,7 @@ async function buildBootstrapPayload(options = {}) {
       placeholderPools: snapshot?.placeholderPools || null,
     },
     genres: resolvedGenres,
+    tvGenres: TV_GENRES,
   };
 
   if (snapshot?.actorsTop10?.length) {
@@ -1622,7 +1668,8 @@ function passesDemoFilters(movie, filters, matchedStudio = null) {
   const castMatch = movie.cast.some((name) => name.toLowerCase().includes(query));
   const directorMatch = movie.director.toLowerCase().includes(query);
   const producerMatch = movie.producers.some((name) => name.toLowerCase().includes(query));
-  const writerMatch = query ? (query === "aaron sorkin" && movie.id === 1005) : false;
+  const writerMatch = query ? (query === "aaron sorkin" && movie.id === 1005)
+    || (movie.writers || []).some((name) => name.toLowerCase().includes(query)) : false;
   const studioMatch = matchedStudio
     ? (demoMovieStudios[movie.id] || []).includes(matchedStudio.name)
     : (demoMovieStudios[movie.id] || []).some((name) => name.toLowerCase().includes(query));
@@ -1640,7 +1687,7 @@ function passesDemoFilters(movie, filters, matchedStudio = null) {
         );
 
   const genreOk =
-    filters.genreId === "all" || movie.genreIds.includes(Number(filters.genreId));
+    filters.genreId === "all" || genreIdsFor(filters.genreId, movie.mediaType || "movie").some((id) => movie.genreIds.includes(id));
   const decadeOk =
     filters.decade === "all" ||
     (movie.year >= Number(filters.decade) && movie.year <= Number(filters.decade) + 9);
@@ -1655,6 +1702,28 @@ async function buildDiscoverPayload(filters) {
   if (filters.award !== "all" && !omdbApiKey) {
     throw new Error("Award filters require OMDb to be configured.");
   }
+
+  const mediaType = mediaFilter(filters.mediaType);
+  if (mediaType === "tv") return tvCatalog.discover(filters);
+  if (mediaType === "both") {
+    const [movies, shows] = await Promise.all([
+      buildDiscoverPayload({ ...filters, mediaType: "movie" }),
+      tvCatalog.discover({ ...filters, mediaType: "tv" }),
+    ]);
+    return {
+      matchedPerson: movies.matchedPerson || shows.matchedPerson,
+      matchedEntity: movies.matchedEntity || shows.matchedEntity,
+      totalMatches: (movies.totalMatches || 0) + (shows.totalMatches || 0),
+      movies: [...movies.movies, ...shows.movies].sort((a, b) => sortMovies(a, b, filters.sort)),
+    };
+  }
+  const mappedGenres = genreIdsFor(filters.genreId, "movie");
+  if (mappedGenres.length > 1) {
+    const payloads = await Promise.all(mappedGenres.map((genre) => buildDiscoverPayload({ ...filters, genreId: String(genre) })));
+    const movies = [...new Map(payloads.flatMap((payload) => payload.movies).map((movie) => [movie.id, movie])).values()];
+    return { ...payloads[0], movies: movies.sort((a, b) => sortMovies(a, b, filters.sort)), totalMatches: movies.length };
+  }
+  if (mappedGenres.length) filters = { ...filters, genreId: String(mappedGenres[0]) };
 
   if (filters.searchType === "studio" && filters.personQuery) {
     return discoverByStudio(filters);
@@ -1973,6 +2042,7 @@ function normalizeDbCreditMovie(row) {
     rt: null,
     metacritic: null,
     tmdb: typeof row.vote_average === "number" ? Number(Number(row.vote_average).toFixed(1)) : null,
+    matchScore: Number(row.vote_count || 0),
     genres: [],
     genreIds: Array.isArray(row.genre_ids_json) ? row.genre_ids_json : [],
     cast: [],
@@ -2027,6 +2097,14 @@ function upsertCredit(creditMap, credit, role, personName, filters) {
 }
 
 async function hydrateMovies(items, filters) {
+  const tvItems = items.filter((item) => titleIdentity(item)?.mediaType === "tv");
+  if (tvItems.length) {
+    const movieItems = items.filter((item) => titleIdentity(item)?.mediaType === "movie");
+    const [movies, shows] = await Promise.all([
+      movieItems.length ? hydrateMovies(movieItems, filters) : [], tvCatalog.hydrate(tvItems, filters),
+    ]);
+    return [...movies, ...shows].sort((a, b) => sortMovies(a, b, filters.sort));
+  }
   const movies = [];
   let nextIndex = 0;
   const workerCount = Math.min(4, items.length);
@@ -2074,6 +2152,7 @@ function normalizeMovie(details, reasons, omdbRatings) {
     rt: omdbRatings?.rt ?? null,
     metacritic: omdbRatings?.metacritic ?? null,
     tmdb: typeof details.vote_average === "number" ? Number(details.vote_average.toFixed(1)) : null,
+    matchScore: Number(details.vote_count || 0),
     genres: (details.genres ?? []).map((genre) => genre.name),
     cast,
     director: director?.name || "Unknown",
@@ -2817,6 +2896,7 @@ function hashString(value) {
 
 function buildDiscoverCacheKey(filters) {
   const normalized = {
+    mediaType: mediaFilter(filters.mediaType),
     searchType: filters.searchType || "person",
     personId: Number.isFinite(Number(filters.personId)) ? Number(filters.personId) : 0,
     personQuery: normalizeName(filters.personQuery || ""),
@@ -2829,7 +2909,7 @@ function buildDiscoverCacheKey(filters) {
     award: normalizeAwardFilterValue(filters.award),
   };
 
-  return `discover:v3:${JSON.stringify(normalized)}`;
+  return `discover:v4:${JSON.stringify(normalized)}`;
 }
 
 function normalizeDiscoverMovie(movie, reasons = []) {
@@ -2842,6 +2922,7 @@ function normalizeDiscoverMovie(movie, reasons = []) {
     rt: null,
     metacritic: null,
     tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    matchScore: Number(movie.vote_count || 0),
     genres: [],
     genreIds: movie.genre_ids || [],
     cast: [],
@@ -2869,6 +2950,7 @@ function normalizeMovieSearchResult(movie) {
     rt: null,
     metacritic: null,
     tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    matchScore: Number(movie.vote_count || 0),
     genres: [],
     genreIds: Array.isArray(movie.genre_ids) ? movie.genre_ids : [],
     cast: [],
@@ -2891,6 +2973,7 @@ function normalizeCreditMovie(movie) {
     rt: null,
     metacritic: null,
     tmdb: typeof movie.vote_average === "number" ? Number(movie.vote_average.toFixed(1)) : null,
+    matchScore: Number(movie.vote_count || 0),
     genres: [],
     genreIds: movie.genre_ids || [],
     cast: [],
@@ -2983,7 +3066,7 @@ async function tmdb(endpoint, params = {}) {
 }
 
 function normalizeWatchProviderPayload(payload, options = {}) {
-  const movieId = Number(options.movieId);
+  const movieId = titleKey(options.movieId);
   const region = String(options.region || "US").trim().toUpperCase();
   const title = String(options.title || "").trim().slice(0, 160);
   const regionalAvailability = payload?.results?.[region] || null;
@@ -2998,7 +3081,7 @@ function normalizeWatchProviderPayload(payload, options = {}) {
   };
 
   return {
-    movieId: Number.isInteger(movieId) && movieId > 0 ? movieId : null,
+    movieId,
     region: /^[A-Z]{2}$/.test(region) ? region : "US",
     available: Object.values(providerGroups).some((providers) => providers.length > 0),
     link: normalizeWatchProviderLink(regionalAvailability?.link),
@@ -3372,7 +3455,8 @@ function sortMovies(left, right, sortBy) {
       return (right.year ?? 0) - (left.year ?? 0);
     case "match":
     default:
-      return (right.imdb ?? right.tmdb ?? -1) - (left.imdb ?? left.tmdb ?? -1);
+      return (right.matchScore || 0) - (left.matchScore || 0)
+        || (right.imdb ?? right.tmdb ?? -1) - (left.imdb ?? left.tmdb ?? -1);
   }
 }
 
