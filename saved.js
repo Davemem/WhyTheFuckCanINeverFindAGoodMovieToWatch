@@ -3,8 +3,10 @@ const watchlistMoviesStorageKey = "wtfcineverfind-watchlist-movies";
 const savedPeopleStorageKey = "wtfcineverfind-saved-people";
 const savedTitleRailCardWidth = 280;
 const savedTitleRailGap = 10;
-const initialSavedPeopleRenderCount = 6;
-const savedPeopleRenderBatch = 4;
+const peopleBuckets = ["actors", "writers", "directors", "producers", "studios", "filmmakers"];
+const peoplePanels = Object.fromEntries(peopleBuckets.map(key => [key, document.querySelector(`#saved-${key}-panel`)]));
+const peopleGrids = Object.fromEntries(peopleBuckets.map(key => [key, document.querySelector(`#saved-${key}-grid`)]));
+let peopleQuery = "";
 
 const elements = {
   savedStatus: document.querySelector("#saved-status"),
@@ -38,11 +40,6 @@ let savedStateError = "";
 let lastCatalogTrigger = null;
 const uiState = {
   activeTab: "actors",
-  visiblePeopleCounts: {
-    actors: initialSavedPeopleRenderCount,
-    writers: initialSavedPeopleRenderCount,
-    filmmakers: initialSavedPeopleRenderCount,
-  },
   peopleByTab: {
     actors: [],
     writers: [],
@@ -57,6 +54,8 @@ const uiState = {
   railEnrichmentTimers: new Map(),
 };
 
+for (const key of peopleBuckets) { uiState.peopleByTab[key] ||= []; uiState.selectedPeople[key] ||= ""; }
+
 if (savedDataClient) {
   savedDataClient.subscribe(handleSavedDataUpdate);
 } else {
@@ -69,9 +68,30 @@ if (savedDataClient) {
   });
 }
 
-elements.savedActorsGrid?.addEventListener("click", handleSavedAction);
-elements.savedWritersGrid?.addEventListener("click", handleSavedAction);
-elements.savedFilmmakersGrid?.addEventListener("click", handleSavedAction);
+Object.values(peopleGrids).forEach(grid => {
+  grid?.addEventListener("click", handleSavedAction);
+  if (!grid) return;
+  grid.tabIndex = 0; grid.setAttribute("role", "region"); grid.setAttribute("aria-label", "Saved profiles, horizontally scrollable");
+  grid.addEventListener("scroll", syncPeopleArrows, { passive: true });
+  grid.addEventListener("keydown", event => {
+    if (event.target !== grid || !["ArrowLeft","ArrowRight","Home","End"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Home") grid.scrollLeft = 0;
+    else if (event.key === "End") grid.scrollLeft = grid.scrollWidth;
+    else scrollPeople(event.key === "ArrowLeft" ? -1 : 1);
+  });
+});
+document.querySelector("#saved-people-search")?.addEventListener("input", event => {
+  peopleQuery = event.target.value.trim().toLocaleLowerCase();
+  document.querySelector("#clear-people-search").hidden = !peopleQuery;
+  renderSavedPage();
+});
+document.querySelector("#clear-people-search")?.addEventListener("click", () => {
+  peopleQuery = ""; document.querySelector("#saved-people-search").value = "";
+  document.querySelector("#clear-people-search").hidden = true; renderSavedPage();
+});
+document.querySelector("#saved-people-prev")?.addEventListener("click", () => scrollPeople(-1));
+document.querySelector("#saved-people-next")?.addEventListener("click", () => scrollPeople(1));
 elements.savedPersonCatalog?.addEventListener("click", handleSavedAction);
 elements.savedPersonCatalog?.addEventListener("close", handleCatalogClose);
 if (elements.savedPersonRail) {
@@ -105,115 +125,66 @@ window.addEventListener(
     }
   }, 120),
 );
-window.addEventListener("scroll", debounce(handleWindowScroll, 80), { passive: true });
+window.addEventListener("resize", debounce(syncPeopleArrows, 120));
 
 renderSavedPage();
 
+function personBucket(person) {
+  if (peopleBuckets.includes(person.kind)) return person.kind;
+  const label = String(person.department || "").toLowerCase();
+  if (String(person.id).startsWith("studio:") || label.includes("studio")) return "studios";
+  if (isWriterPerson(person) || person.bucket === "writers") return "writers";
+  if (person.bucket === "actors" || /acting|actor|perform/.test(label)) return "actors";
+  if (label.includes("direct") && !label.includes("produc")) return "directors";
+  if (label.includes("produc") && !label.includes("direct")) return "producers";
+  return "filmmakers";
+}
+
 function renderSavedPage() {
   captureScrollState();
-  const savedActors = [...savedPeople.values()].filter((person) => person.bucket === "actors");
-  const savedWriters = [...savedPeople.values()].filter((person) => isWriterPerson(person));
-  const savedFilmmakers = [...savedPeople.values()].filter((person) => person.bucket === "filmmakers" && !isWriterPerson(person));
-  uiState.peopleByTab.actors = savedActors;
-  uiState.peopleByTab.writers = savedWriters;
-  uiState.peopleByTab.filmmakers = savedFilmmakers;
-  uiState.visiblePeopleCounts.actors = Math.min(
-    Math.max(uiState.visiblePeopleCounts.actors, initialSavedPeopleRenderCount),
-    savedActors.length || initialSavedPeopleRenderCount,
-  );
-  uiState.visiblePeopleCounts.writers = Math.min(
-    Math.max(uiState.visiblePeopleCounts.writers, initialSavedPeopleRenderCount),
-    savedWriters.length || initialSavedPeopleRenderCount,
-  );
-  uiState.visiblePeopleCounts.filmmakers = Math.min(
-    Math.max(uiState.visiblePeopleCounts.filmmakers, initialSavedPeopleRenderCount),
-    savedFilmmakers.length || initialSavedPeopleRenderCount,
-  );
-  uiState.selectedPeople.actors = resolveSelectedPersonId("actors", savedActors);
-  uiState.selectedPeople.writers = resolveSelectedPersonId("writers", savedWriters);
-  uiState.selectedPeople.filmmakers = resolveSelectedPersonId("filmmakers", savedFilmmakers);
-
-  if (elements.savedActorCount) {
-    elements.savedActorCount.textContent = String(savedActors.length);
+  const all = [...savedPeople.values()];
+  for (const key of peopleBuckets) {
+    const group = all.filter(person => personBucket(person) === key);
+    uiState.peopleByTab[key] = group.filter(person => !peopleQuery || [person.name, ...(person.knownFor || [])].join(" ").toLocaleLowerCase().includes(peopleQuery));
+    uiState.selectedPeople[key] = resolveSelectedPersonId(key, uiState.peopleByTab[key]);
+    renderSavedPeopleGrid(peopleGrids[key], uiState.peopleByTab[key], key, peopleQuery ? "Try a different name or known-for title." : "Save profiles from Discover and they will appear here.");
+    const tab = elements.savedTabButtons.find(button => button.dataset.savedTab === key);
+    if (tab) { tab.textContent = (key === "filmmakers" ? "Other filmmakers" : key[0].toUpperCase() + key.slice(1)) + " (" + group.length + ")"; tab.hidden = key === "filmmakers" && !group.length; }
   }
-  if (elements.savedWriterCount) {
-    elements.savedWriterCount.textContent = String(savedWriters.length);
-  }
-  if (elements.savedFilmmakerCount) {
-    elements.savedFilmmakerCount.textContent = String(savedFilmmakers.length);
-  }
-
-  renderSavedPeopleGrid(
-    elements.savedActorsGrid,
-    savedActors,
-    "actors",
-    "Save actors from the home page or the people directory and they will show up here.",
-  );
-  renderSavedPeopleGrid(
-    elements.savedWritersGrid,
-    savedWriters,
-    "writers",
-    "Save writers from the home page or the people directory and they will show up here.",
-  );
-  renderSavedPeopleGrid(
-    elements.savedFilmmakersGrid,
-    savedFilmmakers,
-    "filmmakers",
-    "Save producers and directors from the home page or the people directory and they will show up here.",
-  );
-
-  const preferredTab =
-    uiState.activeTab === "filmmakers" && savedFilmmakers.length
-      ? "filmmakers"
-      : uiState.activeTab === "writers" && savedWriters.length
-        ? "writers"
-      : savedActors.length
-        ? "actors"
-      : savedWriters.length
-        ? "writers"
-      : "filmmakers";
-  setActiveTab(preferredTab);
-  window.requestAnimationFrame(() => {
-    restoreScrollState();
-    syncAllRails();
-  });
-
-  if (!savedActors.length && !savedWriters.length && !savedFilmmakers.length) {
-    elements.savedStatus.textContent = emptySavedPeopleMessage();
-    return;
-  }
-
-  elements.savedStatus.textContent = savedStateSource === "remote"
-    ? "Saved people loaded from your account. Click a person to open their catalog."
-    : "Saved people loaded. Click a person to open their catalog.";
+  elements.savedActorCount.textContent = String(all.filter(p => personBucket(p) === "actors").length);
+  elements.savedWriterCount.textContent = String(all.filter(p => personBucket(p) === "writers").length);
+  elements.savedFilmmakerCount.textContent = String(all.filter(p => !["actors","writers"].includes(personBucket(p))).length);
+  const preferred = uiState.peopleByTab[uiState.activeTab]?.length ? uiState.activeTab : peopleBuckets.find(key => uiState.peopleByTab[key].length) || "actors";
+  setActiveTab(preferred);
+  window.requestAnimationFrame(() => { restoreScrollState(); syncAllRails(); syncPeopleArrows(); });
+  elements.savedStatus.textContent = !all.length ? emptySavedPeopleMessage() : savedStateSource === "remote"
+    ? "Saved profiles are synced to your account. Open a profile to browse its movies and TV shows."
+    : "Saved profiles stay on this browser. Open a profile to browse its movies and TV shows.";
 }
 
 function renderSavedPeopleGrid(container, people, tabKey, emptyMessage) {
-  if (!container) {
-    return;
-  }
-
+  if (!container) return;
+  const left = container.scrollLeft;
   container.replaceChildren();
-  const visibleCount = Math.min(uiState.visiblePeopleCounts[tabKey] || initialSavedPeopleRenderCount, people.length);
+  if (!people.length) container.append(buildEmptyState(peopleQuery ? "No matching profiles." : "No saved profiles yet.", emptyMessage));
+  else people.forEach(person => container.append(buildSavedPersonCard(person, uiState.selectedPeople[tabKey] === String(person.id))));
+  container.scrollLeft = left;
+}
 
-  if (!people.length) {
-    container.append(buildEmptyState("No saved profiles yet.", emptyMessage));
-    return;
-  }
-
-  people.slice(0, visibleCount).forEach((person) => {
-    container.append(buildSavedPersonCard(person, uiState.selectedPeople[tabKey] === String(person.id)));
-  });
-
-  if (visibleCount < people.length) {
-    const loader = document.createElement("div");
-    loader.className = "saved-people-loader";
-    loader.innerHTML = `
-      <strong>Loading more saved people</strong>
-      <span>Keep scrolling and the next batch will render below.</span>
-    `;
-    container.append(loader);
-  }
+function scrollPeople(direction) {
+  const grid = peopleGrids[uiState.activeTab];
+  if (!grid) return;
+  const left = direction * Math.max(220, grid.clientWidth * .85);
+  if (grid.scrollBy) grid.scrollBy({left, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
+  else grid.scrollLeft += left;
+  syncPeopleArrows();
+}
+function syncPeopleArrows() {
+  const grid = peopleGrids[uiState.activeTab];
+  const prev = document.querySelector("#saved-people-prev"), next = document.querySelector("#saved-people-next");
+  if (!grid || !prev || !next) return;
+  prev.disabled = grid.scrollLeft <= 2;
+  next.disabled = grid.scrollWidth - grid.clientWidth - grid.scrollLeft <= 2;
 }
 
 function buildMovieCard(movie, options = {}) {
@@ -243,6 +214,9 @@ function buildSavedPersonCard(person, isSelected) {
 
   const removeButton = fragment.querySelector("[data-saved-person-id]");
   removeButton.dataset.savedPersonId = String(person.id);
+  removeButton.textContent = personBucket(person) === "studios" ? "Remove studio" : "Remove person";
+  removeButton.setAttribute("aria-label", `Remove ${person.name} from saved profiles`);
+  fragment.querySelector("[data-open-saved-person-catalog]").setAttribute("aria-label", `View titles from ${person.name}`);
 
   if (person.profileUrl) {
     portrait.src = person.profileUrl;
@@ -295,16 +269,9 @@ function getVisibleRailCount(viewport) {
 }
 
 function setActiveTab(tab, options = {}) {
-  uiState.activeTab = tab === "filmmakers" || tab === "writers" ? tab : "actors";
-  if (options.clearSelection) {
-    uiState.selectedPeople[uiState.activeTab] = "";
-  }
-  const actorsActive = uiState.activeTab === "actors";
-  const writersActive = uiState.activeTab === "writers";
-
-  elements.savedActorsPanel.hidden = !actorsActive;
-  elements.savedWritersPanel.hidden = !writersActive;
-  elements.savedFilmmakersPanel.hidden = actorsActive || writersActive;
+  uiState.activeTab = peopleBuckets.includes(tab) ? tab : "actors";
+  if (options.clearSelection) uiState.selectedPeople[uiState.activeTab] = "";
+  for (const key of peopleBuckets) if (peoplePanels[key]) peoplePanels[key].hidden = key !== uiState.activeTab;
 
   elements.savedTabButtons.forEach((button) => {
     const isActive = button.dataset.savedTab === uiState.activeTab;
@@ -315,57 +282,33 @@ function setActiveTab(tab, options = {}) {
 
   updateSelectedPersonCards();
   renderActiveCatalogRail();
-  window.requestAnimationFrame(syncAllRails);
+  window.requestAnimationFrame(() => { syncAllRails(); syncPeopleArrows(); });
 }
 
 function handleSavedTabKeydown(event) {
-  const currentIndex = elements.savedTabButtons.indexOf(event.currentTarget);
+  const tabs = elements.savedTabButtons.filter(button => !button.hidden);
+  const currentIndex = tabs.indexOf(event.currentTarget);
   if (currentIndex < 0) {
     return;
   }
 
   let nextIndex = currentIndex;
   if (event.key === "ArrowRight") {
-    nextIndex = (currentIndex + 1) % elements.savedTabButtons.length;
+    nextIndex = (currentIndex + 1) % tabs.length;
   } else if (event.key === "ArrowLeft") {
-    nextIndex = (currentIndex - 1 + elements.savedTabButtons.length) % elements.savedTabButtons.length;
+    nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
   } else if (event.key === "Home") {
     nextIndex = 0;
   } else if (event.key === "End") {
-    nextIndex = elements.savedTabButtons.length - 1;
+    nextIndex = tabs.length - 1;
   } else {
     return;
   }
 
   event.preventDefault();
-  const nextButton = elements.savedTabButtons[nextIndex];
+  const nextButton = tabs[nextIndex];
   nextButton.focus();
   setActiveTab(nextButton.dataset.savedTab || "actors", { clearSelection: true });
-}
-
-function handleWindowScroll() {
-  const activeTab = uiState.activeTab;
-  const total = uiState.peopleByTab[activeTab]?.length || 0;
-  const visible = uiState.visiblePeopleCounts[activeTab] || 0;
-  if (visible >= total) {
-    return;
-  }
-
-  const activePanel =
-    activeTab === "actors"
-      ? elements.savedActorsPanel
-      : activeTab === "writers"
-        ? elements.savedWritersPanel
-        : elements.savedFilmmakersPanel;
-  if (!activePanel || activePanel.hidden) {
-    return;
-  }
-
-  const rect = activePanel.getBoundingClientRect();
-  if (rect.bottom - window.innerHeight < 500) {
-    uiState.visiblePeopleCounts[activeTab] = Math.min(total, visible + savedPeopleRenderBatch);
-    renderSavedPage();
-  }
 }
 
 function handleSavedAction(event) {
@@ -625,8 +568,9 @@ async function ensurePersonCatalog(person) {
 
   try {
     const params = new URLSearchParams({
-      personId: String(person.id),
+      personId: /^\d+$/.test(String(person.id)) ? String(person.id) : "",
       mediaType: "both",
+      searchType: personBucket(person) === "studios" ? "studio" : "person",
       personQuery: person.name,
       role: inferCatalogRole(person),
       genre: "all",
@@ -926,11 +870,7 @@ function resolveSelectedPersonId(tabKey, people) {
 function updateSelectedPersonCards() {
   document.querySelectorAll("[data-select-person-id]").forEach((card) => {
     const personId = String(card.dataset.selectPersonId || "");
-    const tabKey = elements.savedActorsGrid?.contains(card)
-      ? "actors"
-      : elements.savedWritersGrid?.contains(card)
-        ? "writers"
-        : "filmmakers";
+    const tabKey = peopleBuckets.find(key => peopleGrids[key]?.contains(card));
     card.classList.toggle("is-selected", uiState.selectedPeople[tabKey] === personId);
   });
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Saved Titles · flickstuck</title>
+    <title>Watchlist · flickstuck</title>
     <meta
       name="description"
       content="Search, sort, and manage the movies and TV shows saved to your watchlist."
@@ -15,16 +15,17 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css?v=20260908a" />
+    <link rel="stylesheet" href="./site-theme.css?v=20260916a" />
   </head>
-  <body class="saved-titles-page">
+  <body class="flickstuck-theme saved-titles-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
-        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck</a>
+        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck<span class="brand-dot">.</span></a>
         <nav class="title-bar-nav" aria-label="Primary">
-          <a href="/">Home</a>
-          <a href="/saved.html">Saved People</a>
-          <a class="is-active" href="/saved-titles.html" aria-current="page">Saved Titles</a>
+          <a href="/">Discover</a>
+          <a href="/saved.html">Saved people</a>
+          <a class="is-active" href="/saved-titles.html" aria-current="page">Watchlist</a>
           <a href="/account.html">Account</a>
         </nav>
         <div class="title-bar-account" data-auth-root aria-live="polite"></div>
@@ -33,8 +34,8 @@
 
       <header class="hero people-page-hero">
         <div class="hero-copy">
-          <p class="eyebrow">saved stacks</p>
-          <h1>Saved &amp; watched titles</h1>
+          <p class="eyebrow">Your next watch, ready when you are</p>
+          <h1>Your watchlist</h1>
           <p class="hero-text">
             Keep your watchlist and watched history together, without mixing up what you still plan to see.
           </p>
@@ -74,14 +75,6 @@
               <h2 id="saved-titles-heading">Your movies &amp; TV shows</h2>
             </div>
             <div class="saved-titles-toolbar" aria-label="Watchlist controls">
-              <label class="saved-title-control">
-                <span>Type</span>
-                <select id="saved-titles-media-type">
-                  <option value="both">Movies &amp; TV shows</option>
-                  <option value="movie">Movies</option>
-                  <option value="tv">TV shows</option>
-                </select>
-              </label>
               <label class="saved-title-control saved-title-search-control">
                 <span>Search watchlist</span>
                 <input
@@ -90,6 +83,14 @@
                   placeholder="Title, genre, cast, or director"
                   autocomplete="off"
                 />
+              </label>
+              <label class="saved-title-control">
+                <span>Type</span>
+                <select id="saved-titles-media-type">
+                  <option value="both">Movies &amp; TV shows</option>
+                  <option value="movie">Movies</option>
+                  <option value="tv">TV shows</option>
+                </select>
               </label>
               <label class="saved-title-control">
                 <span>Show</span>
@@ -106,14 +107,21 @@
                   <option value="title">Title A–Z</option>
                   <option value="year">Newest release</option>
                   <option value="rating">Highest IMDb</option>
+                  <option value="rt">Highest Rotten Tomatoes</option>
+                  <option value="metacritic">Highest Metacritic</option>
+                  <option value="tmdb">Highest TMDb</option>
                 </select>
               </label>
             </div>
           </div>
+          <div id="saved-title-filters"></div>
+          <button type="button" class="ghost-button" id="clear-library-view" hidden>Clear search &amp; filters</button>
           <p id="saved-titles-view-status" class="results-summary saved-titles-view-status" aria-live="polite"></p>
+          <button type="button" class="ghost-button" id="retry-library-details" hidden>Retry unavailable details</button>
           <div id="saved-titles-grid" class="saved-title-page-grid"></div>
         </section>
       </main>
+      <footer class="site-footer"><a href="/">flickstuck.</a><p>Your next good watch is out there. <a href="/">Back to discovery</a></p><p>Movie and TV data from <a href="https://www.themoviedb.org/">TMDb</a>; ratings and award summaries from <a href="https://www.omdbapi.com/">OMDb</a>.</p></footer>
     </div>
 
     <section class="saved-title-notice" data-saved-title-notice aria-live="polite" hidden>
@@ -190,6 +198,8 @@
     <script src="./auth-client.js?v=20260908a" defer></script>
     <script src="./saved-data-client.js?v=20260908a" defer></script>
     <script src="./movie-results.js?v=20260908a" defer></script>
-    <script src="./saved-titles.js?v=20260908a" defer></script>
+    <script src="./discovery-filters.js?v=20260916a" defer></script>
+    <script src="./library-filters.js?v=20260916a" defer></script>
+    <script src="./saved-titles.js?v=20260916a" defer></script>
   </body>
 </html>

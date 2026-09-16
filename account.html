@@ -15,16 +15,17 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css?v=20260908a" />
+    <link rel="stylesheet" href="./site-theme.css?v=20260916a" />
   </head>
-  <body>
+  <body class="flickstuck-theme account-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <div class="title-bar">
-        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck</a>
+        <a class="site-brand" href="/" aria-label="flickstuck home">flickstuck<span class="brand-dot">.</span></a>
         <nav class="title-bar-nav" aria-label="Primary">
-          <a href="/">Home</a>
-          <a href="/saved.html">Saved People</a>
-          <a href="/saved-titles.html">Saved Titles</a>
+          <a href="/">Discover</a>
+          <a href="/saved.html">Saved people</a>
+          <a href="/saved-titles.html">Watchlist</a>
           <a class="is-active" href="/account.html" aria-current="page">Account</a>
         </nav>
         <div class="title-bar-account" data-auth-root aria-live="polite"></div>
@@ -33,7 +34,7 @@
 
       <header class="hero account-page-hero">
         <div class="hero-copy">
-          <p class="eyebrow">phase 5</p>
+          <p class="eyebrow">Your profile &amp; privacy</p>
           <h1>Account settings</h1>
           <p class="hero-text">
             Review the account currently signed into this browser, see how much of your library is synced, and sign out older sessions you no longer trust.
@@ -95,6 +96,7 @@
           <div id="account-sessions-list" class="account-session-list"></div>
         </section>
       </main>
+      <footer class="site-footer"><a href="/">flickstuck.</a><p>Your next good watch is out there. <a href="/">Back to discovery</a></p><p>Movie and TV data from <a href="https://www.themoviedb.org/">TMDb</a>; ratings and award summaries from <a href="https://www.omdbapi.com/">OMDb</a>.</p></footer>
     </div>
 
     <script src="./title-identity.js?v=20260908a" defer></script>

@@ -77,6 +77,8 @@ const PUBLIC_STATIC_FILES = new Set([
   "title-identity.js",
   "discovery-filters.js",
   "discovery.css",
+  "site-theme.css",
+  "library-filters.js",
 ]);
 const SECURITY_HEADERS = {
   "Cross-Origin-Opener-Policy": "same-origin-allow-popups",

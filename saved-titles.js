@@ -34,6 +34,27 @@ let savedStateSource = "local";
 let savedStateError = "";
 let lastRemovedMovie = null;
 let noticeTimeoutId = 0;
+let libraryContext = '';
+const enrichmentQueue = new Map();
+const enrichmentPending = new Set();
+const enrichmentFailed = new Set();
+// Public metadata stays separate from account-owned saves and is discarded on account changes.
+const libraryDetails = new Map();
+let enrichmentRunning = 0;
+const ratingSortFields = { rating: 'imdb', rt: 'rt', metacritic: 'metacritic', tmdb: 'tmdb' };
+const libraryFilters = window.LibraryFilters?.mount(document.querySelector('#saved-title-filters'), () => {
+  enrichmentQueue.clear(); renderSavedTitlesPage();
+});
+const titleObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+  const visible = entries.filter(entry => entry.isIntersecting).map(entry => {
+    titleObserver.unobserve(entry.target);
+    const key = window.TitleIdentity.key(entry.target.dataset.movieId);
+    return watchlistMovies.get(key) || watchedMovies.get(key);
+  }).filter(Boolean);
+  queueTitleDetails(visible);
+}, { rootMargin: '300px' }) : null;
+document.querySelector('#clear-library-view')?.addEventListener('click', clearFilters);
+document.querySelector('#retry-library-details')?.addEventListener('click', () => { enrichmentFailed.clear(); renderSavedTitlesPage(); });
 
 elements.grid?.addEventListener("click", handleGridClick);
 elements.mediaType?.addEventListener("change", () => {
@@ -69,25 +90,36 @@ if (savedDataClient) {
 
 function renderSavedTitlesPage() {
   const allMovies = getSavedMovies();
+  const detailFilters = libraryFilters?.getFilters();
+  const candidates = allMovies.filter(movie => movieMatchesQuery(movie, viewState.query) && movieMatchesWatchedFilter(movie)
+    && (viewState.mediaType === 'both' || window.TitleIdentity.identity(movie)?.mediaType === viewState.mediaType));
   const visibleMovies = sortMovies(
-    allMovies.filter((movie) => movieMatchesQuery(movie, viewState.query) && movieMatchesWatchedFilter(movie)
-      && (viewState.mediaType === "both" || window.TitleIdentity.identity(movie)?.mediaType === viewState.mediaType)),
+    candidates.filter(movie => !detailFilters || libraryTitleStatus(movie, detailFilters) === 'match'),
     viewState.sort,
   );
+  const needsCheck = candidates.filter(movie => !movie.isEnriched && (!detailFilters || libraryTitleStatus(movie,detailFilters) !== 'exclude'));
+  const pendingMatches = detailFilters ? candidates.filter(movie => libraryTitleStatus(movie,detailFilters) === 'pending') : [];
+  const failed = needsCheck.filter(movie => enrichmentFailed.has(String(movie.id)));
+  if (libraryFilters) queueTitleDetails(window.DiscoveryFilters.active(detailFilters) || ratingSortFields[viewState.sort] || viewState.query ? needsCheck : candidates.slice(0,8));
+  document.querySelector('#clear-library-view').hidden = !viewState.query && viewState.mediaType === 'both' && viewState.watchedFilter === 'all' && viewState.sort === 'recent' && !window.DiscoveryFilters?.active(detailFilters || window.DiscoveryFilters.defaults);
+  document.querySelector('#retry-library-details').hidden = !failed.length;
 
   renderSummary(allMovies);
   renderStatus(allMovies.length, visibleMovies.length);
+  if (pendingMatches.length) elements.viewStatus.textContent += ` Checking ${pendingMatches.length} titles against your filters.`;
+  if (failed.length) elements.viewStatus.textContent += ` Details unavailable for ${failed.length}; you can retry.`;
 
   if (!elements.grid) {
     return;
   }
 
+  titleObserver?.disconnect();
   elements.grid.replaceChildren();
 
   if (!allMovies.length) {
     elements.grid.append(buildEmptyState(
       "No saved titles yet",
-      "Quick-add a title from Home or save one from discovery and it will appear here.",
+      "Search for a movie or TV show on Discover and save it to start your watchlist.",
       { linkHref: "/", linkLabel: "Find something to watch" },
     ));
     return;
@@ -95,8 +127,8 @@ function renderSavedTitlesPage() {
 
   if (!visibleMovies.length) {
     elements.grid.append(buildEmptyState(
-      "No titles match your search",
-      "Try another title, genre, cast member, or director.",
+      pendingMatches.length ? "Checking your saved titles" : "No matching titles",
+      pendingMatches.length ? "Ratings and award details are loading. Verified matches will appear here." : "Try a different search or loosen your filters. Missing scores never count as a match.",
       { clearFilters: true },
     ));
     return;
@@ -107,6 +139,7 @@ function renderSavedTitlesPage() {
     fragment.append(buildMovieCard(movie));
   });
   elements.grid.append(fragment);
+  elements.grid.querySelectorAll('[data-movie-id]').forEach(card => titleObserver?.observe(card));
   window.requestAnimationFrame(() => refreshSynopsisToggles(elements.grid));
 }
 
@@ -118,6 +151,56 @@ function getSavedMovies() {
       return movie ? { ...movie, __savedOrder: index } : null;
     })
     .filter(Boolean);
+}
+
+function libraryTitleStatus(movie, filters) {
+  const F = window.DiscoveryFilters;
+  const names = (movie.genres || []).map(name => String(name).toLowerCase());
+  const inferredGenres = F.genres.filter(genre => names.includes(genre.name.toLowerCase())).flatMap(genre => F.mappedGenres(genre.id, movie.mediaType));
+  if (names.includes('action & adventure')) inferredGenres.push(10759);
+  if (names.includes('sci-fi & fantasy')) inferredGenres.push(10765);
+  if (names.includes('war & politics')) inferredGenres.push(10768);
+  const title = { ...movie, genreIds: movie.genreIds?.length ? movie.genreIds : inferredGenres };
+  if (filters.genre !== 'all' && !title.genreIds.length && !title.isEnriched) {
+    return F.status(title, {...filters,genre:'all'}) === 'exclude' ? 'exclude' : 'pending';
+  }
+  return F.status(title, filters);
+}
+
+function queueTitleDetails(movies) {
+  if (!libraryFilters || !savedDataClient) return;
+  for (const movie of movies) {
+    const key = String(movie.id);
+    if (!movie.isEnriched && !enrichmentPending.has(key) && !enrichmentFailed.has(key)) enrichmentQueue.set(key,movie);
+  }
+  while (enrichmentRunning < 2 && enrichmentQueue.size) {
+    const batch = [...enrichmentQueue.entries()].slice(0,2);
+    for (const [key] of batch) { enrichmentQueue.delete(key); enrichmentPending.add(key); }
+    enrichmentRunning++;
+    const context = libraryContext;
+    fetchJson('/api/enrich?ids=' + encodeURIComponent(batch.map(([key])=>key).join(','))).then(payload => {
+      if (context !== libraryContext) return;
+      const enriched = [];
+      for (const [key,base] of batch) {
+        const title = (payload.movies || []).find(title => String(window.TitleIdentity.key(title)) === key && title.isEnriched);
+        if (title) enriched.push({ ...base, ...title, genreIds: title.genreIds?.length ? title.genreIds : base.genreIds });
+        else enrichmentFailed.add(key);
+      }
+      for (const title of enriched) {
+        const key = window.TitleIdentity.key(title);
+        libraryDetails.set(key, title);
+        for (const collection of [watchlistMovies, watchedMovies]) {
+          if (collection.has(key)) collection.set(key, { ...collection.get(key), ...title });
+        }
+      }
+      if (enriched.length) savedDataClient.updateMovieDetails(enriched);
+    }).catch(() => { if (context === libraryContext) batch.forEach(([key])=>enrichmentFailed.add(key)); })
+      .finally(() => {
+        batch.forEach(([key])=>enrichmentPending.delete(key)); enrichmentRunning--;
+        renderSavedTitlesPage();
+        queueTitleDetails([]);
+      });
+  }
 }
 
 function renderSummary(movies) {
@@ -174,7 +257,7 @@ function renderStatus(total, visible) {
   }
 
   const noun = total === 1 ? "title" : "titles";
-  elements.viewStatus.textContent = viewState.query || viewState.watchedFilter !== "all" || viewState.mediaType !== "both"
+  elements.viewStatus.textContent = viewState.query || viewState.watchedFilter !== "all" || viewState.mediaType !== "both" || libraryFilters && window.DiscoveryFilters.active(libraryFilters.getFilters())
     ? `Showing ${visible} of ${total} ${noun} in your library.`
     : `${total} ${noun} in your library.`;
 }
@@ -367,6 +450,8 @@ function clearFilters() {
   viewState.query = "";
   viewState.watchedFilter = "all";
   viewState.mediaType = "both";
+  viewState.sort = 'recent';
+  if (elements.sort) elements.sort.value = 'recent';
   if (elements.mediaType) elements.mediaType.value = "both";
   if (elements.search) {
     elements.search.value = "";
@@ -375,7 +460,7 @@ function clearFilters() {
   if (elements.watchedFilter) {
     elements.watchedFilter.value = "all";
   }
-  renderSavedTitlesPage();
+  if (libraryFilters) libraryFilters.reset(); else renderSavedTitlesPage();
 }
 
 function movieMatchesQuery(movie, query) {
@@ -404,8 +489,8 @@ function sortMovies(movies, sortMode) {
     if (sortMode === "year") {
       return compareNumbersDescending(left.year, right.year) || compareTitles(left, right);
     }
-    if (sortMode === "rating") {
-      return compareNumbersDescending(left.imdb, right.imdb) || compareTitles(left, right);
+    if (ratingSortFields[sortMode]) {
+      return compareNumbersDescending(left[ratingSortFields[sortMode]], right[ratingSortFields[sortMode]]) || compareTitles(left, right);
     }
 
     const leftSavedAt = Date.parse(left.savedAt || "");
@@ -459,7 +544,7 @@ function buildEmptyState(title, message, options = {}) {
     button.type = "button";
     button.className = "ghost-button";
     button.dataset.clearSavedFilters = "true";
-    button.textContent = "Clear search";
+    button.textContent = "Clear search & filters";
     emptyState.append(button);
   }
 
@@ -512,6 +597,8 @@ function handleSavedDataUpdate(snapshot) {
 }
 
 function syncSavedCollections(snapshot) {
+  const context = String(snapshot.user?.id || 'guest') + ':' + (snapshot.source || 'local');
+  if (context !== libraryContext) { libraryContext = context; enrichmentQueue.clear(); enrichmentFailed.clear(); libraryDetails.clear(); }
   savedStateSource = snapshot.source || "local";
   savedStateError = snapshot.error || "";
 
@@ -525,13 +612,17 @@ function syncSavedCollections(snapshot) {
   watchlistMovies.clear();
   (snapshot.watchlistMovies || []).forEach((movie) => {
     if (movie && window.TitleIdentity.valid(movie)) {
-      watchlistMovies.set(window.TitleIdentity.key(movie.id), movie);
+      const key = window.TitleIdentity.key(movie.id);
+      watchlistMovies.set(key, { ...movie, ...libraryDetails.get(key) });
     }
   });
   watched.clear();
   (snapshot.watchedIds || []).forEach((movieId) => watched.add(window.TitleIdentity.key(movieId)));
   watchedMovies.clear();
-  (snapshot.watchedMovies || []).forEach((movie) => watchedMovies.set(window.TitleIdentity.key(movie.id), movie));
+  (snapshot.watchedMovies || []).forEach((movie) => {
+    const key = window.TitleIdentity.key(movie.id);
+    watchedMovies.set(key, { ...movie, ...libraryDetails.get(key) });
+  });
 }
 
 function movieMatchesWatchedFilter(movie) {
@@ -566,6 +657,7 @@ async function fetchJson(url) {
   const response = await window.fetch(url, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
+    ...(typeof AbortSignal.timeout === 'function' ? { signal: AbortSignal.timeout(30000) } : {}),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
